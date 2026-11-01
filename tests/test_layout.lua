@@ -154,6 +154,29 @@ do
   H.check(not bad, "flora in the clearing lands on text at " .. tostring(bad))
 end
 
+-- The upper crown stops below gesture.top_inset; the inset lowers its
+-- topmost painted point by the same amount.
+do
+  local top = H.page(6).height
+  local function upper_top(inset)
+    local spec = centred(6)
+    spec.layout, spec.tune = "surround", { gesture = { top_inset = inset } }
+    local label, highest = nil, 0
+    spec.on_frame = function(f) label = f.label end
+    spec.probe = function(_, y)
+      if label == "right" then highest = math.max(highest, y) end
+    end
+    Paint.reset_resources()
+    Compose.page(spec)
+    return highest
+  end
+  local plain, lowered = upper_top(0), upper_top(48)
+  H.check(plain > top - 40, string.format("upper crown starts too low without an inset: %.1f", plain))
+  H.check(lowered < top - 48, string.format("upper crown ignores the inset: %.1f", lowered))
+  H.check(math.abs((plain - lowered) - 48) < 2,
+    string.format("inset moves the crown by %.1f pt, not 48", plain - lowered))
+end
+
 -- Split follows page parity: odd pages are mirrored, even ones are not.
 do
   local s = H.page(1)
