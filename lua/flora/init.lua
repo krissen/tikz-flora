@@ -81,6 +81,19 @@ local function pt_of(s)
   return tonumber((tostring(s):gsub("pt$", "")))
 end
 
+-- Rectangles the flora must keep out of, in paper coordinates (pt, origin at
+-- the lower-left corner). Set from TeX with \florareserve; they apply to
+-- every page shipped after the call.
+M.reserve = {}
+
+function M.add_reserve(x0, y0, x1, y1)
+  M.reserve[#M.reserve + 1] = { pt_of(x0), pt_of(y0), pt_of(x1), pt_of(y1) }
+end
+
+function M.clear_reserve()
+  M.reserve = {}
+end
+
 -- The seed for a page: a fixed document seed varied by page number, or the
 -- clock when the document asks for "random".
 function M.seed(base, page)
@@ -113,7 +126,9 @@ function M.page(a)
     text = { x0 = pt_of(a.text_x0), y0 = pt_of(a.text_y0), x1 = pt_of(a.text_x1), y1 = pt_of(a.text_y1) },
     header_y = a.header_y and pt_of(a.header_y),
     seed = M.seed(set.seed or a.seed, a.page),
-    lines = lines, layout = set.layout, page = a.page, mix = set.mix, ornaments = set.ornaments, palette = set.palette, spin = set.spin,
+    lines = lines, layout = set.layout, page = a.page, mix = set.mix, ornaments = set.ornaments,
+    palette = set.palette, spin = set.spin, tune = set.tune,
+    reserve = M.reserve,
     doc_seed = tostring(set.seed or a.seed),
   }
   if marks and marks["title-start"] and lines then
@@ -129,10 +144,26 @@ function M.page(a)
   if skip then return end
   local pt = require("flora.compose").page(spec)
   tex.sprint("\\begin{pgfpicture}")
+  local band = a.background_height and pt_of(a.background_height) or 0
+  if band > 0 then
+    local y = a.background_position == "bottom" and 0 or spec.height - band
+    tex.sprint(string.format("\\pgfsetfillcolor{%s}", a.background_color or "black"))
+    tex.sprint(string.format("\\pgfpathrectangle{\\pgfpoint{0pt}{%.2fpt}}{\\pgfqpoint{%.2fpt}{%.2fpt}}\\pgfusepath{fill}", y, spec.width, band))
+  end
   tex.sprint(string.format(
     "\\pgfpathrectangle{\\pgfpointorigin}{\\pgfqpoint{%.2fpt}{%.2fpt}}\\pgfusepath{use as bounding box}",
     spec.width, spec.height))
   M.typeset(pt)
+  -- Knock the reserved rectangles back to paper white after painting, so a
+  -- stem planned before the reservation cannot cross a title or footline.
+  if #M.reserve > 0 then
+    tex.sprint("\\pgfsetfillcolor{white}")
+    for _, r in ipairs(M.reserve) do
+      tex.sprint(string.format(
+        "\\pgfpathrectangle{\\pgfpoint{%.2fpt}{%.2fpt}}{\\pgfqpoint{%.2fpt}{%.2fpt}}\\pgfusepath{fill}",
+        r[1], r[2], r[3] - r[1], r[4] - r[2]))
+    end
+  end
   tex.sprint("\\end{pgfpicture}")
   texio.write_nl("log", string.format("flora: page %d coverage %.2f", a.page, pt.coverage or 0))
 end

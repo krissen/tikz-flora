@@ -88,7 +88,7 @@ end
 -- text x0 (compose.lua's rule), used to keep two heroes from colliding.
 local function hero_radius(spec, x0)
   local mw = x0 - (spec.gutter or 9) - (spec.edge or 16)
-  return G.clamp(mw * Tune.compose.hero, 28, 80)
+  return G.clamp(mw * Tune.compose.hero, Tune.compose.hero_min or 28, Tune.compose.hero_max or 80)
 end
 
 -- The frames for a page. With the default layout this is the page itself,

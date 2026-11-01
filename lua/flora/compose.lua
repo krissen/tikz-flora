@@ -37,14 +37,16 @@ local function plant(spec, pt)
   local g, m = Layout.region(spec)
   local mw = m.x1 - m.x0
   local top = spec.header_y or spec.text.y1
+  local inset = Tune.gesture.top_inset or 0
+  if inset > 0 then top = math.min(top, spec.height - inset) end
 
   local cfg = Mix.cfg(Tune.compose, spec.mix)
-  local R = G.clamp(mw * cfg.hero, 28, 80)
+  local R = G.clamp(mw * cfg.hero, cfg.hero_min or 28, cfg.hero_max or 80)
   -- As in the reference, the hero's heart sits just below the running-head
   -- rule, so the bloom fills the top corner of the page up to the paper's
   -- edge (its projected top kept HERO_TOP pt inside it).
   local _, rh = F.tilt(0, 0, R, Tune.hero.tilt)
-  local hy = math.min(top - R * 0.32, spec.height - HERO_TOP - rh)
+  local hy = math.min(top - R * 0.32 - (cfg.hero_shift or 0), spec.height - HERO_TOP - rh)
   local hero = { G.clamp(m.x0 + mw * 0.5, m.x0 + R * 0.75, m.x1 - R * 0.95), hy, R }
   -- The clearance field sees the text and the region's edges from here on.
   g:field()
@@ -230,7 +232,13 @@ local function plant(spec, pt)
   for _, s in ipairs(strands) do
     if s.cum then painted[#painted + 1] = s else stem_batch:stem_by(s.pts, s.width) end
   end
-  for _, s in ipairs(runners) do stem_batch:stem_by(s.pts, s.width) end
+  local rf = Tune.compose.runners or 1
+  if rf > 0 then
+    for _, s in ipairs(runners) do
+      local w = s.width
+      stem_batch:stem_by(s.pts, function(t) return w(t) * rf end)
+    end
+  end
 
   -- Paint back to front.
   if not pt then
@@ -310,11 +318,18 @@ end
 -- when given, is told each frame before its plant is painted.
 function C.page(spec)
   local palette = Mix.resolve(spec.palette, spec.seed, spec.spin)
-  return Mix.with_palette(palette, function() return C.frames(spec) end)
+  return Mix.with_palette(palette, function()
+    return Tune._with(spec.tune, function() return C.frames(spec) end)
+  end)
 end
 
 -- C.page, after the page's palette is in place.
 function C.frames(spec)
+  -- The wreath frames the text below the running head, not the head itself.
+  local inset = Tune.gesture.top_inset or 0
+  if inset > 0 and spec.text then
+    spec.text.y1 = math.min(spec.text.y1, spec.height - inset)
+  end
   local frames = Frames.of(spec)
   if #frames == 1 and not frames[1].map then return plant(spec) end
   local pt = Paint.new({ backend = os.getenv("FLORA_BACKEND") })
