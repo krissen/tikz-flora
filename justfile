@@ -49,7 +49,7 @@ test-dist: dist
     unzip -q build/tikzflora.zip -d build/test-dist
     cd build/test-dist/tikzflora && env -u TEXINPUTS -u FLORA_TUNE latexmk -quiet example > latexmk.out 2>&1 || (tail -30 example.log; exit 1)
     test "$(pdfinfo build/test-dist/tikzflora/example.pdf | awk '/^Pages/ {print $2}')" = 7
-    grep -q 'painted objects' build/test-dist/tikzflora/example.log
+    grep -q 'flora: coverage' build/test-dist/tikzflora/example.log
     @echo "dist: example compiles from the zip"
 
 # The browser mixer runs the generator under Lua 5.4 (wasmoon); LuaLaTeX
