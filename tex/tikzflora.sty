@@ -85,6 +85,7 @@
       text_y0 = "\the\dimexpr\paperheight-1in-\voffset-\topmargin-\headheight-\headsep-\textheight\relax",
       header_y = "\the\dimexpr\paperheight-1in-\voffset-\topmargin-\headheight\relax",
       frametitle = "\floraframetitlepresent",
+      frametitle_height = "\ifdefined\beamer@frametitlebox \the\dimexpr\ht\beamer@frametitlebox+\dp\beamer@frametitlebox\relax\else 0pt\fi",
       seed = "\florseed", page = \the\value{page}, box = \number\ShipoutBox,
       only = "\florapages",
       background_position = "\florabackgroundposition",

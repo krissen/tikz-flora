@@ -129,13 +129,16 @@ function M.page(a)
     lines = lines, layout = set.layout, page = a.page, mix = set.mix, ornaments = set.ornaments,
     palette = set.palette, spin = set.spin, tune = set.tune,
     header = set.header, frametitle = a.frametitle == "1",
+    frametitle_height = a.frametitle_height and pt_of(a.frametitle_height),
     reserve = M.reserve,
     doc_seed = tostring(set.seed or a.seed),
   }
   if marks and marks["title-start"] and lines then
     spec.title = require("flora.frames").between(lines, marks["title-start"], marks["title-end"] or 0)
   end
-  if spec.frametitle and lines then
+  if spec.frametitle and spec.frametitle_height and spec.frametitle_height > 0 then
+    spec.body_top = spec.text.y1 - spec.frametitle_height
+  elseif spec.frametitle and lines then
     local below = {}
     for _, l in ipairs(lines) do
       if not spec.header_y or l.y1 <= spec.header_y + 1 then below[#below + 1] = l end
