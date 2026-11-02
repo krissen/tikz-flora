@@ -394,8 +394,9 @@ function C.frames(spec)
     pt:frame(function(x, y) return Frames.apply(m, x, y) end)
     local cl = f.spec.clip_x1
     if cl then
-      pt:clip_begin({ { "m", 0, 0 }, { "l", cl, 0 }, { "l", cl, f.spec.height },
-        { "l", 0, f.spec.height }, { "z" } })
+      local ch = f.spec.clip_y1 or f.spec.height
+      pt:clip_begin({ { "m", 0, 0 }, { "l", cl, 0 }, { "l", cl, ch },
+        { "l", 0, ch }, { "z" } })
     end
     if f.spec.tune then
       Tune._with(f.spec.tune, function() plant(f.spec, pt) end)

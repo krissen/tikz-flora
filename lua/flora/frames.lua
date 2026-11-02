@@ -149,6 +149,7 @@ function M.of(spec)
     tune.plant = plant
     b.spec.tune = tune
     b.spec.clip_x1 = W - start
+    b.spec.clip_y1 = math.min(b.spec.height, b.spec.text.y0 + (spec.frametitle_height or 0) + 4)
     for _, f in ipairs({ a, b }) do
       local ft = f.spec.text
       f.spec.closed = {
