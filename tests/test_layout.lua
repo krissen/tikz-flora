@@ -195,6 +195,21 @@ do
     string.format("inset moves the crown by %.1f pt, not 48", plain - lowered))
 end
 
+-- gesture.header_clip clips margin-mode plants at the running head.
+do
+  local spec = H.page(11)
+  spec.header, spec.tune = "margin", { gesture = { header_clip = 1 } }
+  Paint.reset_resources()
+  local body = Compose.page(spec):body()
+  H.check(body:find("W n", 1, true) or body:find("\\pgfusepathqclip", 1, true),
+    "header_clip did not clip the painter")
+  spec.tune = { gesture = { header_clip = 0 } }
+  Paint.reset_resources()
+  local plain = Compose.page(spec):body()
+  H.check(not (plain:find("W n", 1, true) or plain:find("\\pgfusepathqclip", 1, true)),
+    "header_clip clipped without the setting")
+end
+
 -- Body mode clips the painter itself, so previews match the TeX page.
 do
   local spec = H.page(10)
