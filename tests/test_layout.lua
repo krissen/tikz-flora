@@ -206,13 +206,18 @@ do
     "body mode did not clip the painter")
 end
 
--- Mapped frames do not inherit page-space header limits.
+-- Horizontal mirrors keep vertical header limits; turned frames drop them.
 do
   local spec = centred(2)
-  spec.layout, spec.header, spec.body_top, spec.top_inset = "surround", "body", 650, 91
+  spec.header, spec.body_top, spec.top_inset = "body", 650, 91
+  spec.layout = "right"
+  local right = Frames.of(spec)[1]
+  H.check(right.spec.header == "body" and right.spec.body_top == 650 and right.spec.top_inset == 91,
+    "horizontal mirror dropped the vertical header limit")
+  spec.layout = "surround"
   for _, f in ipairs(Frames.of(spec)) do
     H.check(f.spec.header == "margin" and f.spec.body_top == nil and f.spec.top_inset == nil,
-      "mapped frame inherited a page-space header limit")
+      "turned frame inherited a page-space header limit")
   end
 end
 
