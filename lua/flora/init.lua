@@ -165,7 +165,7 @@ function M.page(a)
     end
   end
   tex.sprint("\\end{pgfpicture}")
-  texio.write_nl("log", string.format("flora: page %d coverage %.2f", a.page, pt.coverage or 0))
+  texio.write_nl("log", string.format("flora: coverage %.2f", pt.coverage or 0))
 end
 
 return M
