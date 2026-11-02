@@ -46,7 +46,13 @@ local function plant(spec, pt)
   -- rule, so the bloom fills the top corner of the page up to the paper's
   -- edge (its projected top kept HERO_TOP pt inside it).
   local _, rh = F.tilt(0, 0, R, Tune.hero.tilt)
-  local hy = math.min(top - R * 0.32 - (cfg.hero_shift or 0), spec.height - HERO_TOP - rh)
+  local hy
+  if spec.header == "body" and spec.body_top then
+    -- The whole bloom sits below the measured title, not across it.
+    hy = math.min(spec.body_top - rh - 2, spec.height - HERO_TOP - rh)
+  else
+    hy = math.min(top - R * 0.32 - (cfg.hero_shift or 0), spec.height - HERO_TOP - rh)
+  end
   local hero = { G.clamp(m.x0 + mw * 0.5, m.x0 + R * 0.75, m.x1 - R * 0.95), hy, R }
   -- The clearance field sees the text and the region's edges from here on.
   g:field()
