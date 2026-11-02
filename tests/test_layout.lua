@@ -195,6 +195,47 @@ do
     string.format("inset moves the crown by %.1f pt, not 48", plain - lowered))
 end
 
+-- Body mode clips the painter itself, so previews match the TeX page.
+do
+  local spec = H.page(10)
+  spec.header, spec.body_top = "body", 650
+  Paint.reset_resources()
+  local pt = Compose.page(spec)
+  local body = pt:body()
+  H.check(body:find("\\pgfusepathqclip", 1, true) or body:find("W n", 1, true),
+    "body mode did not clip the painter")
+end
+
+-- A configured top inset wins when it clears more than the measured header.
+do
+  local spec = centred(4)
+  spec.header, spec.body_top = "body", 820
+  spec.tune = { gesture = { top_inset = 48 } }
+  Paint.reset_resources()
+  Compose.page(spec)
+  H.check(spec.top_inset == 48, string.format("body mode reduced the top inset to %.1f", spec.top_inset or -1))
+end
+
+-- Horizontal mirrors keep vertical header limits; turned frames drop them.
+do
+  local spec = centred(2)
+  spec.header, spec.body_top, spec.top_inset = "body", 650, 91
+  spec.layout = "right"
+  local right = Frames.of(spec)[1]
+  H.check(right.spec.header == "body" and right.spec.body_top == 650 and right.spec.top_inset == 91,
+    "horizontal mirror dropped the vertical header limit")
+  spec.layout = "surround"
+  for _, f in ipairs(Frames.of(spec)) do
+    if f.map and f.map[4] == 1 then
+      H.check(f.spec.body_top == 650 and f.spec.top_inset == 91,
+        "vertical frame dropped the header limit")
+    else
+      H.check(f.spec.header == "margin" and f.spec.body_top == nil and f.spec.top_inset == nil,
+        "turned frame inherited a page-space header limit")
+    end
+  end
+end
+
 -- Split follows page parity: odd pages are mirrored, even ones are not.
 do
   local s = H.page(1)

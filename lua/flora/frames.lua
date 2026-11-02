@@ -69,6 +69,13 @@ local function frame(spec, m, w, h, opts)
   for k, v in pairs(spec) do s[k] = v end
   s.width, s.height, s.text, s.lines = w, h, text, lines
   s.header_y = opts.header and spec.header_y or nil
+  -- Vertical header limits survive a horizontal mirror; a frame that turns
+  -- the y axis must use its own coordinates instead.
+  if m[4] == 1 then
+    s.header, s.body_top, s.top_inset = spec.header, spec.body_top, spec.top_inset
+  else
+    s.header, s.body_top, s.top_inset = "margin", nil, nil
+  end
   s.closed = opts.closed
   -- A wreath or a crown frames the text; it does not grow into it.
   s.frame_only = opts.frame_only
@@ -120,7 +127,7 @@ function M.of(spec)
     local a = frame(spec, IDENTITY, W, H, { label = "left", frame_only = true })
     -- The upper plant's foot runs along the top edge. Lower that edge by
     -- top_inset so the border underlines a running head instead of crossing it.
-    local Htop = math.max(1, H - (Tune.gesture.top_inset or 0))
+    local Htop = math.max(1, H - (spec.top_inset or Tune.gesture.top_inset or 0))
     local b = frame(spec, { -1, 0, 0, -1, W, Htop }, W, Htop,
       { seed = seed_of(spec, 2), label = "right", frame_only = true })
     for _, f in ipairs({ a, b }) do

@@ -32,7 +32,7 @@ function M.region(spec)
     y0 = edge + 4, y1 = H - edge - 6,
     foot = t.y0 - gutter * 0.8,
   }
-  local inset = Tune.gesture.top_inset or 0
+  local inset = spec.top_inset or Tune.gesture.top_inset or 0
   if inset > 0 then m.y1 = math.min(m.y1, H - inset) end
   g:open(m.x0, m.y0, m.x1, m.y1)
   g:open(m.x0, m.y0, W - edge, m.foot)

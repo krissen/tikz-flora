@@ -36,8 +36,8 @@ local function plant(spec, pt)
   local edge = spec.edge or 16
   local g, m = Layout.region(spec)
   local mw = m.x1 - m.x0
-  local top = spec.header_y or spec.text.y1
-  local inset = Tune.gesture.top_inset or 0
+  local top = (spec.header == "body" and spec.body_top) or spec.header_y or spec.text.y1
+  local inset = spec.top_inset or Tune.gesture.top_inset or 0
   if inset > 0 then top = math.min(top, spec.height - inset) end
 
   local cfg = Mix.cfg(Tune.compose, spec.mix)
@@ -323,17 +323,34 @@ function C.page(spec)
   end)
 end
 
+-- Clip a painter to the body when the header is measured in body mode.
+local function body_clip(pt, spec)
+  if spec.header ~= "body" or not spec.body_top then return false end
+  local w, y = spec.width, spec.body_top
+  pt:clip_begin({ { "m", 0, 0 }, { "l", w, 0 }, { "l", w, y }, { "l", 0, y }, { "z" } })
+  return true
+end
+
 -- C.page, after the page's palette is in place.
 function C.frames(spec)
   -- The wreath frames the text below the running head, not the head itself.
-  local inset = Tune.gesture.top_inset or 0
+  if spec.header == "body" and spec.body_top then
+    spec.top_inset = math.max(spec.height - spec.body_top, Tune.gesture.top_inset or 0)
+    spec.text.y1 = math.min(spec.text.y1, spec.body_top)
+  end
+  local inset = spec.top_inset or Tune.gesture.top_inset or 0
   if inset > 0 and spec.text then
     spec.text.y1 = math.min(spec.text.y1, spec.height - inset)
   end
   local frames = Frames.of(spec)
-  if #frames == 1 and not frames[1].map then return plant(spec) end
   local pt = Paint.new({ backend = os.getenv("FLORA_BACKEND") })
   pt.probe = spec.probe
+  local clipped = body_clip(pt, spec)
+  if #frames == 1 and not frames[1].map then
+    plant(spec, pt)
+    if clipped then pt:clip_end() end
+    return pt
+  end
   local cover = 0
   for _, f in ipairs(frames) do
     local m = f.map
@@ -344,12 +361,14 @@ function C.frames(spec)
   end
   pt:frame(nil)
   -- Title furniture paints over the finished crowns, in page coordinates;
-  -- while the page grows it waits for the plants.
+  -- while the page grows it waits for the plants. It stays inside the body
+  -- clip in body mode, so the crest cannot sit in the header.
   if frames.title and (spec.grow or 1) >= 0.9 then
     pt:begin_group("title")
     Title.paint(pt, spec, frames.title)
     pt:end_group()
   end
+  if clipped then pt:clip_end() end
   pt.title = frames.title
   pt.coverage = cover
   pt.frames = frames
