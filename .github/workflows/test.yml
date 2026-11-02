@@ -1,0 +1,47 @@
+name: test
+
+# The engine's Lua tests take ~12 min in one process, so they run in three
+# groups of about four minutes, and only when the engine or its tests change.
+# The seconds-fast tests also run before push (.pre-commit-config.yaml).
+on:
+  pull_request:
+    paths:
+      - "lua/**"
+      - "tex/**"
+      - "tests/**"
+      - "tools/test.sh"
+      - "tools/tune_json.lua"
+      - "tools/bake_tune.py"
+      - ".github/workflows/test.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: test-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lua:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # Grouped by measured time on a laptop (seconds): mix 210,
+        # scene_ops 44 | compose 132, ornaments 97 | layout 130, clock 96,
+        # visitor 26 and the fast set.
+        tests:
+          - mix scene_ops
+          - compose ornaments
+          - layout clock visitor fast
+    steps:
+      - uses: actions/checkout@v4
+      - name: texlua
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq --no-install-recommends texlive-binaries >/dev/null
+      - name: tests
+        run: |
+          set -e
+          for t in ${{ matrix.tests }}; do tools/test.sh $t; done

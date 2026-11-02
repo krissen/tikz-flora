@@ -1,0 +1,15 @@
+# The engine tests that finish in seconds run before push; the full set
+# (~12 min) runs in CI (.github/workflows/test.yml). Runs via prek
+# (https://github.com/j178/prek); the format is also pre-commit's.
+#   plain clone:                     prek install --hook-type pre-push
+#   machine with global hooksPath:   git config prek.enabled true
+repos:
+  - repo: local
+    hooks:
+      - id: fast-tests
+        name: fast engine tests
+        entry: tools/test.sh fast
+        language: system
+        pass_filenames: false
+        stages: [pre-push]
+        files: '^(lua|tex|tests|tools)/'
