@@ -42,12 +42,30 @@ local function plant(spec, pt)
 
   local cfg = Mix.cfg(Tune.compose, spec.mix)
   local R = G.clamp(mw * cfg.hero, cfg.hero_min or 28, cfg.hero_max or 80)
+  -- A hero may use the whole margin up to the text block, not just the
+  -- inset growing region; on a 1 cm margin that is the difference between
+  -- a visible bloom and a clipped sliver.
+  local hw = math.max(1, spec.text.x0 - 2)
+  R = math.min(R, math.max(1, (hw - 4) * 0.45))
   -- As in the reference, the hero's heart sits just below the running-head
   -- rule, so the bloom fills the top corner of the page up to the paper's
   -- edge (its projected top kept HERO_TOP pt inside it).
   local _, rh = F.tilt(0, 0, R, Tune.hero.tilt)
-  local hy = math.min(top - R * 0.32 - (cfg.hero_shift or 0), spec.height - HERO_TOP - rh)
-  local hero = { G.clamp(m.x0 + mw * 0.5, m.x0 + R * 0.75, m.x1 - R * 0.95), hy, R }
+  local clip_y
+  if (Tune.gesture.header_clip or 0) > 0 and spec.frametitle and spec.header_y then
+    clip_y = spec.header_y - (Tune.gesture.header_gap or 0)
+  end
+  local hy
+  if spec.header == "body" and spec.body_top then
+    -- The whole bloom sits below the measured title, not across it.
+    hy = math.min(spec.body_top - rh - 2 - (cfg.hero_shift or 0), spec.height - HERO_TOP - rh)
+    if inset > 0 then hy = math.min(hy, spec.height - inset - rh - 2) end
+  else
+    hy = math.min(top - R * 0.32 - (cfg.hero_shift or 0), spec.height - HERO_TOP - rh)
+    if clip_y then hy = math.min(hy, clip_y - rh - 2) end
+  end
+  local cx = math.max(math.min(m.x0 + mw * 0.5, hw - R - 2), R + 2)
+  local hero = { cx, hy, R }
   -- The clearance field sees the text and the region's edges from here on.
   g:field()
   -- The hero leans back, so its petals cover a flattened oval; it is
@@ -245,6 +263,7 @@ local function plant(spec, pt)
     pt = Paint.new({ backend = os.getenv("FLORA_BACKEND") })
     pt.probe = spec.probe
   end
+  pt.hero = hero
   local function layer(tag, fn)
     pt:begin_group(tag)
     fn()
@@ -287,9 +306,8 @@ local function plant(spec, pt)
   end)
   layer("blooms", function()
     for _, f in ipairs(blooms) do draw(f, 0.1, 10) end
-    local hf = function(p) F.hero(p, rng:fork("hero"), hero) end
-    if clock then clock:draw(pt, hf, hero, 0.15) else hf(pt) end
   end)
+  local hero_draw = function(p) F.hero(p, rng:fork("hero"), hero) end
   if ctx.visitors then
     layer("visitors", function()
       for _, f in ipairs(ctx.visitors) do draw(f, 0.08, clock and clock.reach * 0.25) end
@@ -299,6 +317,9 @@ local function plant(spec, pt)
     for _, f in ipairs(orn) do draw(f, 0.15) end
     O.sparkles(pt, clock and clock:sparkles(sparkles) or sparkles)
     draw(function(p) O.compass(p, midfoot[1], midfoot[2], 7, { hair = 0.9, ring = 0 }) end, 0.15)
+  end)
+  layer("hero", function()
+    if clock then clock:draw(pt, hero_draw, hero, 0.15) else hero_draw(pt) end
   end)
   pt.clock = nil
   pt.coverage = g:coverage()
@@ -330,8 +351,8 @@ local function header_clip(pt, spec)
   local y, through
   if spec.header == "body" and spec.body_top then
     y, through = spec.body_top, true
-  elseif (Tune.gesture.header_clip or 0) > 0 and spec.header_y then
-    y, through = spec.header_y, false
+  elseif (Tune.gesture.header_clip or 0) > 0 and spec.header_y and spec.frametitle then
+    y, through = spec.header_y - (Tune.gesture.header_gap or 0), false
   end
   if not y then return nil end
   local w = spec.width
@@ -355,8 +376,15 @@ function C.frames(spec)
   local pt = Paint.new({ backend = spec.backend or os.getenv("FLORA_BACKEND") })
   pt.probe = spec.probe
   local clip = header_clip(pt, spec)
+  local function record_hero(s, label)
+    if not pt.hero then return end
+    pt.heroes = pt.heroes or {}
+    pt.heroes[#pt.heroes + 1] = { hero = pt.hero, width = s.width, height = s.height, label = label }
+    pt.hero = nil
+  end
   if #frames == 1 and not frames[1].map then
     plant(spec, pt)
+    record_hero(spec, "single")
     if clip then pt:clip_end() end
     return pt
   end
@@ -365,7 +393,24 @@ function C.frames(spec)
     local m = f.map
     if spec.on_frame then spec.on_frame(f) end
     pt:frame(function(x, y) return Frames.apply(m, x, y) end)
-    plant(f.spec, pt)
+    local cl = f.spec.clip_x1
+    if spec.probe or spec.keep_bounds then cl = nil end
+    if cl then
+      -- Frame minus the forbidden top-left notch, so the lower margin and
+      -- the turned hero survive below the title band.
+      local ch, w, h = f.spec.clip_y1 or f.spec.height, f.spec.width, f.spec.height
+      pt:clip_begin({
+        { "m", 0, 0 }, { "l", cl, 0 }, { "l", cl, ch },
+        { "l", w, ch }, { "l", w, h }, { "l", 0, h }, { "z" },
+      })
+    end
+    if f.spec.tune then
+      Tune._with(f.spec.tune, function() plant(f.spec, pt) end)
+    else
+      plant(f.spec, pt)
+    end
+    record_hero(f.spec, f.label)
+    if cl then pt:clip_end() end
     cover = cover + pt.coverage / #frames
   end
   pt:frame(nil)

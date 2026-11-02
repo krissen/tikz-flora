@@ -137,6 +137,13 @@ function M.page(a)
   end
   if spec.frametitle and spec.frametitle_height and spec.frametitle_height > 0 then
     spec.body_top = spec.text.y1 - spec.frametitle_height
+    local top = spec.text.y1
+    local bottom = top - spec.frametitle_height
+    local right = 0
+    for _, l in ipairs(lines or {}) do
+      if l.y1 >= bottom - 2 and l.y0 <= top + 2 and l.x1 > right then right = l.x1 end
+    end
+    if right > 0 then spec.header_right = right end
   end
   if dump and dump ~= "" then
     local f = assert(io.open(string.format("%s/spec-%d.lua", dump, a.page), "w"))
