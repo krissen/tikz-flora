@@ -37,6 +37,8 @@ local function plant(spec, pt)
   local g, m = Layout.region(spec)
   local mw = m.x1 - m.x0
   local top = (spec.header == "body" and spec.body_top) or spec.header_y or spec.text.y1
+  local inset = spec.top_inset or Tune.gesture.top_inset or 0
+  if inset > 0 then top = math.min(top, spec.height - inset) end
 
   local cfg = Mix.cfg(Tune.compose, spec.mix)
   local R = G.clamp(mw * cfg.hero, cfg.hero_min or 28, cfg.hero_max or 80)
