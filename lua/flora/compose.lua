@@ -46,7 +46,7 @@ local function plant(spec, pt)
   -- inset growing region; on a 1 cm margin that is the difference between
   -- a visible bloom and a clipped sliver.
   local hw = math.max(1, spec.text.x0 - 2)
-  R = math.min(R, math.max(1, (hw - 4) * 0.5))
+  R = math.min(R, math.max(1, (hw - 4) * 0.45))
   -- As in the reference, the hero's heart sits just below the running-head
   -- rule, so the bloom fills the top corner of the page up to the paper's
   -- edge (its projected top kept HERO_TOP pt inside it).
@@ -58,7 +58,7 @@ local function plant(spec, pt)
   local hy
   if spec.header == "body" and spec.body_top then
     -- The whole bloom sits below the measured title, not across it.
-    hy = math.min(spec.body_top - rh - 2, spec.height - HERO_TOP - rh)
+    hy = math.min(spec.body_top - rh - 2 - (cfg.hero_shift or 0), spec.height - HERO_TOP - rh)
   else
     hy = math.min(top - R * 0.32 - (cfg.hero_shift or 0), spec.height - HERO_TOP - rh)
     if clip_y then hy = math.min(hy, clip_y - rh - 2) end
@@ -393,6 +393,7 @@ function C.frames(spec)
     if spec.on_frame then spec.on_frame(f) end
     pt:frame(function(x, y) return Frames.apply(m, x, y) end)
     local cl = f.spec.clip_x1
+    if spec.probe or spec.keep_bounds then cl = nil end
     if cl then
       -- Frame minus the forbidden top-left notch, so the lower margin and
       -- the turned hero survive below the title band.

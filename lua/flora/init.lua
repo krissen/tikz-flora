@@ -141,7 +141,7 @@ function M.page(a)
     local bottom = top - spec.frametitle_height
     local right = 0
     for _, l in ipairs(lines or {}) do
-      if l.y1 <= top + 1 and l.y0 >= bottom - 2 and l.x1 > right then right = l.x1 end
+      if l.y1 >= bottom - 2 and l.y0 <= top + 2 and l.x1 > right then right = l.x1 end
     end
     if right > 0 then spec.header_right = right end
   end

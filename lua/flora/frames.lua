@@ -68,7 +68,11 @@ local function frame(spec, m, w, h, opts)
   local s = {}
   for k, v in pairs(spec) do s[k] = v end
   s.width, s.height, s.text, s.lines = w, h, text, lines
-  s.header_y = opts.header and spec.header_y or nil
+  if opts.header or ((Tune.gesture.header_clip or 0) > 0 and m[4] == 1) then
+    s.header_y = spec.header_y
+  else
+    s.header_y = nil
+  end
   -- Vertical header limits survive a horizontal mirror; a frame that turns
   -- the y axis must use its own coordinates instead.
   if m[4] == 1 then
@@ -140,7 +144,11 @@ function M.of(spec)
       math.max(1, (hw - 4) * 0.5))
     local hx = math.max(math.min(edge + mw * 0.5, hw - HR - 2), HR + 2)
     local start = math.max(spec.header_right or 0, hx + HR) + 8
-    local root = math.max(0.05, math.min(0.95, (W - start) / W))
+    local configured = (spec.tune and spec.tune.plant and spec.tune.plant.root) or Tune.plant.root
+    local root = configured
+    if W - W * configured < start then
+      root = math.max(0.05, math.min(0.95, (W - start) / W))
+    end
     local tune = {}
     for k, v in pairs(spec.tune or {}) do tune[k] = v end
     local plant = {}
