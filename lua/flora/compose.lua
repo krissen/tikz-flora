@@ -323,12 +323,21 @@ function C.page(spec)
   end)
 end
 
--- Clip a painter to the body when the header is measured in body mode.
-local function body_clip(pt, spec)
-  if spec.header ~= "body" or not spec.body_top then return false end
-  local w, y = spec.width, spec.body_top
+-- Clip plants at the header boundary: the measured body top in body mode,
+-- or the running head's bottom when gesture.header_clip is set. Title
+-- furniture stays outside the margin-mode clip.
+local function header_clip(pt, spec)
+  local y, through
+  if spec.header == "body" and spec.body_top then
+    y, through = spec.body_top, true
+  elseif (Tune.gesture.header_clip or 0) > 0 and spec.header_y then
+    y, through = spec.header_y, false
+  end
+  if not y then return nil end
+  local w = spec.width
   pt:clip_begin({ { "m", 0, 0 }, { "l", w, 0 }, { "l", w, y }, { "l", 0, y }, { "z" } })
-  return true
+  pt.header_clip = y
+  return { through = through }
 end
 
 -- C.page, after the page's palette is in place.
@@ -343,12 +352,12 @@ function C.frames(spec)
     spec.text.y1 = math.min(spec.text.y1, spec.height - inset)
   end
   local frames = Frames.of(spec)
-  local pt = Paint.new({ backend = os.getenv("FLORA_BACKEND") })
+  local pt = Paint.new({ backend = spec.backend or os.getenv("FLORA_BACKEND") })
   pt.probe = spec.probe
-  local clipped = body_clip(pt, spec)
+  local clip = header_clip(pt, spec)
   if #frames == 1 and not frames[1].map then
     plant(spec, pt)
-    if clipped then pt:clip_end() end
+    if clip then pt:clip_end() end
     return pt
   end
   local cover = 0
@@ -360,6 +369,7 @@ function C.frames(spec)
     cover = cover + pt.coverage / #frames
   end
   pt:frame(nil)
+  if clip and not clip.through then pt:clip_end() end
   -- Title furniture paints over the finished crowns, in page coordinates;
   -- while the page grows it waits for the plants. It stays inside the body
   -- clip in body mode, so the crest cannot sit in the header.
@@ -368,7 +378,7 @@ function C.frames(spec)
     Title.paint(pt, spec, frames.title)
     pt:end_group()
   end
-  if clipped then pt:clip_end() end
+  if clip and clip.through then pt:clip_end() end
   pt.title = frames.title
   pt.coverage = cover
   pt.frames = frames
