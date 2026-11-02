@@ -360,14 +360,15 @@ function C.frames(spec)
     cover = cover + pt.coverage / #frames
   end
   pt:frame(nil)
-  if clipped then pt:clip_end() end
   -- Title furniture paints over the finished crowns, in page coordinates;
-  -- while the page grows it waits for the plants.
+  -- while the page grows it waits for the plants. It stays inside the body
+  -- clip in body mode, so the crest cannot sit in the header.
   if frames.title and (spec.grow or 1) >= 0.9 then
     pt:begin_group("title")
     Title.paint(pt, spec, frames.title)
     pt:end_group()
   end
+  if clipped then pt:clip_end() end
   pt.title = frames.title
   pt.coverage = cover
   pt.frames = frames
