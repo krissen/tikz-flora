@@ -138,20 +138,6 @@ function M.page(a)
   end
   if spec.frametitle and spec.frametitle_height and spec.frametitle_height > 0 then
     spec.body_top = spec.text.y1 - spec.frametitle_height
-  elseif spec.frametitle and lines then
-    local below = {}
-    for _, l in ipairs(lines) do
-      if not spec.header_y or l.y1 <= spec.header_y + 1 then below[#below + 1] = l end
-    end
-    table.sort(below, function(p, q) return p.y1 > q.y1 end)
-    if #below > 0 then
-      local bottom = below[1].y0
-      for i = 2, #below do
-        if below[i - 1].y0 - below[i].y1 > 24 then break end
-        bottom = math.min(bottom, below[i].y0)
-      end
-      spec.body_top = bottom - 6
-    end
   end
   if dump and dump ~= "" then
     local f = assert(io.open(string.format("%s/spec-%d.lua", dump, a.page), "w"))

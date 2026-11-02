@@ -206,6 +206,16 @@ do
     "body mode did not clip the painter")
 end
 
+-- A configured top inset wins when it clears more than the measured header.
+do
+  local spec = centred(4)
+  spec.header, spec.body_top = "body", 820
+  spec.tune = { gesture = { top_inset = 48 } }
+  Paint.reset_resources()
+  Compose.page(spec)
+  H.check(spec.top_inset == 48, string.format("body mode reduced the top inset to %.1f", spec.top_inset or -1))
+end
+
 -- Horizontal mirrors keep vertical header limits; turned frames drop them.
 do
   local spec = centred(2)

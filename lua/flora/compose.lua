@@ -335,7 +335,7 @@ end
 function C.frames(spec)
   -- The wreath frames the text below the running head, not the head itself.
   if spec.header == "body" and spec.body_top then
-    spec.top_inset = spec.height - spec.body_top
+    spec.top_inset = math.max(spec.height - spec.body_top, Tune.gesture.top_inset or 0)
     spec.text.y1 = math.min(spec.text.y1, spec.body_top)
   end
   local inset = spec.top_inset or Tune.gesture.top_inset or 0
