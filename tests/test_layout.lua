@@ -216,8 +216,13 @@ do
     "horizontal mirror dropped the vertical header limit")
   spec.layout = "surround"
   for _, f in ipairs(Frames.of(spec)) do
-    H.check(f.spec.header == "margin" and f.spec.body_top == nil and f.spec.top_inset == nil,
-      "turned frame inherited a page-space header limit")
+    if f.map and f.map[4] == 1 then
+      H.check(f.spec.body_top == 650 and f.spec.top_inset == 91,
+        "vertical frame dropped the header limit")
+    else
+      H.check(f.spec.header == "margin" and f.spec.body_top == nil and f.spec.top_inset == nil,
+        "turned frame inherited a page-space header limit")
+    end
   end
 end
 
