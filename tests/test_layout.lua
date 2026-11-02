@@ -195,6 +195,17 @@ do
     string.format("inset moves the crown by %.1f pt, not 48", plain - lowered))
 end
 
+-- Body mode clips the painter itself, so previews match the TeX page.
+do
+  local spec = H.page(10)
+  spec.header, spec.body_top = "body", 650
+  Paint.reset_resources()
+  local pt = Compose.page(spec)
+  local body = pt:body()
+  H.check(body:find("\\pgfusepathqclip", 1, true) or body:find("W n", 1, true),
+    "body mode did not clip the painter")
+end
+
 -- Split follows page parity: odd pages are mirrored, even ones are not.
 do
   local s = H.page(1)

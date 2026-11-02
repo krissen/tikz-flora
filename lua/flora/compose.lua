@@ -323,6 +323,14 @@ function C.page(spec)
   end)
 end
 
+-- Clip a painter to the body when the header is measured in body mode.
+local function body_clip(pt, spec)
+  if spec.header ~= "body" or not spec.body_top then return false end
+  local w, y = spec.width, spec.body_top
+  pt:clip_begin({ { "m", 0, 0 }, { "l", w, 0 }, { "l", w, y }, { "l", 0, y }, { "z" } })
+  return true
+end
+
 -- C.page, after the page's palette is in place.
 function C.frames(spec)
   -- The wreath frames the text below the running head, not the head itself.
@@ -335,9 +343,14 @@ function C.frames(spec)
     spec.text.y1 = math.min(spec.text.y1, spec.height - inset)
   end
   local frames = Frames.of(spec)
-  if #frames == 1 and not frames[1].map then return plant(spec) end
   local pt = Paint.new({ backend = os.getenv("FLORA_BACKEND") })
   pt.probe = spec.probe
+  local clipped = body_clip(pt, spec)
+  if #frames == 1 and not frames[1].map then
+    plant(spec, pt)
+    if clipped then pt:clip_end() end
+    return pt
+  end
   local cover = 0
   for _, f in ipairs(frames) do
     local m = f.map
@@ -347,6 +360,7 @@ function C.frames(spec)
     cover = cover + pt.coverage / #frames
   end
   pt:frame(nil)
+  if clipped then pt:clip_end() end
   -- Title furniture paints over the finished crowns, in page coordinates;
   -- while the page grows it waits for the plants.
   if frames.title and (spec.grow or 1) >= 0.9 then

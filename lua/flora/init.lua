@@ -172,13 +172,6 @@ function M.page(a)
   tex.sprint(string.format(
     "\\pgfpathrectangle{\\pgfpointorigin}{\\pgfqpoint{%.2fpt}{%.2fpt}}\\pgfusepath{use as bounding box}",
     spec.width, spec.height))
-  -- In body mode the stems are clipped at the measured body top; the grid
-  -- alone cannot stop a stem that was planned before the header was known.
-  if spec.header == "body" and spec.body_top then
-    tex.sprint(string.format(
-      "\pgfpathrectangle{\pgfpoint{0pt}{0pt}}{\pgfqpoint{%.2fpt}{%.2fpt}}\pgfusepath{clip}",
-      spec.width, spec.body_top))
-  end
   M.typeset(pt)
   -- Knock the reserved rectangles back to paper white after painting, so a
   -- stem planned before the reservation cannot cross a title or footline.
