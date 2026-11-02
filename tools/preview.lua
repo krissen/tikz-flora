@@ -36,11 +36,13 @@ if extra then
   for _, word in ipairs({ "noheader", "fresh" }) do
     extra = extra:gsub("%f[%w]" .. word .. "%f[%W],?%s*", function() flags[word] = true return "" end)
   end
-  local own = flags.fresh and { layout = spec.layout }
-    or { layout = spec.layout, mix = spec.mix, palette = spec.palette, spin = spec.spin }
+  local own = flags.fresh and { layout = spec.layout, header = spec.header }
+    or { layout = spec.layout, header = spec.header,
+      mix = spec.mix, palette = spec.palette, spin = spec.spin }
   local set = Settings.merge(own, Settings.parse(extra))
   local noheader = flags.noheader
   spec.layout, spec.mix, spec.palette, spec.spin = set.layout, set.mix, set.palette, set.spin
+  spec.header = set.header or spec.header
   if noheader then spec.header_y = nil end
 end
 
