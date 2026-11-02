@@ -336,6 +336,7 @@ local function header_clip(pt, spec)
   if not y then return nil end
   local w = spec.width
   pt:clip_begin({ { "m", 0, 0 }, { "l", w, 0 }, { "l", w, y }, { "l", 0, y }, { "z" } })
+  pt.header_clip = y
   return { through = through }
 end
 

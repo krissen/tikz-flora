@@ -200,13 +200,11 @@ do
   local spec = H.page(11)
   spec.header, spec.tune = "margin", { gesture = { header_clip = 1 } }
   Paint.reset_resources()
-  local body = Compose.page(spec):body()
-  H.check(body:find("W n", 1, true) or body:find("\\pgfusepathqclip", 1, true),
+  H.check(Compose.page(spec).header_clip == spec.header_y,
     "header_clip did not clip the painter")
   spec.tune = { gesture = { header_clip = 0 } }
   Paint.reset_resources()
-  local plain = Compose.page(spec):body()
-  H.check(not (plain:find("W n", 1, true) or plain:find("\\pgfusepathqclip", 1, true)),
+  H.check(Compose.page(spec).header_clip == nil,
     "header_clip clipped without the setting")
 end
 
