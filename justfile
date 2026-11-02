@@ -17,9 +17,14 @@ build name="lorem" seed="1" dpi="200":
     grep -h 'flora:' build/{{name}}.log || true
 
 # Run the Lua unit tests under texlua, and the tune.lua writer's test.
+# The list lives in tools/test.sh, shared with the pre-push hook and CI.
 test:
-    for f in tests/test_*.lua; do texlua "$f" || exit 1; done
-    {{PYTHON}} -I tests/test_bake.py
+    FLORA_PYTHON={{PYTHON}} tools/test.sh
+
+# The tests that finish in seconds (the pre-push hook); the full set takes
+# ~12 min and runs in CI.
+test-fast:
+    FLORA_PYTHON={{PYTHON}} tools/test.sh fast
 
 # The ornament gallery: every ornament kind, labelled, for three seeds
 # (tex/gallery.tex), to build/gallery.pdf and .png.
