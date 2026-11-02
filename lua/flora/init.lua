@@ -15,7 +15,6 @@ function M.typeset(pt)
   else
     for _, c in ipairs(pt.out) do tex.sprint(c) end
   end
-  texio.write_nl("log", string.format("flora: %d painted objects", pt.count))
 end
 
 -- Write the held PDF content as one literal, in the same coordinate mode
