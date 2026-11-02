@@ -398,8 +398,8 @@ function C.frames(spec)
       -- the turned hero survive below the title band.
       local ch, w, h = f.spec.clip_y1 or f.spec.height, f.spec.width, f.spec.height
       pt:clip_begin({
-        { "m", cl, ch }, { "l", w, ch }, { "l", w, h },
-        { "l", 0, h }, { "l", 0, ch }, { "l", cl, ch }, { "z" },
+        { "m", 0, 0 }, { "l", cl, 0 }, { "l", cl, ch },
+        { "l", w, ch }, { "l", w, h }, { "l", 0, h }, { "z" },
       })
     end
     if f.spec.tune then
