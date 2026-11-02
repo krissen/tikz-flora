@@ -128,11 +128,27 @@ function M.page(a)
     seed = M.seed(set.seed or a.seed, a.page),
     lines = lines, layout = set.layout, page = a.page, mix = set.mix, ornaments = set.ornaments,
     palette = set.palette, spin = set.spin, tune = set.tune,
+    header = set.header, frametitle = a.frametitle == "1",
     reserve = M.reserve,
     doc_seed = tostring(set.seed or a.seed),
   }
   if marks and marks["title-start"] and lines then
     spec.title = require("flora.frames").between(lines, marks["title-start"], marks["title-end"] or 0)
+  end
+  if spec.frametitle and lines then
+    local below = {}
+    for _, l in ipairs(lines) do
+      if not spec.header_y or l.y1 <= spec.header_y + 1 then below[#below + 1] = l end
+    end
+    table.sort(below, function(p, q) return p.y1 > q.y1 end)
+    if #below > 0 then
+      local bottom = below[1].y0
+      for i = 2, #below do
+        if below[i - 1].y0 - below[i].y1 > 24 then break end
+        bottom = math.min(bottom, below[i].y0)
+      end
+      spec.body_top = bottom - 6
+    end
   end
   if dump and dump ~= "" then
     local f = assert(io.open(string.format("%s/spec-%d.lua", dump, a.page), "w"))
@@ -153,6 +169,13 @@ function M.page(a)
   tex.sprint(string.format(
     "\\pgfpathrectangle{\\pgfpointorigin}{\\pgfqpoint{%.2fpt}{%.2fpt}}\\pgfusepath{use as bounding box}",
     spec.width, spec.height))
+  -- In body mode the stems are clipped at the measured body top; the grid
+  -- alone cannot stop a stem that was planned before the header was known.
+  if spec.header == "body" and spec.body_top then
+    tex.sprint(string.format(
+      "\pgfpathrectangle{\pgfpoint{0pt}{0pt}}{\pgfqpoint{%.2fpt}{%.2fpt}}\pgfusepath{clip}",
+      spec.width, spec.body_top))
+  end
   M.typeset(pt)
   -- Knock the reserved rectangles back to paper white after painting, so a
   -- stem planned before the reservation cannot cross a title or footline.

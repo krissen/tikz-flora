@@ -23,6 +23,7 @@
 
 % Document seed: a number, or "random" to draw new flora on every run.
 \providecommand\florseed{1}
+\providecommand\floraframetitlepresent{0}
 % A page number to draw flora on that page only (empty: every page). The
 % tuner uses it to recompile one page quickly.
 \providecommand\florapages{}
@@ -83,6 +84,7 @@
       text_y1 = "\the\dimexpr\paperheight-1in-\voffset-\topmargin-\headheight-\headsep\relax",
       text_y0 = "\the\dimexpr\paperheight-1in-\voffset-\topmargin-\headheight-\headsep-\textheight\relax",
       header_y = "\the\dimexpr\paperheight-1in-\voffset-\topmargin-\headheight\relax",
+      frametitle = "\floraframetitlepresent",
       seed = "\florseed", page = \the\value{page}, box = \number\ShipoutBox,
       only = "\florapages",
       background_position = "\florabackgroundposition",

@@ -120,7 +120,7 @@ function M.of(spec)
     local a = frame(spec, IDENTITY, W, H, { label = "left", frame_only = true })
     -- The upper plant's foot runs along the top edge. Lower that edge by
     -- top_inset so the border underlines a running head instead of crossing it.
-    local Htop = math.max(1, H - (Tune.gesture.top_inset or 0))
+    local Htop = math.max(1, H - (spec.top_inset or Tune.gesture.top_inset or 0))
     local b = frame(spec, { -1, 0, 0, -1, W, Htop }, W, Htop,
       { seed = seed_of(spec, 2), label = "right", frame_only = true })
     for _, f in ipairs({ a, b }) do

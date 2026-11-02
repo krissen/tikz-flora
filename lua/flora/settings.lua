@@ -36,6 +36,11 @@ M.define("layout", function(v)
   return nil, "layout must be one of left, right, centered, split, title, surround"
 end)
 
+M.define("header", function(v)
+  if v == "body" or v == "margin" then return v end
+  return nil, "header must be body or margin"
+end)
+
 M.define("seed", function(v)
   if v == "random" or tonumber(v) then return v end
   return nil, "seed must be a number or random"

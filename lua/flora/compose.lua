@@ -36,8 +36,8 @@ local function plant(spec, pt)
   local edge = spec.edge or 16
   local g, m = Layout.region(spec)
   local mw = m.x1 - m.x0
-  local top = spec.header_y or spec.text.y1
-  local inset = Tune.gesture.top_inset or 0
+  local top = (spec.header == "body" and spec.body_top) or spec.header_y or spec.text.y1
+  local inset = spec.top_inset or Tune.gesture.top_inset or 0
   if inset > 0 then top = math.min(top, spec.height - inset) end
 
   local cfg = Mix.cfg(Tune.compose, spec.mix)
@@ -326,7 +326,11 @@ end
 -- C.page, after the page's palette is in place.
 function C.frames(spec)
   -- The wreath frames the text below the running head, not the head itself.
-  local inset = Tune.gesture.top_inset or 0
+  if spec.header == "body" and spec.body_top then
+    spec.top_inset = spec.height - spec.body_top
+    spec.text.y1 = math.min(spec.text.y1, spec.body_top)
+  end
+  local inset = spec.top_inset or Tune.gesture.top_inset or 0
   if inset > 0 and spec.text then
     spec.text.y1 = math.min(spec.text.y1, spec.height - inset)
   end
