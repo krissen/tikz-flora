@@ -198,10 +198,9 @@ end
 -- gesture.header_clip clips margin-mode plants at the running head, and
 -- title furniture follows the clip.
 do
-  local old = os.getenv("FLORA_BACKEND")
-  os.setenv("FLORA_BACKEND", "pdf")
   local spec = H.page(11)
-  spec.header, spec.tune = "margin", { gesture = { header_clip = 1 } }
+  spec.backend, spec.header = "pdf", "margin"
+  spec.tune = { gesture = { header_clip = 1 } }
   Paint.reset_resources()
   local pt = Compose.page(spec)
   H.check(pt.header_clip == spec.header_y, "header_clip did not record the boundary")
@@ -219,7 +218,6 @@ do
   Paint.reset_resources()
   H.check(Compose.page(spec).header_clip == nil,
     "header_clip clipped without the setting")
-  os.setenv("FLORA_BACKEND", old or "")
 end
 
 -- Split follows page parity: odd pages are mirrored, even ones are not.

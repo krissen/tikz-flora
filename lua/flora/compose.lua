@@ -352,7 +352,7 @@ function C.frames(spec)
     spec.text.y1 = math.min(spec.text.y1, spec.height - inset)
   end
   local frames = Frames.of(spec)
-  local pt = Paint.new({ backend = os.getenv("FLORA_BACKEND") })
+  local pt = Paint.new({ backend = spec.backend or os.getenv("FLORA_BACKEND") })
   pt.probe = spec.probe
   local clip = header_clip(pt, spec)
   if #frames == 1 and not frames[1].map then
