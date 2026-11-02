@@ -206,6 +206,16 @@ do
     "body mode did not clip the painter")
 end
 
+-- Mapped frames do not inherit page-space header limits.
+do
+  local spec = centred(2)
+  spec.layout, spec.header, spec.body_top, spec.top_inset = "surround", "body", 650, 91
+  for _, f in ipairs(Frames.of(spec)) do
+    H.check(f.spec.header == "margin" and f.spec.body_top == nil and f.spec.top_inset == nil,
+      "mapped frame inherited a page-space header limit")
+  end
+end
+
 -- Split follows page parity: odd pages are mirrored, even ones are not.
 do
   local s = H.page(1)

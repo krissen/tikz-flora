@@ -69,6 +69,9 @@ local function frame(spec, m, w, h, opts)
   for k, v in pairs(spec) do s[k] = v end
   s.width, s.height, s.text, s.lines = w, h, text, lines
   s.header_y = opts.header and spec.header_y or nil
+  -- Page-space header limits belong to the page painter's clip; a mapped
+  -- frame works in its own coordinates and must not inherit them.
+  s.header, s.body_top, s.top_inset = "margin", nil, nil
   s.closed = opts.closed
   -- A wreath or a crown frames the text; it does not grow into it.
   s.frame_only = opts.frame_only
