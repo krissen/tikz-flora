@@ -59,6 +59,7 @@ local function plant(spec, pt)
   if spec.header == "body" and spec.body_top then
     -- The whole bloom sits below the measured title, not across it.
     hy = math.min(spec.body_top - rh - 2 - (cfg.hero_shift or 0), spec.height - HERO_TOP - rh)
+    if inset > 0 then hy = math.min(hy, spec.height - inset - rh - 2) end
   else
     hy = math.min(top - R * 0.32 - (cfg.hero_shift or 0), spec.height - HERO_TOP - rh)
     if clip_y then hy = math.min(hy, clip_y - rh - 2) end
