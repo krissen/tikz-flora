@@ -84,17 +84,35 @@ do
   H.check(worst < 1e-6, string.format("right is not left mirrored (off by %.3g pt)", worst))
 end
 
--- No layout paints over text.
-for _, lay in ipairs({ "right", "centered", "surround", "title", "split" }) do
-  for seed = 1, 1 do
-    local spec = (lay == "right" or lay == "split") and mirrored(seed) or centred(seed)
-    if lay == "title" then
-      spec.lines = { { x0 = 170, x1 = 425, y0 = 560, y1 = 600 }, { x0 = 230, x1 = 365, y0 = 530, y1 = 545 } }
+-- No layout paints over text, with and without the top inset.
+for _, inset in ipairs({ 0, 48 }) do
+  for _, lay in ipairs({ "right", "centered", "surround", "title", "split" }) do
+    for seed = 1, 1 do
+      local spec = (lay == "right" or lay == "split") and mirrored(seed) or centred(seed)
+      if lay == "title" then
+        spec.lines = { { x0 = 170, x1 = 425, y0 = 560, y1 = 600 }, { x0 = 230, x1 = 365, y0 = 530, y1 = 545 } }
+      end
+      spec.layout, spec.page = lay, 1
+      if inset > 0 then spec.tune = { gesture = { top_inset = inset } } end
+      local where = on_text(spec, points(spec))
+      H.check(not where, string.format("%s seed %d inset %d paints on text at %s",
+        lay, seed, inset, tostring(where)))
     end
-    spec.layout, spec.page = lay, 1
-    local where = on_text(spec, points(spec))
-    H.check(not where, string.format("%s seed %d paints on text at %s", lay, seed, tostring(where)))
   end
+end
+
+-- A reserved rectangle stays empty.
+do
+  local spec = H.page(7)
+  local r = { 200, 400, 350, 500 }
+  spec.reserve = { r }
+  local inside = 0
+  spec.probe = function(x, y)
+    if x > r[1] and x < r[3] and y > r[2] and y < r[4] then inside = inside + 1 end
+  end
+  Paint.reset_resources()
+  Compose.page(spec)
+  H.check(inside == 0, string.format("flora paints %d points inside a reserved rectangle", inside))
 end
 
 -- Surround: each plant keeps to its own side. The first never enters the
