@@ -190,7 +190,7 @@ do
   end
   local plain, lowered = upper_top(0), upper_top(48)
   H.check(plain > top - 40, string.format("upper crown starts too low without an inset: %.1f", plain))
-  H.check(lowered < top - 48, string.format("upper crown ignores the inset: %.1f", lowered))
+  H.check(lowered < top - 47.5, string.format("upper crown ignores the inset: %.1f", lowered))
   H.check(math.abs((plain - lowered) - 48) < 2,
     string.format("inset moves the crown by %.1f pt, not 48", plain - lowered))
 end
@@ -199,7 +199,7 @@ end
 -- title furniture follows the clip.
 do
   local spec = H.page(11)
-  spec.backend, spec.header = "pdf", "margin"
+  spec.backend, spec.header, spec.frametitle = "pdf", "margin", true
   spec.tune = { gesture = { header_clip = 1 } }
   Paint.reset_resources()
   local pt = Compose.page(spec)

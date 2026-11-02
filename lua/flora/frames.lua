@@ -130,6 +130,25 @@ function M.of(spec)
     local Htop = math.max(1, H - (spec.top_inset or Tune.gesture.top_inset or 0))
     local b = frame(spec, { -1, 0, 0, -1, W, Htop }, W, Htop,
       { seed = seed_of(spec, 2), label = "right", frame_only = true })
+    -- Start the upper plant's foot run right of the title and the left hero.
+    local edge, gutter = spec.edge or 16, spec.gutter or 9
+    local mw = (spec.text.x0 - gutter) - edge
+    local hero_frac = spec.tune and spec.tune.compose and spec.tune.compose.hero or Tune.compose.hero
+    local hw = math.max(1, spec.text.x0 - 2)
+    local HR = math.min(
+      G.clamp(mw * hero_frac, Tune.compose.hero_min or 28, Tune.compose.hero_max or 80),
+      math.max(1, (hw - 4) * 0.5))
+    local hx = math.max(math.min(edge + mw * 0.5, hw - HR - 2), HR + 2)
+    local start = math.max(spec.header_right or 0, hx + HR) + 8
+    local root = math.max(0.05, math.min(0.95, (W - start) / W))
+    local tune = {}
+    for k, v in pairs(spec.tune or {}) do tune[k] = v end
+    local plant = {}
+    for k, v in pairs(tune.plant or {}) do plant[k] = v end
+    plant.root = root
+    tune.plant = plant
+    b.spec.tune = tune
+    b.spec.clip_x1 = W - start
     for _, f in ipairs({ a, b }) do
       local ft = f.spec.text
       f.spec.closed = {
