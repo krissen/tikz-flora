@@ -6,7 +6,7 @@
 #   tools/test.sh             every test, ~12 min
 set -e
 cd "$(dirname "$0")/.."
-FAST="core grow leaf plant settings reserve"
+FAST="core grow leaf plant settings reserve prepare_spec"
 case "$1" in
   fast) set -- $FAST bake ;;
   "") set -- $(ls tests/test_*.lua | sed 's|tests/test_||; s|\.lua$||') bake ;;

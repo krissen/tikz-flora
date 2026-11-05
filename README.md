@@ -159,6 +159,15 @@ comment at every setting.
 This fork adds hooks used by beamer-floral. They are not yet available in
 upstream tikz-flora.
 
+Lua integrations calling `flora.page(a)` may provide `a.prepare_spec(spec)`.
+Check `flora.prepare_spec_version == 1` before using this integration hook.
+The callback runs after content/title measurements and derived header bounds,
+before diagnostic export and composition. It mutates the spec in place; its
+return value is ignored and errors propagate. Adapters can supply a logical
+seed and shared geometry without changing physical `a.page`, page filtering
+or diagnostic filenames. With no callback the rendering path is unchanged.
+The callback is not called for filtered pages unless diagnostic export is on.
+
 - `\florasetup{header=body}` keeps plants below the measured frame title;
   `header=margin` lets them grow beside it. Integrations supply
   `\floraframetitlepresent` (`0` or `1`) and `\floratitleheight` (expanded pt).

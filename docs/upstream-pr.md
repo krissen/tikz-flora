@@ -9,6 +9,13 @@ frame-title clearance and plant scale. This adds integration hooks used by
 beamer-floral, including body/margin header modes, reserved rectangles,
 background bands and validated per-page tune overrides.
 
+An optional Lua `prepare_spec` callback lets adapters replace geometry and
+logical seeds after measurement, before diagnostic export and rendering.
+Physical page filtering and diagnostic filenames remain unchanged. This is
+the engine hook for the adapter-owned overlay work, not a complete overlay
+implementation. Callback ordering, export and default behavior have dedicated
+regression coverage.
+
 The renderer fits hero blooms into narrow margins, supports running-head
 clipping and lowers surround crowns below an inset. Test tooling is shared
 between local runs and CI; tuner export excludes internal helpers.

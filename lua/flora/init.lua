@@ -1,6 +1,8 @@
 -- Entry points called from TeX.
 
 local M = {}
+-- Capability marker for adapters requiring the post-measurement callback.
+M.prepare_spec_version = 1
 
 -- Send a painted page to TeX. PGF code goes through TeX one chunk at a
 -- time (each chunk begins with a control sequence, so concatenating them
@@ -145,6 +147,9 @@ function M.page(a)
     end
     if right > 0 then spec.header_right = right end
   end
+  -- Integration adapters may replace measured geometry and the logical seed.
+  -- Keep a.page as the physical page for filtering and diagnostic filenames.
+  if a.prepare_spec then a.prepare_spec(spec) end
   if dump and dump ~= "" then
     local f = assert(io.open(string.format("%s/spec-%d.lua", dump, a.page), "w"))
     local saved = {}
