@@ -159,6 +159,21 @@ comment at every setting.
 This fork adds hooks used by beamer-floral. They are not yet available in
 upstream tikz-flora.
 
+`\floraornament[width=1em,height=1em,baseline=0pt,seed=1,color=.]{gilt_star}`
+draws one inline ornament. Any registered ornament name is accepted (see the
+gallery). Width and height describe its nominal box; the TeX box additionally
+includes registered reach and measured drawing extents. Baseline is measured
+upward from the nominal box's bottom. Dimensions accept TeX units/expressions.
+Seed must be a finite integer; rendering uses an independent local RNG.
+Color is an xcolor expression (`.` means current color), applied to every
+pigment while retaining opacity. The command does not change page settings,
+consume `\florathispage`, or advance the page RNG. It works with `\floraoff`.
+
+For example, `\floraornament[width=6em,height=1em,color=blue]{fleuron_rule}`
+draws a divider. Prefer simple `gilt_*` kinds for small bullets; detailed
+cartouches need more room. This inline interface deliberately uses the PGF
+backend regardless of the page backend.
+
 Lua integrations calling `flora.page(a)` may provide `a.prepare_spec(spec)`.
 Check `flora.prepare_spec_version == 1` before using this integration hook.
 The callback runs after content/title measurements and derived header bounds,

@@ -16,6 +16,12 @@ the engine hook for the adapter-owned overlay work, not a complete overlay
 implementation. Callback ordering, export and default behavior have dedicated
 regression coverage.
 
+The opt-in `\floraornament[width=...,height=...,baseline=...,seed=...,color=...]{kind}`
+command renders a monochrome inline ornament with independent RNG and bounds
+including reach and measured extents. Page settings and one-shot settings
+remain untouched. All registered kinds have Lua coverage; `tests/inline.tex`
+exercises real TeX dimensions, baseline and xcolor expressions with flora off.
+
 The renderer fits hero blooms into narrow margins, supports running-head
 clipping and lowers surround crowns below an inset. Test tooling is shared
 between local runs and CI; tuner export excludes internal helpers.
@@ -43,7 +49,8 @@ review against the existing article examples as well as presentations.
   reservations remain excluded and background bands are preserved.
 - New tune parsing/recursive merging/restoration need focused regression
   coverage, beyond existing layout and tuner tests.
-- Individual ornament rendering for bullets/dividers remains future work.
+- Beamer owns opt-in bullet/divider templates; the engine supplies only the
+  generic inline renderer.
 
 ## Local validation
 
