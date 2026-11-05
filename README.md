@@ -154,6 +154,35 @@ comment at every setting.
 
 ## Working on tikz-flora
 
+### Integration hooks in this fork
+
+This fork adds hooks used by beamer-floral. They are not yet available in
+upstream tikz-flora.
+
+- `\florasetup{header=body}` keeps plants below the measured frame title;
+  `header=margin` lets them grow beside it. Integrations supply
+  `\floraframetitlepresent` (`0` or `1`) and `\floratitleheight` (expanded pt).
+- `\florasetup{tune={gesture={top_inset=24}, compose={hero_shift=21}}}`
+  overrides engine settings for subsequent pages. Dotted paths also work.
+  Named tables merge recursively; lists replace whole lists. Unknown paths
+  and mismatched types produce errors. The engine restores its tune values
+  after rendering, including when rendering fails.
+- `\florareserve{x0}{y0}{x1}{y1}` reserves rectangles on following pages;
+  `\floraclearreserve` clears them. Arguments must expand to numbers or
+  numbers with a `pt` suffix (use `\the\dimexpr...\relax` for dimensions).
+  Coordinates start at the paper's lower-left corner. Reserved areas are
+  excluded by clipping the plants, preserving the background beneath.
+- `\florabackground[top]{color}{height}` paints a band before the flora;
+  use `bottom` for a bottom band and height `0pt` to disable it.
+- `\floratextblockx{left}{right}` supplies horizontal text boundaries,
+  expanded as numbers in pt, instead of the document geometry defaults.
+
+`\florathispage` still applies to one shipped PDF page. Seeds also vary by
+physical page. Beamer overlays therefore do not currently guarantee stable
+decoration or frame-wide one-shot settings. Overlay stability remains a
+release requirement under investigation with beamer-floral; changing only
+the seed is insufficient because measured content can change too.
+
 The repository uses [just](https://github.com/casey/just). These recipes
 add the TinyTeX binaries to `PATH`:
 

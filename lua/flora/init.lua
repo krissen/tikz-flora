@@ -164,17 +164,19 @@ function M.page(a)
   tex.sprint(string.format(
     "\\pgfpathrectangle{\\pgfpointorigin}{\\pgfqpoint{%.2fpt}{%.2fpt}}\\pgfusepath{use as bounding box}",
     spec.width, spec.height))
-  M.typeset(pt)
-  -- Knock the reserved rectangles back to paper white after painting, so a
-  -- stem planned before the reservation cannot cross a title or footline.
+  -- Intersect one exclusion clip per reservation. Separate clips keep
+  -- overlapping rectangles excluded rather than toggling their overlap.
   if #M.reserve > 0 then
-    tex.sprint("\\pgfsetfillcolor{white}")
+    tex.sprint("\\begin{pgfscope}")
     for _, r in ipairs(M.reserve) do
       tex.sprint(string.format(
-        "\\pgfpathrectangle{\\pgfpoint{%.2fpt}{%.2fpt}}{\\pgfqpoint{%.2fpt}{%.2fpt}}\\pgfusepath{fill}",
-        r[1], r[2], r[3] - r[1], r[4] - r[2]))
+        "\\pgfseteorule\\pgfpathrectangle{\\pgfpointorigin}{\\pgfqpoint{%.2fpt}{%.2fpt}}"
+          .. "\\pgfpathrectangle{\\pgfqpoint{%.2fpt}{%.2fpt}}{\\pgfqpoint{%.2fpt}{%.2fpt}}\\pgfusepath{clip}\\pgfsetnonzerorule",
+        spec.width, spec.height, r[1], r[2], r[3] - r[1], r[4] - r[2]))
     end
   end
+  M.typeset(pt)
+  if #M.reserve > 0 then tex.sprint("\\end{pgfscope}") end
   tex.sprint("\\end{pgfpicture}")
   texio.write_nl("log", string.format("flora: coverage %.2f", pt.coverage or 0))
 end
