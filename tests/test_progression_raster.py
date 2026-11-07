@@ -8,7 +8,7 @@ import subprocess
 import tempfile
 import time
 
-from PIL import Image, ImageChops
+from PIL import Image, ImageChops, ImageFilter
 
 LUA = r"""
 package.path='./lua/?.lua;'..package.path
@@ -33,6 +33,43 @@ s.reserve={{15,80,55,100},{30,90,70,110}}
 local protected=P.plan(s)
 PDF.write(prefix..'-protected.pdf',P.render(protected,.5),s.width,s.height)
 print(string.format('%d parts; %.1f pt2; Lua memory %.1f MiB',#p.parts,p.area,collectgarbage('count')/1024))
+-- A red header line is wholly clipped in the endpoint; a blue rectangle
+-- crosses that clip. Compare growth against geometry clipped in advance.
+local Paint=require('flora.paint')
+local Compose=require('flora.compose')
+local original=Compose.page
+local function fixture(cut)
+  Compose.page=function(spec)
+    local pt=Paint.new({backend='pdf'}); P.attach(pt,spec)
+    pt:clip_begin({{'m',0,0},{'l',100,0},{'l',100,60},{'l',0,60},{'z'}})
+    P.part(pt,'marker',{70,10},0,1,function()
+      pt:fill({{'m',70,10},{'l',80,10},{'l',80,20},{'l',70,20},{'z'}},{0,0.6,0})
+    end)
+    if not cut then
+      P.part(pt,'hidden-header',nil,0.4,0.6,function()
+        pt:stroke({{'m',10,80},{'l',90,80}},{1,0,0},2)
+      end)
+    end
+    P.part(pt,'partial-header',{20,50},0,1,function()
+      local top=cut and 60 or 90
+      pt:fill({{'m',20,50},{'l',40,50},{'l',40,top},{'l',20,top},{'z'}},{0,0,1})
+    end)
+    pt:clip_end(); return pt
+  end
+  local plan=P.plan({width=100,height=100,text={x0=90,y0=0,x1=100,y1=100},lines={}})
+  Compose.page=original
+  return plan
+end
+local clipped,reference=fixture(false),fixture(true)
+assert(clipped.parts[2].area==0,'fixture header was not fully clipped')
+for _,n in ipairs({16,64}) do
+  local stages=P.stages(clipped,n)
+  for i,t in ipairs(stages) do
+    PDF.write(string.format('%s-clip-%d-%02d.pdf',prefix,n,i),P.render(clipped,t),100,100)
+    PDF.write(string.format('%s-reference-%d-%02d.pdf',prefix,n,i),P.render(reference,t),100,100)
+  end
+end
+
 """
 
 
@@ -89,9 +126,28 @@ def main():
             region = protected.crop((int(x0 * bp) + 2, int((270 - y1) * bp) + 2,
                                      int(x1 * bp) - 2, int((270 - y0) * bp) - 2))
             assert painted(region) == 0, 'intermediate growth crossed fixed protection'
+        for count in (16, 64):
+            actual_paths = [root / f'stage-clip-{count}-{i:02d}.pdf' for i in range(1, count + 1)]
+            reference_paths = [root / f'stage-reference-{count}-{i:02d}.pdf' for i in range(1, count + 1)]
+            with ThreadPoolExecutor(max_workers=4) as pool:
+                actual = list(pool.map(raster, actual_paths))
+                expected = list(pool.map(raster, reference_paths))
+            for stage, (image, target) in enumerate(zip(actual, expected), 1):
+                assert not any(r > 150 and g < 100 and b < 100 for r, g, b in pixels(image)), (
+                    f'fully clipped header appeared at {stage}/{count}')
+                # A clipping edge and a filled polygon edge have different
+                # antialias coverage. Allow one edge pixel, but no source
+                # geometry outside the pre-clipped silhouette's neighborhood.
+                expected_blue = Image.new('L', target.size)
+                expected_blue.putdata([255 if b > 180 and r < 120 and g < 120 else 0
+                                       for r, g, b in pixels(target)])
+                allowed = list(pixels(expected_blue.filter(ImageFilter.MaxFilter(3))))
+                assert all(allowed[i] or not (b > 180 and r < 120 and g < 120)
+                           for i, (r, g, b) in enumerate(pixels(image))), (
+                    f'partially clipped geometry scaled into view at {stage}/{count}')
         size = sum(path.stat().st_size for path in paths)
         print(f'progression raster: 64 distinct transitions; minimum {min(changes)} changed pixels; '
-              f'max area error {max(errors):.3f}; PDFs {size / 1024**2:.1f} MiB; '
+              f'max area error {max(errors):.3f}; clipped silhouettes 16/64 pass; PDFs {size / 1024**2:.1f} MiB; '
               f'{time.monotonic() - start:.1f}s')
 
 

@@ -122,7 +122,27 @@ function Rec:part(pt,kind,anchor,birth,duration,fn,stem)
   local p={kind=kind,anchor=anchor and page(anchor),birth=birth or 0,duration=math.max(1e-9,duration or .15),cells={},chunks={}}
   if stem then p.stem={}; for _,q in ipairs(stem) do p.stem[#p.stem+1]=page(q) end end
   self.parts[#self.parts+1]=p; self.events[#self.events+1]=p
+  -- Keep the final source silhouette before applying growth transforms.
+  -- Otherwise paint hidden by a fixed header/frame clip can be scaled back
+  -- into view, especially for a fully clipped part with no sampled anchor.
+  local masks={}
+  for _,clip in ipairs(self.clips) do masks[#masks+1]=clip.source end
   self.active=p; fn(); self.active=nil
+  local b=p.bounds
+  if not b or b[1]<0 or b[2]<0 or b[3]>self.width or b[4]>self.height then
+    masks[#masks+1]=string.format('q 0 0 %.6f %.6f re W n',self.width*BP,self.height*BP)
+  end
+  for _,r in ipairs(self.reserve) do
+    if not b or (b[1]<r[3] and b[3]>r[1] and b[2]<r[4] and b[4]>r[2]) then
+      masks[#masks+1]=string.format('q 0 0 %.6f %.6f re %.6f %.6f %.6f %.6f re W* n',
+        self.width*BP,self.height*BP,r[1]*BP,r[2]*BP,(r[3]-r[1])*BP,(r[4]-r[2])*BP)
+    end
+  end
+  local chunks={}
+  for _,mask in ipairs(masks) do chunks[#chunks+1]=mask end
+  for _,chunk in ipairs(p.chunks) do chunks[#chunks+1]=chunk end
+  for _ in ipairs(masks) do chunks[#chunks+1]='Q' end
+  p.chunks=chunks
   local n,sx,sy=0,0,0
   for key,weight in pairs(p.cells) do n=n+weight; sx=sx+(key%self.nx+.5)*self.resolution*weight; sy=sy+(key//self.nx+.5)*self.resolution*weight end
   p.area=n*self.resolution^2; p.cells=nil
@@ -159,7 +179,10 @@ function M.attach(pt,spec)
   local begin,finish=pt.clip_begin,pt.clip_end
   pt.clip_begin=function(p,cmds)
     begin(p,cmds)
-    if not r.suspended then r.clips[#r.clips+1]=contours(cmds,p:_pj()) end
+    if not r.suspended then
+      local clip=contours(cmds,p:_pj()); clip.source=p.out[#p.out]
+      r.clips[#r.clips+1]=clip
+    end
   end
   pt.clip_end=function(p)
     finish(p)

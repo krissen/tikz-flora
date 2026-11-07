@@ -35,8 +35,11 @@ pixel integral. Overlapping semantic parts contribute separately. Stem area
 is approximated as proportional to visible arc length.
 
 Measurement accounts for fixed frame/header clips, page edges, text rectangles
-and reservations. During rendering text and reservation exclusions remain in
-page coordinates outside every scaling transform, including overlapping
+and reservations. Each part also retains its original header/frame/page/text/reservation clips
+inside its Form before growth scaling. Thus material clipped out of the finished
+part cannot be scaled back into view, even for fully invisible parts with no
+measured anchor. During rendering text and reservation exclusions additionally
+remain in page coordinates outside every scaling transform, including overlapping
 reservations. At the final endpoint the original drawing and reservation clips
 are used; its existing text avoidance is preserved exactly. This prevents intermediate shapes crossing protected text.
 `stages` requires a positive integer and rejects insufficient sampled area
@@ -111,3 +114,10 @@ An integration measurement with beamer-floral's dense 8-second, 20-fps fixture
 26.00222031 still advanced at roughly 4 fps in the initial playback test.
 These measurements establish resource/build improvements, not smooth real-time
 playback. Viewer behavior remains an integration validation item.
+
+The clip regression uses both 16 and 64 stages: a wholly clipped header line must
+never appear, and a partially clipped shape must follow the silhouette of geometry
+clipped before scaling (allowing a one-pixel antialias edge). The Lua/TeX growth
+API requires no external Python or Poppler process. Those tools are dependencies
+of the explicitly invoked raster integration test; raster animation workflows in
+adapters must document their additional external tooling separately.
