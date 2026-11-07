@@ -18,7 +18,7 @@ local Batch = {}
 Batch.__index = Batch
 
 function S.batch()
-  return setmetatable({ ribbons = {}, lines = { {}, {}, {} }, florets = {}, buds = {}, stars = {} }, Batch)
+  return setmetatable({ ribbons = {}, lines = { {}, {}, {} }, florets = {}, buds = {}, stars = {}, growth = {} }, Batch)
 end
 
 -- A tapered stem from w0 to w1 (full widths, pt), filled as a ribbon.
@@ -26,17 +26,20 @@ function Batch:stem(pts, w0, w1)
   self.ribbons[#self.ribbons + 1] = G.smooth(G.ribbon(pts, function(t)
     return (w0 + (w1 - w0) * t) / 2
   end), true)
+  self.growth[self.ribbons[#self.ribbons]] = pts
 end
 
 -- A stem whose full width at fraction t is w(t).
 function Batch:stem_by(pts, w)
   self.ribbons[#self.ribbons + 1] = G.smooth(G.ribbon(pts, function(t) return w(t) / 2 end), true)
+  self.growth[self.ribbons[#self.ribbons]] = pts
 end
 
 -- A hairline; `class` 1-3 selects 0.32, 0.22 or 0.14 pt.
 function Batch:line(pts, class)
   local bucket = self.lines[class or 2]
   bucket[#bucket + 1] = G.smooth(pts, false)
+  self.growth[bucket[#bucket]] = pts
 end
 
 -- A five-petalled floret; `soft` paints it as baby's breath (F.florets).
@@ -76,6 +79,7 @@ function Batch:merge(other)
   local function append(dst, src)
     for _, v in ipairs(src) do dst[#dst + 1] = v end
   end
+  for k,v in pairs(other.growth) do self.growth[k] = v end
   append(self.ribbons, other.ribbons)
   for i = 1, 3 do append(self.lines[i], other.lines[i]) end
   append(self.florets, other.florets)
@@ -104,6 +108,29 @@ function Batch:born(clock)
 end
 
 function Batch:paint(pt, ink)
+  local rec, clock = pt.progression, pt.growth_clock
+  if rec and clock and not rec.active and not rec.suspended then
+    local Progression = require("flora.progression")
+    rec:alternate(pt, function()
+      local function part(b, at, stem, kind)
+        local birth = clock:birth(at[1], at[2]) / clock.reach * 0.7
+        local duration = stem and math.max(0.01, G.length(stem) / clock.reach * 0.7) or 0.05
+        Progression.part(pt, kind, at, birth, duration, function() b:paint(pt, ink) end, stem)
+      end
+      for _,c in ipairs(self.ribbons) do
+        local b=S.batch(); b.ribbons={c}; local pts=self.growth[c]
+        part(b, pts[1], pts, "stem")
+      end
+      for i=1,3 do for _,c in ipairs(self.lines[i]) do
+        local b=S.batch(); b.lines[i]={c}; local pts=self.growth[c]
+        part(b, pts[1], pts, "spray-stem")
+      end end
+      for _,name in ipairs({"buds", "florets", "stars"}) do for _,it in ipairs(self[name]) do
+        local b=S.batch(); b[name]={it}; part(b, it, nil, name)
+      end end
+    end, function() self:paint(pt, ink) end)
+    return
+  end
   if pt.clock then
     local clock = pt.clock
     pt.clock = nil

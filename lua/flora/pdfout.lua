@@ -13,18 +13,28 @@ function M.encode(pt, width, height)
   local res = Paint.resources()
   -- Objects: 1 catalog, 2 page tree, 3 page, 4 content, 5.. patterns.
   local objects = {}
-  local gs, pats = {}, {}
+  local gs, pats, forms = {}, {}, {}
   for _, g in ipairs(res.gs) do gs[#gs + 1] = string.format("/%s %s", g[1], g[2]) end
   for i, p in ipairs(res.patterns) do
     objects[4 + i] = p[2]
     pats[#pats + 1] = string.format("/%s %d 0 R", p[1], 4 + i)
   end
+  local form_resources = 5 + #res.patterns
+  if #(pt.xobjects or {}) > 0 then
+    objects[form_resources] = string.format("<< /ExtGState << %s >> /Pattern << %s >> >>",table.concat(gs," "),table.concat(pats," "))
+    for i,f in ipairs(pt.xobjects) do
+      local id=form_resources+i
+      objects[id]=string.format("<< /Type /XObject /Subtype /Form /BBox %s /Resources %d 0 R /Length %d >>\nstream\n%s\nendstream", f.bbox,form_resources,#f.body,f.body)
+      forms[#forms+1]=string.format("/%s %d 0 R",f.name,id)
+    end
+  end
   local content = pt:body()
   objects[1] = "<< /Type /Catalog /Pages 2 0 R >>"
   objects[2] = "<< /Type /Pages /Kids [3 0 R] /Count 1 >>"
   objects[3] = string.format("<< /Type /Page /Parent 2 0 R /MediaBox [0 0 %.2f %.2f] "
-    .. "/Resources << /ExtGState << %s >> /Pattern << %s >> >> /Contents 4 0 R >>",
-    width * BP, height * BP, table.concat(gs, " "), table.concat(pats, " "))
+    .. "/Resources << /ExtGState << %s >> /Pattern << %s >>%s >> /Contents 4 0 R >>",
+    width * BP, height * BP, table.concat(gs, " "), table.concat(pats, " "),
+    #forms > 0 and (" /XObject << " .. table.concat(forms," ") .. " >>") or "")
   objects[4] = string.format("<< /Length %d >>\nstream\n%s\nendstream", #content, content)
 
   local parts, pos = {}, 0

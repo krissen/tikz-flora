@@ -229,6 +229,10 @@ add the TinyTeX binaries to `PATH`:
   reference photo when `tex/reference/rectified.png` is present (it is not
   tracked). It needs Python 3 with numpy and Pillow, and Node.
 
+The [versioned Lua progression API](docs/progression.md) plans a whole page once
+and reuses its painting for overlays or timed frames. `tex/progression.tex` and
+`tools/progression.lua` demonstrate TeX and standalone PDF rendering.
+
 ## Licence
 
 MIT. See `LICENSE`.

@@ -37,18 +37,18 @@ P.palette = {
 -- Resources registered in this run, shared by every page: PGF writes its
 -- resource dictionaries once, at the end of the document.
 -- Each list keeps {name, PDF source} so a standalone writer can rebuild them.
-local registered = { gs = {}, patterns = 0, gs_list = {}, pattern_list = {} }
+local registered = { gs = {}, patterns = 0, gs_list = {}, pattern_list = {}, forms = {} }
 
 -- Forget registered resources, as a new document would. Tests use it to
 -- compare two renders of one page.
 function P.reset_resources()
-  registered = { gs = {}, patterns = 0, gs_list = {}, pattern_list = {} }
+  registered = { gs = {}, patterns = 0, gs_list = {}, pattern_list = {}, forms = {} }
 end
 
 -- Every ExtGState and pattern registered since the last reset, as
 -- {name, source} pairs, for writing a standalone PDF (tools/preview.lua).
 function P.resources()
-  return { gs = registered.gs_list, patterns = registered.pattern_list }
+  return { gs = registered.gs_list, patterns = registered.pattern_list, forms = registered.forms }
 end
 
 -- Write a PDF object; outside LuaTeX (unit tests) objects are only counted.
@@ -397,6 +397,7 @@ function P:shade(name, p0, p1, half)
       pname, src, coords = { p0[1] * BP, p0[2] * BP, p1[1] * BP, p1[2] * BP }, stops = self.shadings[name],
     }
     local obj = pdf_object(src)
+    registered.pattern_list[#registered.pattern_list].object = obj
     self.defs[#self.defs + 1] = fmt("\\csname pgfutil@addpdfresource@patterns\\endcsname{/%s %d 0 R}", pname, obj)
     -- Fill the band around the axis with the pattern.
     local ux, uy = dx / len, dy / len
@@ -457,6 +458,37 @@ end
 
 function P:code()
   return self:tex_defs() .. "\n" .. self:body()
+end
+
+-- Stable semantic parts share one resource dictionary and compressed Form
+-- streams. Forms stay document-local, just like the patterns they reference.
+function P.forms(parts, width, height)
+  local gs, patterns = {}, {}
+  for _,g in ipairs(registered.gs_list) do gs[#gs+1] = "/"..g[1].." "..g[2] end
+  for _,p in ipairs(registered.pattern_list) do patterns[#patterns+1] = "/"..p[1].." "..p.object.." 0 R" end
+  local resources = "<< /ExtGState << "..concat(gs," ").." >> /Pattern << "..concat(patterns," ").." >> >>"
+  local resource_object = pdf_object(resources)
+  local forms = {}
+  for _,part in ipairs(parts) do
+    if #part.chunks > 0 then
+      local name = "flform"..(#registered.forms+1)
+      local body = concat(part.chunks,"\n")
+      local b=part.bounds
+      local bbox = b and b[1]<=b[3] and fmt("[%.6f %.6f %.6f %.6f]",b[1]*BP,b[2]*BP,b[3]*BP,b[4]*BP)
+        or fmt("[%.6f %.6f %.6f %.6f]",-width*BP,-height*BP,2*width*BP,2*height*BP)
+      local attr = "/Type /XObject /Subtype /Form /BBox "..bbox.." /Resources "..resource_object.." 0 R"
+      local object
+      if pdf and pdf.immediateobj then object = pdf.immediateobj("stream",body,attr)
+      else object = pdf_object("") end
+      local form={name=name,body=body,bbox=bbox,object=object}
+      registered.forms[#registered.forms+1]=form; forms[#forms+1]=form
+      part.form=name
+    end
+  end
+  local refs={}
+  for _,f in ipairs(forms) do refs[#refs+1]="/"..f.name.." "..f.object.." 0 R" end
+  local xobjects=pdf_object("<< "..concat(refs," ").." >>")
+  return forms, "/XObject "..xobjects.." 0 R"
 end
 
 return P

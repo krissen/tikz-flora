@@ -22,6 +22,7 @@ local Frames = require("flora.frames")
 local Mix = require("flora.mix")
 local Visitor = require("flora.visitor")
 local Clock = require("flora.clock")
+local Progression = require("flora.progression")
 local pal = Paint.palette
 
 local C = {}
@@ -130,7 +131,7 @@ local function plant(spec, pt)
   local back, blooms, leaves, leaflet_items = {}, {}, {}, {}
   local ghost
   local ctx = {
-    cfg = cfg, mix = spec.mix, pos = spec.grow and setmetatable({}, { __mode = "k" }), mw = mw, dens = dens, ylo = ylo, span = span, strands = strands, stems = stems,
+    cfg = cfg, mix = spec.mix, progression = spec._progression, pos = (spec.grow or spec._progression) and setmetatable({}, { __mode = "k" }), mw = mw, dens = dens, ylo = ylo, span = span, strands = strands, stems = stems,
     stem_batch = stem_batch, sprays = spray_batch, blooms = blooms, back = back,
     leaves = leaves, leaflets = leaflet_items,
   }
@@ -273,8 +274,16 @@ local function plant(spec, pt)
   -- front has reached (clock.lua); otherwise every element paints in full.
   local clock = spec.grow and spec.grow < 1 and Clock.new(g, stems, spec.grow) or nil
   pt.clock = clock
+  local growth = spec._progression and Clock.new(g, stems, 1)
+  pt.growth_clock = growth
+  local function birth(at)
+    return at and growth:birth(at[1], at[2]) / growth.reach * 0.7 or 0.82
+  end
   local function draw(f, dur, delay)
-    if clock then clock:draw(pt, f, ctx.pos[f], dur, delay) else f(pt) end
+    if clock then clock:draw(pt, f, ctx.pos[f], dur, delay)
+    elseif growth then Progression.part(pt, pt.group and pt.group.tag, ctx.pos[f], birth(ctx.pos[f]), dur,
+      function() f(pt) end)
+    else f(pt) end
   end
   layer("back", function()
     for _, f in ipairs(back) do draw(f, 0.1) end
@@ -286,6 +295,11 @@ local function plant(spec, pt)
     for _, s in ipairs(painted) do
       if clock then
         clock:stem(pt, s, Tune.plant.root_width, function(p) Brush.stem(p, sr, s.pts, s.width, Tune.plant) end)
+      elseif growth then
+        local off = growth.offset[s] / growth.reach * 0.7
+        local dur = G.length(s.pts) / growth.reach * 0.7
+        Progression.part(pt, "stem", s.pts[1], off, dur,
+          function() Brush.stem(pt, sr, s.pts, s.width, Tune.plant) end, s.pts)
       else
         Brush.stem(pt, sr, s.pts, s.width, Tune.plant)
       end
@@ -297,6 +311,12 @@ local function plant(spec, pt)
   layer("leaflets", function()
     if clock then
       clock:leaflets(pt, rng:fork("leaflets"), leaflet_items, L.leaflets)
+    elseif growth then
+      local lr = rng:fork("leaflets")
+      for _,it in ipairs(leaflet_items) do
+        Progression.part(pt, "leaflet", it, birth(it), 0.05,
+          function() L.leaflets(pt, lr, {it}) end)
+      end
     else
       L.leaflets(pt, rng:fork("leaflets"), leaflet_items)
     end
@@ -315,13 +335,24 @@ local function plant(spec, pt)
   end
   layer("ornaments", function()
     for _, f in ipairs(orn) do draw(f, 0.15) end
-    O.sparkles(pt, clock and clock:sparkles(sparkles) or sparkles)
+    if growth then
+      pt.progression:alternate(pt, function()
+        for _,it in ipairs(sparkles) do
+          Progression.part(pt, "sparkle", it, 0.84, 0.15, function() O.sparkles(pt, {it}) end)
+        end
+      end, function() O.sparkles(pt, sparkles) end)
+    else O.sparkles(pt, clock and clock:sparkles(sparkles) or sparkles) end
     draw(function(p) O.compass(p, midfoot[1], midfoot[2], 7, { hair = 0.9, ring = 0 }) end, 0.15)
   end)
   layer("hero", function()
-    if clock then clock:draw(pt, hero_draw, hero, 0.15) else hero_draw(pt) end
+    if clock then clock:draw(pt, hero_draw, hero, 0.15)
+    elseif growth then
+      local cap = strands[1].pts[#strands[1].pts]
+      Progression.part(pt, "hero", cap, birth(cap), 0.15, function() hero_draw(pt) end)
+    else hero_draw(pt) end
   end)
   pt.clock = nil
+  pt.growth_clock = nil
   pt.coverage = g:coverage()
   pt.panel = panel
   pt.ghost = ghost
@@ -375,6 +406,7 @@ function C.frames(spec)
   local frames = Frames.of(spec)
   local pt = Paint.new({ backend = spec.backend or os.getenv("FLORA_BACKEND") })
   pt.probe = spec.probe
+  Progression.attach(pt, spec)
   local clip = header_clip(pt, spec)
   local function record_hero(s, label)
     if not pt.hero then return end
@@ -420,7 +452,8 @@ function C.frames(spec)
   -- clip in body mode, so the crest cannot sit in the header.
   if frames.title and (spec.grow or 1) >= 0.9 then
     pt:begin_group("title")
-    Title.paint(pt, spec, frames.title)
+    Progression.part(pt, "title", {spec.width / 2, spec.height}, 0.82, 0.18,
+      function() Title.paint(pt, spec, frames.title) end)
     pt:end_group()
   end
   if clip and clip.through then pt:clip_end() end

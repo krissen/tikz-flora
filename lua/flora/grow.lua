@@ -364,16 +364,16 @@ function Grow.holes(g, rng, ctx)
             ctx.blooms[#ctx.blooms + 1] = function(pt)
               F.tilted(pt, fr, x, y, r, facing, 1.0, { kind = "lance", petals = 6, width = 0.36 })
             end
-            if ctx.pos then ctx.pos[ctx.blooms[#ctx.blooms]] = { x, y } end
+            if ctx.pos then ctx.pos[ctx.blooms[#ctx.blooms]] = ctx.progression and stalk[#stalk] or { x, y } end
           elseif pick.kind == "ghost" then
             ctx.back[#ctx.back + 1] = function(pt)
               F.bloom(pt, fr, x, y, r, { kind = "ghost", look = "ghost", width = 0.55 })
             end
-            if ctx.pos then ctx.pos[ctx.back[#ctx.back]] = { x, y } end
+            if ctx.pos then ctx.pos[ctx.back[#ctx.back]] = ctx.progression and stalk[#stalk] or { x, y } end
           else
             local style = pick.kind == "soft" and "soft" or F.pick_style(fr, { "fan", "round" })
             ctx.blooms[#ctx.blooms + 1] = function(pt) F.bloom(pt, fr, x, y, r * 0.8, { style = style }) end
-            if ctx.pos then ctx.pos[ctx.blooms[#ctx.blooms]] = { x, y } end
+            if ctx.pos then ctx.pos[ctx.blooms[#ctx.blooms]] = ctx.progression and stalk[#stalk] or { x, y } end
           end
         end
       end
