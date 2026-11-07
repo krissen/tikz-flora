@@ -52,8 +52,9 @@ forms; it allocates no new gradients, opacity states, motifs or layouts. Mature
 parts reuse the same form at the same scale. The original final batched stream
 is retained for exact endpoint painting. `flora.typeset` registers PDF definitions
 once per document; PGF definitions retain their normal scope behavior.
-`flora.flush` uses a native LuaTeX frame Form so Beamer and animate manage the
-current resource scope. The planner requires the PDF backend. Actual playback
+`flora.flush` uses a native LuaTeX frame Form for every stage, including the
+canonical endpoint, so Beamer and animate manage the current resource scope.
+The endpoint retains its original raw batched commands inside that Form. The planner requires the PDF backend. Actual playback
 speed depends on the viewer; XObject reuse does not guarantee a frame rate.
 
 ## TeX adapters

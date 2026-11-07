@@ -253,6 +253,9 @@ function M.render(plan,t)
   checkplan(plan); assert(finite(t) and t>=0 and t<=1,'progression must be finite and between 0 and 1')
   local pt=Paint.new({backend='pdf'}); pt.defs=plan.final.defs; pt.coverage=plan.final.coverage
   local u=time(plan,t)
+  -- All stages, including the untouched canonical endpoint, use the same
+  -- native frame-Form transport when typeset by LuaTeX.
+  pt.xobjects=plan.forms; pt.pdf_resources=plan.pdf_resources; pt.width=plan.width; pt.height=plan.height
   -- Reservation clips stay in page space, outside all organic transforms.
   local exclusions=t==1 and plan.reserve or plan.protected
   for _,r in ipairs(exclusions) do
@@ -264,7 +267,6 @@ function M.render(plan,t)
     pt.count=plan.final.count
     return pt
   end
-  pt.xobjects=plan.forms; pt.pdf_resources=plan.pdf_resources; pt.width=plan.width; pt.height=plan.height
   local function paint(part)
     if part.form then pt:emit('/'..part.form..' Do')
     else for _,s in ipairs(part.chunks) do pt:emit(s) end end

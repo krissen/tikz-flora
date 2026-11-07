@@ -466,8 +466,10 @@ function P.forms(parts, width, height)
   local gs, patterns = {}, {}
   for _,g in ipairs(registered.gs_list) do gs[#gs+1] = "/"..g[1].." "..g[2] end
   for _,p in ipairs(registered.pattern_list) do patterns[#patterns+1] = "/"..p[1].." "..p.object.." 0 R" end
-  local resources = "<< /ExtGState << "..concat(gs," ").." >> /Pattern << "..concat(patterns," ").." >> >>"
-  local resource_object = pdf_object(resources)
+  local gs_object=pdf_object("<< "..concat(gs," ").." >>")
+  local pattern_object=pdf_object("<< "..concat(patterns," ").." >>")
+  local common="/ExtGState "..gs_object.." 0 R /Pattern "..pattern_object.." 0 R"
+  local resource_object = pdf_object("<< "..common.." >>")
   local forms = {}
   for _,part in ipairs(parts) do
     if #part.chunks > 0 then
@@ -488,7 +490,7 @@ function P.forms(parts, width, height)
   local refs={}
   for _,f in ipairs(forms) do refs[#refs+1]="/"..f.name.." "..f.object.." 0 R" end
   local xobjects=pdf_object("<< "..concat(refs," ").." >>")
-  return forms, "/XObject "..xobjects.." 0 R"
+  return forms, common.." /XObject "..xobjects.." 0 R"
 end
 
 return P

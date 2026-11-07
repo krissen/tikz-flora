@@ -36,6 +36,9 @@ for _,layout in ipairs({'left','centered','surround','title'}) do
     H.check(attached,'hero does not grow from a stem attachment')
   end end
   H.check(#plan.forms>0 and P.render(plan,.5):body():find(' Do',1,true),'parts are not reused as Forms')
+  H.check(P.render(plan,1).xobjects==plan.forms,'endpoint changed frame transport')
+  H.check(P.render(plan,1).pdf_resources:find('/ExtGState',1,true) and
+    P.render(plan,1).pdf_resources:find('/Pattern',1,true),'canonical frame lacks painting resources')
   local before=plan.final:body()
   local real=Compose.page; Compose.page=function() error('render replanned composition') end
   for _,n in ipairs({1,2,4,16,64}) do
