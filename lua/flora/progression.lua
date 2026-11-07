@@ -127,7 +127,9 @@ function Rec:part(pt,kind,anchor,birth,duration,fn,stem)
   -- into view, especially for a fully clipped part with no sampled anchor.
   local masks={}
   for _,clip in ipairs(self.clips) do masks[#masks+1]=clip.source end
-  self.active=p; fn(); self.active=nil
+  self.active=p; fn()
+  if pt.gilt_pending then require('flora.orn_raster').flush(pt) end
+  self.active=nil
   local b=p.bounds
   if not b or b[1]<0 or b[2]<0 or b[3]>self.width or b[4]>self.height then
     masks[#masks+1]=string.format('q 0 0 %.6f %.6f re W n',self.width*BP,self.height*BP)
@@ -154,7 +156,8 @@ function Rec:alternate(pt,fn,canonical)
   self.suspended=true; canonical(); self.suspended=false
   local out,count=pt.out,pt.count; pt.out={}
   local probe=pt.probe; pt.probe=nil
-  fn(); pt.out=out; pt.count=count; pt.probe=probe
+  self.capturing_alternate=true
+  fn(); self.capturing_alternate=nil; pt.out=out; pt.count=count; pt.probe=probe
 end
 function M.attach(pt,spec)
   local r=spec._progression
@@ -191,7 +194,9 @@ function M.attach(pt,spec)
 end
 function M.part(pt,kind,anchor,birth,duration,fn,stem)
   if pt.progression and not pt.progression.suspended then return pt.progression:part(pt,kind,anchor,birth,duration,fn,stem) end
-  return fn()
+  local result=fn()
+  if pt.gilt_pending then require('flora.orn_raster').flush(pt) end
+  return result
 end
 function M.plan(spec,opts)
   opts=opts or {}; local step=opts.resolution or 1

@@ -34,7 +34,8 @@ jobs:
         tests:
           - mix scene_ops
           - compose ornaments progression
-          - layout clock visitor fast
+          - layout clock visitor fast page_cache cache_key
+          - raster relief gilt_look backdrop catalog garden titles
     steps:
       - uses: actions/checkout@v4
       - name: texlua

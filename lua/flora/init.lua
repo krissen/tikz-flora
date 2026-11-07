@@ -27,8 +27,15 @@ function M.typeset(pt)
   end
   if pt.backend == "pdf" then
     M._pending = pt:body()
-    M._pending_resources = pt.xobjects and pt.pdf_resources or nil
-    M._pending_size = pt.xobjects and {pt.width, pt.height} or nil
+    M._pending_resources = pt.xobjects and pt.pdf_resources
+      or (pt.raster_images and require("flora.paint").image_resources(pt.raster_images)) or nil
+    if M._pending_resources then
+      local x0,y0,x1,y1=0,0,pt.width or 0,pt.height or 0
+      for _,b in ipairs(pt.boxes or {}) do
+        x0=math.min(x0,b.x0); y0=math.min(y0,b.y0); x1=math.max(x1,b.x1); y1=math.max(y1,b.y1)
+      end
+      M._pending_size={pt.width or x1,pt.height or y1,pt.depth or -y0,math.max(0,-x0)}
+    else M._pending_size=nil end
     tex.sprint("\\directlua{flora.flush()}")
   else
     for _, c in ipairs(pt.out) do tex.sprint(c) end
@@ -46,8 +53,9 @@ function M.flush()
     literal.mode=0; literal.data=M._pending
     local box=node.new("hlist")
     box.dir="TLT"; box.list=literal; box.width=math.floor(M._pending_size[1]*65536+.5)
-    box.height=math.floor(M._pending_size[2]*65536+.5); box.depth=0
-    local index=tex.saveboxresource(box,"",M._pending_resources,true)
+    box.height=math.floor(M._pending_size[2]*65536+.5)
+    box.depth=math.floor((M._pending_size[3] or 0)*65536+.5)
+    local index=tex.saveboxresource(box,"",M._pending_resources,true,0,math.floor((M._pending_size[4] or 0)*65536+.5))
     local wrapper=node.new("hlist")
     wrapper.dir="TLT"; wrapper.list=tex.useboxresource(index)
     wrapper.width=0; wrapper.height=0; wrapper.depth=0
@@ -87,20 +95,68 @@ function M.mark(name)
   require("flora.measure").mark(name)
 end
 
+-- \floraletters: the lettering of box register `reg` (letters.lua),
+-- typeset in its place as a picture of the box's width, its height and
+-- depth grown to hold the shadow and any arch.
+function M.letters(reg, opts)
+  local Letters = require("flora.letters")
+  local o, err = Letters.options(opts)
+  if not o then
+    report("floraletters: " .. err)
+    o = Letters.options("")
+  end
+  local box = tex.box[reg]
+  local pt = require("flora.paint").new({ backend = os.getenv("FLORA_BACKEND") })
+  local ext = box and Letters.paint(pt, box, o)
+  if not ext then
+    texio.write_nl("term and log", "tikzflora: \\floraletters needs an OpenType or TrueType font; the text is set as usual")
+    tex.sprint(string.format("\\box%d", reg))
+    return
+  end
+  local SP = 65536
+  local w = box.width / SP
+  local h, d = math.max(box.height / SP, ext[4]), math.max(box.depth / SP, -ext[2])
+  pt.width,pt.height,pt.depth=w,h,d
+  -- The mark makes the measurer (measure.lua) take the box as ink, so
+  -- the flora keeps clear of the lettering as it does of text.
+  tex.sprint(string.format("\\hbox to %.3fpt{\\directlua{flora.mark('ink')}\\begin{pgfpicture}\\pgfsetbaseline{0pt}"
+    .. "\\pgfpathrectangle{\\pgfqpoint{0pt}{%.3fpt}}{\\pgfqpoint{%.3fpt}{%.3fpt}}\\pgfusepath{use as bounding box}",
+    w, -d, w, h + d))
+  -- FLORA_LETTERS=hide keeps the box and leaves it blank: the site's bake
+  -- (just site-bake) takes the page's text and its lettering apart so the
+  -- mixer can colour the lettering.
+  if os.getenv("FLORA_LETTERS") ~= "hide" then M.typeset(pt) end
+  tex.sprint("\\end{pgfpicture}\\hss}")
+end
+
 function M.specimens(seed)
   local spec = require("flora.specimen")
   tex.sprint(string.format(
     "\\pgfpathrectangle{\\pgfpointorigin}{\\pgfqpoint{%dpt}{%dpt}}\\pgfusepath{use as bounding box}",
     spec.width, spec.height))
-  M.typeset(spec.draw(seed))
+  local pt=spec.draw(seed); pt.width,pt.height=spec.width,spec.height
+  M.typeset(pt)
 end
 
 -- The ornament gallery (gallery.lua): every kind for `seeds` seeds, each
--- labelled with its name and the key that weighs it.
+-- labelled with its name and the key that weighs it. FLORA_GALLERY (slot
+-- and kind names, comma-separated) limits the kinds and FLORA_GALLERY_SEEDS
+-- overrides `seeds`.
 function M.gallery(seeds)
-  local pt, cells, w, h = require("flora.gallery").sheet(nil, tonumber(seeds) or 3)
+  local only
+  for name in (os.getenv("FLORA_GALLERY") or ""):gmatch("[%w_]+") do
+    only = only or {}
+    only[name] = true
+  end
+  seeds = tonumber(os.getenv("FLORA_GALLERY_SEEDS")) or tonumber(seeds) or 3
+  local pt = require("flora.paint").new({ backend = os.getenv("FLORA_BACKEND"), gilt = M.settings.gilt,
+    backdrop = require("flora.color").backdrop(M.settings.backdrop) })
+  pt.gilt_dpi, pt.gilt_env, pt.gilt_look = M.settings.giltdpi, M.settings.giltenv, M.settings.giltlook
+  local cells, w, h
+  pt, cells, w, h = require("flora.gallery").sheet(pt, seeds, nil, nil, only)
   tex.sprint(string.format(
     "\\pgfpathrectangle{\\pgfpointorigin}{\\pgfqpoint{%.2fpt}{%.2fpt}}\\pgfusepath{use as bounding box}", w, h))
+  pt.width,pt.height=w,h
   M.typeset(pt)
   for _, c in ipairs(cells) do
     if c.seed == 1 then
@@ -165,6 +221,8 @@ function M.page(a)
     header = set.header, frametitle = a.frametitle == "1",
     frametitle_height = a.frametitle_height and pt_of(a.frametitle_height),
     reserve = M.reserve,
+    gilt = set.gilt, gilt_dpi = set.giltdpi, gilt_env = set.giltenv, gilt_look = set.giltlook,
+    backdrop = set.backdrop,
     doc_seed = tostring(set.seed or a.seed),
   }
   if marks and marks["title-start"] and lines then
@@ -191,6 +249,20 @@ function M.page(a)
     f:close()
   end
   if skip then return end
+  -- A --draftmode run writes no PDF, and the flora takes no room in the
+  -- layout, so there is nothing to draw.
+  if tex.draftmode and tex.draftmode > 0 then return end
+  if not a.render_page and #(spec.reserve or {}) == 0
+      and (not a.background_height or pt_of(a.background_height) == 0)
+      and pdf and set.cache ~= false and (os.getenv("FLORA_BACKEND") or "pdf") == "pdf" then
+    local file, e, hit = require("flora.cache").page(spec, set, pdf.getcompresslevel and pdf.getcompresslevel() or 6)
+    if file then
+      node.write(img.node(img.scan({ filename = file })))
+      texio.write_nl("log", string.format("flora: page %d %s", a.page, hit and "from the cache" or "grown and cached"))
+      texio.write_nl("log", string.format("flora: coverage %.2f", e.coverage))
+      return
+    end
+  end
   -- A cached-plan adapter can return a painter, or true after emitting its
   -- own picture/animation. Measurement and prepare_spec always precede it.
   local pt
@@ -206,6 +278,7 @@ end
 -- Shared picture wrapper for cached overlays and individual animation frames.
 function M.typeset_page(pt, spec, a)
   a = a or {}
+  pt.width,pt.height=spec.width,spec.height
   tex.sprint("\\begin{pgfpicture}")
   local band = a.background_height and pt_of(a.background_height) or 0
   if band > 0 then

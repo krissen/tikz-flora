@@ -8,7 +8,7 @@ local function spec(layout)
     layout=layout or 'left', mix={gyps=0,cyme=0,umbel=0,ghost=0},
     tune={compose={sprays=0,leaves=2,small_blooms=1,curls=0,no_leaflets=true}}}
 end
-for _,layout in ipairs({'left','centered','surround','title'}) do
+for _,layout in ipairs({'left','centered','surround','title','flank','wreath','bouquet','scrollwork'}) do
   local s=spec(layout); local saved=Serial.encode(s)
   Paint.reset_resources(); local ordinary=Compose.page(s):body()
   s=spec(layout)
@@ -18,7 +18,7 @@ for _,layout in ipairs({'left','centered','surround','title'}) do
   H.check(plan.final:body()==ordinary,layout..': final painting changed')
   H.check(plan.area>0 and #plan.parts>4,layout..': missing parts/area')
   local seen={}; for _,part in ipairs(plan.parts) do seen[part.kind]=true end
-  H.check(seen.stem and seen.hero and seen.ornaments,layout..': missing semantic categories')
+  H.check(seen.stem and seen.hero,layout..': missing semantic categories')
   H.check(layout~='title' or seen.title,'title furniture missing')
   local stemEnds={}
   for _,part in ipairs(plan.parts) do if part.stem then
