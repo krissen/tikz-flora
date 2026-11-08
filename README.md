@@ -268,6 +268,13 @@ is measured and before it is drawn, and changes the spec in place, so a
 package can give several pages one seed and one geometry. Without the
 callback nothing changes.
 
+`flora.page(a)` also accepts `a.render_page(spec, a)`, checked by
+`flora.render_page_version == 1`. It may return a painter, `true` once it has
+set the page itself, or nil to draw as usual; such pages skip the page cache.
+The [versioned Lua progression API](docs/progression.md) plans a whole page
+once and reuses its painting for overlays or timed frames. `tex/progression.tex`
+and `tools/progression.lua` demonstrate TeX and standalone PDF rendering.
+
 ## Working on tikz-flora
 
 The repository uses [just](https://github.com/casey/just). These recipes
