@@ -212,6 +212,7 @@ function P.crown(rng, main, m, hero)
       local st = P.stem(pts, w * 0.7, 0.35)
       st.min = 0.3
       st.kind = "crown"
+      st.growth_parent,st.growth_t=main,s/main.len
       st.tip = { pts[#pts], G.angle(pts[#pts - 1], pts[#pts]) }
       out[#out + 1] = st
     end
@@ -294,6 +295,7 @@ function P.long_shoots(rng, main, m, hero, gest, avoid)
         local st = P.stem(pts, w * cfg.fork_ratio, 0.35)
         st.min = 0.3
         st.kind = "long"
+        st.growth_parent,st.growth_t=main,s0/main.len
         st.tip = { pts[#pts], a }
         out[#out + 1] = st
       end
@@ -339,6 +341,7 @@ function P.foot_shoots(rng, main, m, corner, avoid)
       local st = P.stem(pts, math.min(1.1, w * 0.4), 0.3)
       st.min = 0.3
       st.kind = "foot"
+      st.growth_parent,st.growth_t=main,s0/main.len
       st.tip = { pts[#pts], a }
       out[#out + 1] = st
     end

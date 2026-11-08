@@ -22,6 +22,7 @@ local Frames = require("flora.frames")
 local Mix = require("flora.mix")
 local Visitor = require("flora.visitor")
 local Clock = require("flora.clock")
+local Progression = require("flora.progression")
 local Color = require("flora.color")
 local pal = Paint.palette
 
@@ -128,10 +129,14 @@ local function plant(spec, pt, prog)
   local strands, root = Layout.strands(rng:fork("strands"), m, hero, W, gest,
     { m.x0, py - ph / 2 - 3, m.x0 + pw + 5, py + ph / 2 + 3 })
   local excursion = not spec.frame_only and Layout.excursion(rng:fork("excursion"), spec, root)
-  if excursion then strands[#strands + 1] = excursion end
+  if excursion then
+    excursion.growth_parent,excursion.growth_t=strands[1],G.nearest_fraction(strands[1].pts,excursion.pts[1])
+    strands[#strands + 1] = excursion
+  end
   -- A bare frame (a curved one: frames.lua) has no outer corner, so no
   -- corner runner, star panel or foot compass.
   local runners = spec.bare and {} or Layout.runners(rng:fork("runners"), m, strands[1].pts[1], W, edge, g)
+  for _,runner in ipairs(runners) do runner.growth_parent,runner.growth_t=strands[1],0 end
   Plant.fork(strands[1], 0.005, 0.8)
   local stems = {}
   local stem_batch, spray_batch = S.batch(), S.batch()
@@ -173,7 +178,8 @@ local function plant(spec, pt, prog)
   local back, blooms, leaves, leaflet_items = {}, {}, {}, {}
   local ghost
   local ctx = {
-    cfg = cfg, mix = spec.mix, pos = spec.grow and setmetatable({}, { __mode = "k" }), mw = mw, dens = dens, ylo = ylo, span = span, strands = strands, stems = stems,
+    cfg = cfg, mix = spec.mix, progression = spec._progression, pos = (spec.grow or spec._progression) and setmetatable({}, { __mode = "k" }), mw = mw, dens = dens, ylo = ylo, span = span, strands = strands, stems = stems,
+    support = spec._progression and {},
     stem_batch = stem_batch, sprays = spray_batch, blooms = blooms, back = back,
     leaves = leaves, leaflets = leaflet_items,
   }
@@ -283,6 +289,7 @@ local function plant(spec, pt, prog)
   for _, s in ipairs(cfg.no_leaflets and {} or strands) do
     for _, it in ipairs(S.leaflet_items(rng, s.pts, cfg.leaflet_spacing, cfg.leaflet_size)) do
       if g:room(it[1], it[2]) >= it[4] * 0.3 and rng:next() < dens(it[1], it[2]) then
+        it.support={parent=s,t=it.stem_t}
         leaflet_items[#leaflet_items + 1] = it
       end
     end
@@ -296,13 +303,14 @@ local function plant(spec, pt, prog)
   -- sprig and the excursion stay pen work.
   local painted = {}
   for _, s in ipairs(strands) do
-    if s.cum then painted[#painted + 1] = s else stem_batch:stem_by(s.pts, s.width) end
+    if s.cum then painted[#painted + 1] = s else stem_batch:stem_by(s.pts, s.width, s) end
   end
   local rf = Tune.compose.runners or 1
+  for _,s in ipairs(runners) do s.growth_omitted = rf <= 0 end
   if rf > 0 then
     for _, s in ipairs(runners) do
       local w = s.width
-      stem_batch:stem_by(s.pts, function(t) return w(t) * rf end)
+      stem_batch:stem_by(s.pts, function(t) return w(t) * rf end, s)
     end
   end
 
@@ -329,8 +337,19 @@ local function plant(spec, pt, prog)
   -- front has reached (clock.lua); otherwise every element paints in full.
   local clock = spec.grow and spec.grow < 1 and Clock.new(g, stems, spec.grow) or nil
   pt.clock = clock
+  local growth = spec._progression and Clock.new(g, stems, 1)
+  pt.growth_clock = growth
+  local function birth(at)
+    return at and growth:birth(at[1], at[2]) / growth.reach * 0.7 or 0.82
+  end
   local function draw(f, dur, delay)
-    if clock then clock:draw(pt, f, ctx.pos[f], dur, delay) else f(pt) end
+    if clock then clock:draw(pt, f, ctx.pos[f], dur, delay)
+    elseif growth then Progression.part(pt, pt.group and pt.group.tag, ctx.pos[f], birth(ctx.pos[f]), dur,
+      function() f(pt) end, nil, ctx.support[f])
+    else
+      f(pt)
+      if pt.gilt_pending then require("flora.orn_raster").flush(pt) end
+    end
   end
   layer("back", function()
     for _, f in ipairs(back) do draw(f, 0.1); paid(1) end
@@ -342,6 +361,12 @@ local function plant(spec, pt, prog)
     for _, s in ipairs(painted) do
       if clock then
         clock:stem(pt, s, Tune.plant.root_width, function(p) Brush.stem(p, sr, s.pts, s.width, Tune.plant) end)
+      elseif growth then
+        local off = growth.offset[s] / growth.reach * 0.7
+        local dur = G.length(s.pts) / growth.reach * 0.7
+        Progression.part(pt, "stem", s.pts[1], off, dur,
+          function() Brush.stem(pt, sr, s.pts, s.width, Tune.plant) end, s.pts,
+          {token=s,parent=s.growth_parent,t=s.growth_t})
       else
         Brush.stem(pt, sr, s.pts, s.width, Tune.plant)
       end
@@ -356,6 +381,12 @@ local function plant(spec, pt, prog)
   layer("leaflets", function()
     if clock then
       clock:leaflets(pt, rng:fork("leaflets"), leaflet_items, L.leaflets)
+    elseif growth then
+      local lr = rng:fork("leaflets")
+      for _,it in ipairs(leaflet_items) do
+        Progression.part(pt, "leaflet", it, birth(it), 0.05,
+          function() L.leaflets(pt, lr, {it}) end, nil, it.support)
+      end
     else
       L.leaflets(pt, rng:fork("leaflets"), leaflet_items)
     end
@@ -365,12 +396,18 @@ local function plant(spec, pt, prog)
     for _, f in ipairs(leaves) do draw(f, 0.06); paid(1) end
   end)
   local hero_draw = function(p) F.hero(p, rng:fork("hero"), hero) end
+  local function paint_hero()
+    if clock then clock:draw(pt, hero_draw, hero, 0.15)
+    elseif growth then
+      local cap = strands[1].pts[#strands[1].pts]
+      Progression.part(pt, "hero", cap, birth(cap), 0.15, function() hero_draw(pt) end, nil,
+        {parent=strands[1],t=1})
+    else hero_draw(pt) end
+    paid(BATCH.hero)
+  end
   layer("blooms", function()
     for _, f in ipairs(blooms) do draw(f, 0.1, 10); paid(BLOOM) end
-    if not spec.header then
-      if clock then clock:draw(pt, hero_draw, hero, 0.15) else hero_draw(pt) end
-      paid(BATCH.hero)
-    end
+    if not spec.header then paint_hero() end
   end)
   if ctx.visitors then
     layer("visitors", function()
@@ -379,20 +416,26 @@ local function plant(spec, pt, prog)
   end
   layer("ornaments", function()
     for _, f in ipairs(orn) do draw(f, 0.15); paid(1) end
-    O.sparkles(pt, clock and clock:sparkles(sparkles) or sparkles)
-    if not spec.bare then
-      draw(function(p) O.compass(p, midfoot[1], midfoot[2], 7, { hair = 0.9, ring = 0 }) end, 0.15)
+    if growth then
+      pt.progression:alternate(pt, function()
+        for _,it in ipairs(sparkles) do
+          Progression.part(pt, "sparkle", it, 0.84, 0.15, function() O.sparkles(pt, {it}) end)
+        end
+      end, function()
+        O.sparkles(pt, sparkles)
+        if pt.gilt_pending then require("flora.orn_raster").flush(pt) end
+      end)
+    else
+      O.sparkles(pt, clock and clock:sparkles(sparkles) or sparkles)
+      if pt.gilt_pending then require("flora.orn_raster").flush(pt) end
     end
+    if not spec.bare then draw(function(p) O.compass(p, midfoot[1], midfoot[2], 7, { hair = 0.9, ring = 0 }) end, 0.15) end
   end)
   -- With a header mode set, the hero stays above the ornaments around it.
-  if spec.header then
-    layer("hero", function()
-      if clock then clock:draw(pt, hero_draw, hero, 0.15) else hero_draw(pt) end
-      paid(BATCH.hero)
-    end)
-  end
+  if spec.header then layer("hero", paint_hero) end
   paid(BATCH.finish)
   pt.clock = nil
+  pt.growth_clock = nil
   pt.coverage = g:coverage()
   pt.panel = panel
   pt.ghost = ghost
@@ -450,6 +493,7 @@ function C.frames(spec)
   local pt = Paint.new({ backend = spec.backend or os.getenv("FLORA_BACKEND"), gilt = spec.gilt, backdrop = Color.backdrop(spec.backdrop) })
   pt.probe = spec.probe
   pt.gilt_dpi, pt.gilt_env, pt.gilt_look = spec.gilt_dpi, spec.gilt_env, spec.gilt_look
+  Progression.attach(pt, spec)
   local clip = header_clip(pt, spec)
   if #frames == 1 and not frames[1].fn then
     plant(spec, pt, prog)
@@ -461,7 +505,7 @@ function C.frames(spec)
   -- What a layout paints under its plants (the scrollwork's band).
   if frames.before then
     pt:begin_group("under")
-    frames.before(pt)
+    Progression.part(pt, "under", {spec.width/2, spec.height/2}, 0, 0.8, function() frames.before(pt) end)
     pt:end_group()
   end
   -- The plants share the page's progress equally; title furniture, when
@@ -497,14 +541,15 @@ function C.frames(spec)
   -- clip in body mode, so the crest cannot sit in the header.
   if titled then
     pt:begin_group("title")
-    Title.paint(pt, spec, frames.title)
+    Progression.part(pt, "title", {spec.width / 2, spec.height}, 0.82, 0.18,
+      function() Title.paint(pt, spec, frames.title) end)
     pt:end_group()
   end
   -- What a layout paints over its plants (the bouquet's ribbons, the
   -- scrollwork's head and foot).
   if frames.after then
     pt:begin_group("over")
-    frames.after(pt)
+    Progression.part(pt, "over", {spec.width/2, spec.height/2}, 0.82, 0.18, function() frames.after(pt) end)
     pt:end_group()
   end
   prog:at(1)

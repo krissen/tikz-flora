@@ -32,7 +32,7 @@ function M.encode(pt, width, height, level)
   local res = Paint.resources()
   -- Objects: 1 catalog, 2 page tree, 3 page, 4 content, 5.. patterns.
   local objects = {}
-  local gs, pats = {}, {}
+  local gs, pats, forms = {}, {}, {}
   for _, g in ipairs(res.gs) do gs[#gs + 1] = string.format("/%s %s", g[1], g[2]) end
   for i, p in ipairs(res.patterns) do
     objects[4 + i] = p[2]
@@ -46,6 +46,19 @@ function M.encode(pt, width, height, level)
     objects[n + 1] = stream(head .. " /ColorSpace /DeviceGray", im.alpha, level)
     objects[n + 2] = stream(head .. string.format(" /ColorSpace /DeviceRGB /SMask %d 0 R", n + 1), im.rgb, level)
     xobj[#xobj + 1] = string.format("/%s %d 0 R", x[1], n + 2)
+  end
+  -- Semantic growth Forms can refer to the raster ornament images above.
+  -- Rebuild references here because standalone object numbers differ from
+  -- LuaTeX's document-local numbers.
+  if #(pt.xobjects or {}) > 0 then
+    local form_resources=5+#res.patterns+2*#(res.xobjects or {})
+    objects[form_resources]=string.format("<< /ExtGState << %s >> /Pattern << %s >> /XObject << %s >> >>",
+      table.concat(gs," "),table.concat(pats," "),table.concat(xobj," "))
+    for i,f in ipairs(pt.xobjects) do
+      local id=form_resources+i
+      objects[id]=stream(string.format("/Type /XObject /Subtype /Form /BBox %s /Resources %d 0 R",f.bbox,form_resources),f.body,level)
+      xobj[#xobj+1]=string.format("/%s %d 0 R",f.name,id)
+    end
   end
   local content = pt:body()
   objects[1] = "<< /Type /Catalog /Pages 2 0 R >>"
