@@ -119,10 +119,17 @@ try {
       window.Worker = class extends W {
         constructor(url, o) {
           super(url, o);
-          this.slow = String(url).includes("margins.worker") && ++made === 2;
+          this.margin = String(url).includes("margins.worker");
+          this.slow = this.margin && ++made === 2;
         }
+        // The delay counts from the first reply, so that how long the
+        // slow worker took on its own doesn't add to it.
         set onmessage(f) {
-          super.onmessage = this.slow ? (e) => setTimeout(() => f(e), 700) : f;
+          super.onmessage = !this.margin ? f : (e) => {
+            window.__firstReply ??= performance.now();
+            const wait = this.slow ? window.__firstReply + 700 - performance.now() : 0;
+            if (wait > 0) setTimeout(() => f(e), wait); else f(e);
+          };
         }
       };
       window.__start = {};
