@@ -1,19 +1,7 @@
 -- Document settings from \florasetup and \florathispage: a key=value list,
 -- parsed and checked here so mistakes are reported with the key's name.
---
---   layout    left, right, centered, split, title or surround (frames.lua)
---   seed      a number, or random
---   mix       weights per kind of growth, e.g. mix={lily=2, umbel=0}
---             (mix.lua lists the kinds)
---   density   how full the border grows (mix.density); below 1 is airier
---   visitors  the weight of every visitor at once (bee, butterfly, bird,
---             snail); mix={bee=0} after it still turns one off
---   palette   what paints each part, e.g. palette={leaves=green,
---             hero=kon-peki}: look, an ink group, one ink (inks.lua), or
---             random for one ink picked per page
---   spin      a number that re-picks the random inks; the shapes stay
---   ornaments weights per ornament kind, e.g. ornaments={moon=2, night=0}
---             (ornaments.lua registers the kinds; each slot picks one)
+-- M.about describes every key; the guide's table of settings is made
+-- from it (catalog.lua).
 
 local M = {}
 
@@ -22,6 +10,35 @@ local Tune = require("flora.tune")
 local Inks = require("flora.inks")
 local Mix = require("flora.mix")
 local Orn = require("flora.ornaments")
+local Look = require("flora.gilt_look")
+
+-- Every key, in the order the guide lists them: {key, values, effect}.
+M.about = {
+  { "layout", "left, right, centered, split, title, surround, flank, wreath, bouquet, scrollwork",
+    "Where the flora grows (see Layouts)." },
+  { "header", "body, margin", "Keep flora below the measured frame title, or grow in the margins beside it." },
+  { "tune", "{section={key=value, ...}, ...}", "Override engine tuning values for this document or page." },
+  { "seed", "a number, or random", "Which garden. Each page varies it, so pages differ." },
+  { "mix", "{kind=weight, ...}, weights 0 to 10",
+    "How much of each kind of growth, and how often each leaf shape and bloom style is drawn: 1 the usual amount, 0 none, 2 about twice as much." },
+  { "density", "0 to 10", "How full the border grows: fuller above 1, airier below." },
+  { "visitors", "0 to 10", "The weight of every visitor at once: bees, butterflies, birds and snails. mix={bee=0} after it still turns one off." },
+  { "palette", "{part=ink, ...}",
+    "What paints each part: look (the original blue gradients), an ink group, one iroshizuku ink by name, or random for one ink picked per page." },
+  { "colourway", "original, spring, summer, autumn (or fall), winter, ember, plum, rose",
+    "A whole palette at once. A palette={...} after it changes single parts." },
+  { "spin", "a whole number", "Picks the random inks again. The shapes stay where they are." },
+  { "ornaments", "{kind=weight, ...}, weights 0 to 10",
+    "How often each ornament kind is picked for its place on the page, against the other kinds for that place: 0 never." },
+  { "gilt", "raster, vector", "How ornament gold is painted: raster, gold computed per pixel; or vector, gold in relief built of flat strips." },
+  { "giltdpi", "50 to 1200", "Pixels per inch of raster gilt." },
+  { "giltenv", "studio, mirror", "Which look raster gilt takes (see Gilt)." },
+  { "giltlook", "{key=value, ...}", "Changes keys of that look, such as giltlook={horizon=0.1, grain=0} (see Gilt)." },
+  { "backdrop", "light, dark, or a dark colour as #rrggbb",
+    "What the flora is painted over: light, white paper (the default); dark, a near-black page; or that colour. On a dark backdrop every ink is painted light, as if lit, and gold stays gold." },
+  { "cache", "true, false",
+    "true (the default) keeps each page's flora in a folder <jobname>-flora beside the PDF, so a later compile reuses it; false grows every page afresh." },
+}
 
 -- Key name -> function(value string) returning the parsed value, or nil
 -- and a message.
@@ -31,9 +48,17 @@ function M.define(name, parse)
   keys[name] = parse
 end
 
+-- The names of every defined key, sorted.
+function M.defined()
+  local out = {}
+  for k in pairs(keys) do out[#out + 1] = k end
+  table.sort(out)
+  return out
+end
+
 M.define("layout", function(v)
   if Frames.layouts[v] then return v end
-  return nil, "layout must be one of left, right, centered, split, title, surround"
+  return nil, "layout must be one of " .. table.concat(Frames.order, ", ")
 end)
 
 M.define("header", function(v)
@@ -97,6 +122,44 @@ M.define("ornaments", function(v)
   return t
 end)
 
+M.define("cache", function(v)
+  if v == "true" then return true end
+  if v == "false" then return false end
+  return nil, "cache must be true or false"
+end)
+
+M.define("backdrop", function(v)
+  local rgb, msg = require("flora.color").backdrop(v)
+  if rgb ~= nil or v == "light" then return v:lower() end
+  return nil, msg
+end)
+
+M.define("gilt", function(v)
+  if v == "vector" or v == "raster" then return v end
+  return nil, "gilt must be vector or raster"
+end)
+
+M.define("giltdpi", function(v)
+  local n = tonumber(v)
+  if n and n >= 50 and n <= 1200 then return n end
+  return nil, "giltdpi must be a number from 50 to 1200"
+end)
+
+M.define("giltenv", function(v)
+  if v == "studio" or v == "mirror" then return v end
+  return nil, "giltenv must be studio or mirror"
+end)
+
+M.define("giltlook", function(v)
+  local t = {}
+  for _, kv in ipairs(M.parse_list(v)) do
+    local n, msg = Look.check(kv[1], kv[2])
+    if not n then return nil, msg end
+    t[kv[1]] = n
+  end
+  return t
+end)
+
 M.define("palette", function(v)
   local t = {}
   for _, kv in ipairs(M.parse_list(v)) do
@@ -109,6 +172,15 @@ M.define("palette", function(v)
     end
     t[part] = ink
   end
+  return t
+end)
+
+M.define("colourway", function(v)
+  v = Inks.colourway_alias[v] or v
+  local src = v == "original" and Tune.color.palette or Inks.colourways[v]
+  if not src then return nil, "colourway must be one of " .. table.concat(Inks.colourway_order, ", ") end
+  local t = {}
+  for part in pairs(Tune.color.palette) do t[part] = src[part] or Tune.color.palette[part] end
   return t
 end)
 
@@ -297,6 +369,8 @@ function M.parse(s)
     if val == nil then error(string.format("%s: %s (got \"%s\")", k, msg, v)) end
     if k == "density" then
       t.mix = M.merge({ mix = t.mix }, { mix = { density = val } }).mix
+    elseif k == "colourway" then
+      t.palette = M.merge({ palette = t.palette }, { palette = val }).palette
     elseif k == "visitors" then
       local m = {}
       for _, name in ipairs(Mix.visitors) do m[name] = val end

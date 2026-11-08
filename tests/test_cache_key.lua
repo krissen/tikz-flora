@@ -1,0 +1,12 @@
+local H=dofile('tests/helper.lua')
+md5=md5 or require('md5')
+lfs=lfs or require('lfs')
+local Cache=assert(loadfile('lua/flora/cache.lua'))('flora.cache','./lua/flora/cache.lua')
+local Tune=require('flora.tune')
+local spec={width=400,height=300,seed=7,text={x0=40,y0=30,x1=360,y1=270}}
+local key=Cache.key(spec,{})
+H.check(type(key)=='string' and #key==32,'cache cannot hash tuning with private helpers')
+H.check(Cache.key(spec,{})==key,'cache key is unstable')
+local other=Tune._with({compose={leaves=Tune.compose.leaves+1}},function() return Cache.key(spec,{}) end)
+H.check(other~=key and Cache.key(spec,{})==key,'cache ignored or retained temporary tuning')
+H.done('cache_key')

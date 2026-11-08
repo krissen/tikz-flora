@@ -38,6 +38,46 @@ function G.mix(p, q, t)
   return { p[1] + (q[1] - p[1]) * t, p[2] + (q[2] - p[2]) * t }
 end
 
+-- Arc fraction at a sampled vertex (growth attachment metadata).
+function G.fraction(pts, index)
+  local arc,total=0,0
+  for i=2,#pts do
+    total=total+G.dist(pts[i-1],pts[i])
+    if i<=index then arc=total end
+  end
+  return total>0 and arc/total or 0
+end
+
+-- Preserve an attachment's sampled segment when a nonlinear frame changes
+-- arc lengths. A crossing of the same path must not select an earlier visit.
+function G.mapped_fraction(pts,mapped,t)
+  local target=G.clamp(t,0,1)*G.length(pts)
+  local source_arc,page_arc,page_total=0,0,G.length(mapped)
+  for i=2,#pts do
+    local len=G.dist(pts[i-1],pts[i]); local page_len=G.dist(mapped[i-1],mapped[i])
+    if source_arc+len>=target then
+      local f=len>0 and (target-source_arc)/len or 0
+      return page_total>0 and (page_arc+page_len*f)/page_total or 0
+    end
+    source_arc=source_arc+len; page_arc=page_arc+page_len
+  end
+  return 1
+end
+
+-- Closest arc fraction on a known supporting path (not parent discovery).
+function G.nearest_fraction(pts,point)
+  local arc,total,best,at=0,G.length(pts),math.huge,0
+  for i=2,#pts do
+    local a,b=pts[i-1],pts[i]; local dx,dy=b[1]-a[1],b[2]-a[2]
+    local len2=dx*dx+dy*dy
+    local t=len2>0 and G.clamp(((point[1]-a[1])*dx+(point[2]-a[2])*dy)/len2,0,1) or 0
+    local d=G.dist(point,{a[1]+t*dx,a[2]+t*dy})
+    if d<best then best,at=d,arc+math.sqrt(len2)*t end
+    arc=arc+math.sqrt(len2)
+  end
+  return total>0 and at/total or 0,best
+end
+
 -- Rotate by `ang`, scale by `s` (or sx, sy), then translate to (ox, oy).
 function G.transform(pts, ox, oy, ang, sx, sy)
   sx = sx or 1
@@ -265,23 +305,48 @@ function G.at(pts, t)
 end
 
 -- Resample a polyline to `n` points evenly spaced by arclength.
+-- Each point is exactly G.at(pts, i / (n - 1)); the segment lengths are
+-- measured once rather than once per point.
 function G.resample(pts, n)
+  local m = #pts
+  local ds, total = {}, 0
+  for i = 2, m do
+    local d = G.dist(pts[i - 1], pts[i])
+    ds[i] = d
+    total = total + d
+  end
   local out = {}
   for i = 0, n - 1 do
-    out[#out + 1] = (G.at(pts, i / (n - 1)))
+    local target = G.clamp(i / (n - 1), 0, 1) * total
+    local p = pts[m]
+    for k = 2, m do
+      local d = ds[k]
+      if target <= d or k == m then
+        p = G.mix(pts[k - 1], pts[k], d > 0 and G.clamp(target / d, 0, 1) or 0)
+        break
+      end
+      target = target - d
+    end
+    out[#out + 1] = p
   end
   return out
 end
 
 -- Closed outline around a centerline whose half-width at fraction t is w(t).
 -- Ends are capped with a short round so tapered strokes keep a soft tip.
+-- Where a point's neighbours coincide (closer than 1e-9 pt) the heading
+-- carries over from the point before (0 at the start), so a line of one
+-- repeated point still gets a fixed normal rather than one rounding noise
+-- picks.
 function G.ribbon(pts, w)
   local n = #pts
   local left, right = {}, {}
+  local heading = 0
   for i = 1, n do
     local a = pts[math.max(i - 1, 1)]
     local b = pts[math.min(i + 1, n)]
-    local ang = G.angle(a, b) + pi / 2
+    if math.abs(b[1] - a[1]) + math.abs(b[2] - a[2]) > 1e-9 then heading = G.angle(a, b) end
+    local ang = heading + pi / 2
     local hw = w((i - 1) / (n - 1))
     left[i] = G.polar(pts[i], ang, hw)
     right[i] = G.polar(pts[i], ang, -hw)

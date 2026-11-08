@@ -126,18 +126,18 @@ end
 -- A stemlet at p heading ang, about `len` long: a short stalk ending in two
 -- or three leaflets. Adds its stalk to `ctx.sprays` and its leaflets to
 -- `ctx.leaflets`.
-local function stemlet(g, rng, ctx, p, ang, len, side)
+local function stemlet(g, rng, ctx, p, ang, len, side, parent, t)
   local stalk = len * rng:range(0.35, 0.5)
   local curve = G.curve(p, ang, stalk, side * rng:range(0.2, 0.5), 0, 6)
   if not open_path(g, curve) then return false end
   local tip = curve[#curve]
   local ta = G.angle(curve[#curve - 1], tip)
   local size = min((len - stalk) * 0.85, 11)
-  ctx.sprays:line(curve, 1)
+  local token=ctx.sprays:line(curve, 1, {parent=parent,t=t})
   local spread = rng:range(0.45, 0.7)
   local fan = rng:chance(0.5) and { -spread, spread } or { -spread, 0, spread }
   for _, da in ipairs(fan) do
-    ctx.leaflets[#ctx.leaflets + 1] = { tip[1], tip[2], ta + da, size * (da == 0 and 1 or 0.8) }
+    ctx.leaflets[#ctx.leaflets + 1] = { tip[1], tip[2], ta + da, size * (da == 0 and 1 or 0.8), support={parent=token,t=1} }
   end
   g:disc(tip[1], tip[2], size * 0.6, DISC_K)
   return true
@@ -169,14 +169,15 @@ function Grow.node_leaves(g, rng, strands, ctx)
       if paint then
         ctx.leaves[#ctx.leaves + 1] = paint
         if ctx.pos then ctx.pos[paint] = p end
+        if ctx.support then ctx.support[paint]={parent=st,t=d/total} end
       else
         local q = G.polar(p, ang, 7)
         local room = g:room(q[1], q[2])
         if room >= 7 and rng:chance(0.45 * (cfg.stemlets or 1)) then
-          stemlet(g, rng, ctx, p, ang, min(room * 2.2, 26), side)
+          stemlet(g, rng, ctx, p, ang, min(room * 2.2, 26), side, st, d/total)
         elseif room >= 4 then
           local size = min(room * 1.6, cfg.leaflet_size * Dist.sample(rng, Tune.sizes.leaflet))
-          ctx.leaflets[#ctx.leaflets + 1] = { p[1], p[2], ang, size }
+          ctx.leaflets[#ctx.leaflets + 1] = { p[1], p[2], ang, size, support={parent=st,t=d/total} }
           local c = G.polar(p, ang, size * 0.5)
           g:disc(c[1], c[2], size * 0.3, DISC_K)
         end
@@ -199,12 +200,13 @@ function Grow.tips(g, rng, strands, ctx)
       if paint then
         ctx.leaves[#ctx.leaves + 1] = paint
         if ctx.pos then ctx.pos[paint] = p end
+        if ctx.support then ctx.support[paint]={parent=st,t=1} end
       else
         local tmp = S.batch()
-        S.cyme(tmp, r, p, a, r:range(14, 22), r:chance(0.5) and 1 or -1)
+        S.cyme(tmp, r, p, a, r:range(14, 22), r:chance(0.5) and 1 or -1, {parent=st,t=1})
         if not Fill.fits(g, tmp) then
           tmp = S.batch()
-          tmp:bud(p[1], p[2], a, 4)
+          tmp:bud(p[1], p[2], a, 4, {parent=st,t=1})
         end
         if Fill.fits(g, tmp) then
           ctx.sprays:merge(tmp)
@@ -223,21 +225,33 @@ local function reach_map(g)
   local m = { pts = {}, sd = {}, keys = {} }
   function m.add(stem, step)
     local pts = stem.pts
+    local arc={0}
+    for i=2,#pts do arc[i]=arc[i-1]+G.dist(pts[i-1],pts[i]) end
+    local total=math.max(arc[#pts],1e-9)
     local c, nx, ny = g.c, g.nx, g.ny
+    local sd, keys, sqrt = m.sd, m.keys, math.sqrt
+    local nk = #keys
     for i = 2, #pts - 1, step or 3 do
       local p = pts[i]
-      m.pts[#m.pts + 1] = { p[1], p[2], G.angle(pts[i - 1], pts[i + 1]), stem, (i - 1) / (#pts - 1) }
-      local i0, i1 = max(0, floor((p[1] - REACH) / c)), min(nx - 1, floor((p[1] + REACH) / c))
-      local j0, j1 = max(0, floor((p[2] - REACH) / c)), min(ny - 1, floor((p[2] + REACH) / c))
+      local px, py = p[1], p[2]
+      m.pts[#m.pts + 1] = { px, py, G.angle(pts[i - 1], pts[i + 1]), stem, (i - 1) / (#pts - 1), arc[i]/total }
+      local i0, i1 = max(0, floor((px - REACH) / c)), min(nx - 1, floor((px + REACH) / c))
+      local j0, j1 = max(0, floor((py - REACH) / c)), min(ny - 1, floor((py + REACH) / c))
       for j = j0, j1 do
-        local dy = (j + 0.5) * c - p[2]
+        local dy = (j + 0.5) * c - py
+        local row = j * nx
         for ii = i0, i1 do
-          local dx = (ii + 0.5) * c - p[1]
-          local k = j * nx + ii
-          local d = math.sqrt(dx * dx + dy * dy)
-          local old = m.sd[k]
-          if not old then m.keys[#m.keys + 1] = k end
-          if not old or d < old then m.sd[k] = d end
+          local dx = (ii + 0.5) * c - px
+          local k = row + ii
+          local d = sqrt(dx * dx + dy * dy)
+          local old = sd[k]
+          if not old then
+            nk = nk + 1
+            keys[nk] = k
+            sd[k] = d
+          elseif d < old then
+            sd[k] = d
+          end
         end
       end
     end
@@ -260,10 +274,10 @@ local function motifs(mw, cfg, rng, mix)
   local kr = rng:range(cfg.features[1], cfg.features[2])
   local all = {
     { kind = "bloom", w = 3, cap = cfg.small_blooms, rmin = 9, rmax = mw * 0.13 * kr },
-    { kind = "soft", w = 1.5, cap = 2, rmin = 10, rmax = mw * 0.12 * kr },
-    { kind = "lily", w = 1.2, cap = 1, rmin = 16, rmax = mw * 0.21 * kr },
+    { kind = "soft", w = 1.5, cap = Mix.motif_cap(2, cfg), rmin = 10, rmax = mw * 0.12 * kr },
+    { kind = "lily", w = 1.2, cap = Mix.motif_cap(1, cfg), rmin = 16, rmax = mw * 0.21 * kr },
     { kind = "ghost", w = 1, cap = 1, rmin = 16, rmax = mw * 0.22 * kr, below = 0.4 },
-    { kind = "umbel", w = 1.6, cap = 3, rmin = 12, rmax = mw * 0.19 * kr },
+    { kind = "umbel", w = 1.6, cap = Mix.motif_cap(3, cfg), rmin = 12, rmax = mw * 0.19 * kr },
     { kind = "cyme", w = 3, rmin = 7, rmax = 22, spray = true },
     { kind = "gyps", w = 4, rmin = 5, rmax = 30, spray = true },
   }
@@ -295,8 +309,16 @@ function Grow.holes(g, rng, ctx)
   local kinds = motifs(ctx.mw, cfg, rng:fork("motifs"), ctx.mix)
   local counts, sprays, rejected = ctx.counts or {}, 0, {}
   local f, nx, c = g.f, g.nx, g.c
-  local function floor_at(x, y)
-    return cfg.hole_min * (1 + 1.4 * (1 - ctx.dens(x, y)))
+  -- The density field is fixed for the page, so each cell's floor is
+  -- worked out once, the first time the scan below asks for it.
+  local floors = {}
+  local function floor_at(k, x, y)
+    local v = floors[k]
+    if not v then
+      v = cfg.hole_min * (1 + 1.4 * (1 - ctx.dens(x, y)))
+      floors[k] = v
+    end
+    return v
   end
   for iter = 1, 400 do
     local best, bi = -1, nil
@@ -307,7 +329,7 @@ function Grow.holes(g, rng, ctx)
         local v = fk * jitter(k, iter)
         if v > best then
           local x, y = (k % nx + 0.5) * c, (k // nx + 0.5) * c
-          if fk >= floor_at(x, y) then best, bi = v, k end
+          if fk >= floor_at(k, x, y) then best, bi = v, k end
         end
       end
     end
@@ -344,7 +366,7 @@ function Grow.holes(g, rng, ctx)
           local stalk = Fill.grow(tmp, fr, pick.kind, s, s[3], sd, x, y, r, t[1], t[2])
           if Fill.fits(g, tmp) then
             ctx.sprays:merge(tmp)
-            reach.add({ pts = stalk }, 2)
+            reach.add({ pts = stalk, growth_token=tmp.root }, 2)
             g:disc(x, y, r * t[1], DISC_K)
             placed = true
             break
@@ -355,8 +377,9 @@ function Grow.holes(g, rng, ctx)
         local stalk = bloom_stalk(g, s, sd, cpt, r)
         if stalk then
           if s[4].cum then Plant.fork(s[4], s[5], 0.7) end
-          ctx.stem_batch:stem(stalk, 0.7, 0.4)
-          reach.add({ pts = stalk }, 2)
+          local token=ctx.stem_batch:stem(stalk, 0.7, 0.4,
+            {parent=s[4].growth_token or s[4],t=s[6] or s[5]})
+          reach.add({ pts = stalk, growth_token=token }, 2)
           g:disc(x, y, r, DISC_K)
           placed = true
           if pick.kind == "lily" then
@@ -364,16 +387,20 @@ function Grow.holes(g, rng, ctx)
             ctx.blooms[#ctx.blooms + 1] = function(pt)
               F.tilted(pt, fr, x, y, r, facing, 1.0, { kind = "lance", petals = 6, width = 0.36 })
             end
-            if ctx.pos then ctx.pos[ctx.blooms[#ctx.blooms]] = { x, y } end
+            if ctx.pos then ctx.pos[ctx.blooms[#ctx.blooms]] = ctx.progression and stalk[#stalk] or { x, y } end
           elseif pick.kind == "ghost" then
             ctx.back[#ctx.back + 1] = function(pt)
               F.bloom(pt, fr, x, y, r, { kind = "ghost", look = "ghost", width = 0.55 })
             end
-            if ctx.pos then ctx.pos[ctx.back[#ctx.back]] = { x, y } end
+            if ctx.pos then ctx.pos[ctx.back[#ctx.back]] = ctx.progression and stalk[#stalk] or { x, y } end
           else
             local style = pick.kind == "soft" and "soft" or F.pick_style(fr, { "fan", "round" })
             ctx.blooms[#ctx.blooms + 1] = function(pt) F.bloom(pt, fr, x, y, r * 0.8, { style = style }) end
-            if ctx.pos then ctx.pos[ctx.blooms[#ctx.blooms]] = { x, y } end
+            if ctx.pos then ctx.pos[ctx.blooms[#ctx.blooms]] = ctx.progression and stalk[#stalk] or { x, y } end
+          end
+          if ctx.support then
+            local fn=pick.kind=="ghost" and ctx.back[#ctx.back] or ctx.blooms[#ctx.blooms]
+            ctx.support[fn]={parent=token,t=1}
           end
         end
       end
@@ -442,8 +469,8 @@ function Grow.details(g, rng, ctx)
           if g:room(mid[1], mid[2]) >= 3 and g:room(tip[1], tip[2]) >= 5 then
             local tip_a = G.angle(curve[n - 1], tip)
             local size = cfg.leaflet_size * Dist.sample(rng, Tune.sizes.leaflet)
-            ctx.sprays:line(curve, 2)
-            ctx.leaflets[#ctx.leaflets + 1] = { tip[1], tip[2], tip_a, min(size, g:room(tip[1], tip[2]) * 1.8) }
+            local token=ctx.sprays:line(curve, 2, {parent=st,t=G.fraction(pts,i)})
+            ctx.leaflets[#ctx.leaflets + 1] = { tip[1], tip[2], tip_a, min(size, g:room(tip[1], tip[2]) * 1.8), support={parent=token,t=1} }
             g:disc(mid[1], mid[2], 3, 1)
             g:disc(tip[1], tip[2], 4, 1)
           end

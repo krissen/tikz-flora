@@ -108,15 +108,22 @@ local function guide(rng, m, hero, W, gest, cfg, avoid)
   local rise_y = footy + R
   local pts = {}
   local period = rng:range(120, 170)
-  local x = W * cfg.root
-  while x > xr + R + 12 do
-    local ramp = G.smoothstep(xr + R, xr + R + 60, x)
-    pts[#pts + 1] = { x, footy + 4 * ramp * math.sin(1 + 2 * pi * x / period) }
-    x = x - 20
-  end
-  for i = 0, 10 do
-    local th = -pi / 2 - (pi / 2) * i / 10
-    pts[#pts + 1] = { xr + R + R * math.cos(th), rise_y + R * math.sin(th) }
+  if m.bare then
+    -- No foot: the stem rises from the root on its line, or from the
+    -- frame's outer edge when it is gathered there.
+    rise_y = footy
+    pts[1] = { m.gather and 0 or xr, footy }
+  else
+    local x = W * cfg.root
+    while x > xr + R + 12 do
+      local ramp = G.smoothstep(xr + R, xr + R + 60, x)
+      pts[#pts + 1] = { x, footy + 4 * ramp * math.sin(1 + 2 * pi * x / period) }
+      x = x - 20
+    end
+    for i = 0, 10 do
+      local th = -pi / 2 - (pi / 2) * i / 10
+      pts[#pts + 1] = { xr + R + R * math.cos(th), rise_y + R * math.sin(th) }
+    end
   end
   local sway_len = rng:range(300, 400)
   local amp = mw * rng:range(0.015, 0.03)
@@ -128,6 +135,7 @@ local function guide(rng, m, hero, W, gest, cfg, avoid)
     local sway = math.sin(2 * pi * (y - rise_y) / sway_len)
     local gx = xr + ramp * (amp * sway + gest.bow(y, 0))
     gx = gx + (cap[1] - gx) * G.smoothstep(pull_from, cap[2], y)
+    if m.gather then gx = gx * G.smoothstep(rise_y - m.gather * 0.2, rise_y + m.gather, y) end
     pts[#pts + 1] = clear_of(avoid, { gx, y }, 9)
     y = y + 12
   end
@@ -192,6 +200,7 @@ function P.crown(rng, main, m, hero)
       local st = P.stem(pts, w * 0.7, 0.35)
       st.min = 0.3
       st.kind = "crown"
+      st.growth_parent,st.growth_t=main,s/main.len
       st.tip = { pts[#pts], G.angle(pts[#pts - 1], pts[#pts]) }
       out[#out + 1] = st
     end
@@ -274,6 +283,7 @@ function P.long_shoots(rng, main, m, hero, gest, avoid)
         local st = P.stem(pts, w * cfg.fork_ratio, 0.35)
         st.min = 0.3
         st.kind = "long"
+        st.growth_parent,st.growth_t=main,s0/main.len
         st.tip = { pts[#pts], a }
         out[#out + 1] = st
       end
@@ -319,6 +329,7 @@ function P.foot_shoots(rng, main, m, corner, avoid)
       local st = P.stem(pts, math.min(1.1, w * 0.4), 0.3)
       st.min = 0.3
       st.kind = "foot"
+      st.growth_parent,st.growth_t=main,s0/main.len
       st.tip = { pts[#pts], a }
       out[#out + 1] = st
     end

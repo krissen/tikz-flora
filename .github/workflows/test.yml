@@ -33,8 +33,9 @@ jobs:
         # visitor 26 and the fast set.
         tests:
           - mix scene_ops
-          - compose ornaments
-          - layout clock visitor fast
+          - compose ornaments progression
+          - layout clock visitor fast page_cache cache_key
+          - raster relief gilt_look backdrop catalog garden titles
     steps:
       - uses: actions/checkout@v4
       - name: texlua
@@ -45,3 +46,14 @@ jobs:
         run: |
           set -e
           for t in ${{ matrix.tests }}; do tools/test.sh $t; done
+
+  progression-raster:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Raster dependencies
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq --no-install-recommends texlive-binaries poppler-utils python3-pil >/dev/null
+      - name: Progression raster integration
+        run: /usr/bin/python3 tests/test_progression_raster.py
