@@ -305,6 +305,7 @@ local function plant(spec, pt, prog)
     if s.cum then painted[#painted + 1] = s else stem_batch:stem_by(s.pts, s.width, s) end
   end
   local rf = Tune.compose.runners or 1
+  for _,s in ipairs(runners) do s.growth_omitted = rf <= 0 end
   if rf > 0 then
     for _, s in ipairs(runners) do
       local w = s.width

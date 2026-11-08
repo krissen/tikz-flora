@@ -102,4 +102,20 @@ H.check(#P.stages(actual,4)==4,'seed3 overlay stages rejected')
 Paint.reset_resources()
 local ordinary=Compose.page(fixture)
 H.check(ordinary:body()==actual.final:body(),'support metadata changed canonical endpoint')
+-- Disabled runners retain ordinary composition's decorations, but cannot
+-- require a painted runner. Exercise ordinary and curved/bare layouts.
+for _,frame in ipairs({'left','wreath'}) do
+  for _,rf in ipairs({0,1}) do
+    local spec=H.page(3); spec.layout=frame; spec.tune={compose={runners=rf}}
+    Paint.reset_resources()
+    local grown=P.plan(spec)
+    Paint.reset_resources()
+    H.check(grown.final:body()==Compose.page(spec):body(),frame..': runners changed endpoint')
+    H.check(#P.stages(grown,4)==4,frame..': runners rejected growth stages')
+    for _,p in ipairs(grown.parts) do if p.support then
+      H.check(p.birth+1e-9>=p.support.birth+p.support.duration*p.support_fraction,
+        frame..': omitted runner bypassed ancestor timing')
+    end end
+  end
+end
 H.done('support')

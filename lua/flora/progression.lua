@@ -233,11 +233,22 @@ function M.plan(spec,opts)
     assert(state[p]~=1,'cyclic growth support graph')
     state[p]=1
     if p.support_token then
-      local parent=assert(tokens[p.support_token],'growth support stem was not painted')
+      local token,t=p.support_token,p.support_source_fraction
+      -- A disabled corner runner still participates in ordinary composition:
+      -- its decorations remain, but its invisible span adds no growth wait.
+      -- Follow only explicitly omitted construction nodes to a painted ancestor.
+      local omitted={}
+      while not tokens[token] and token.growth_omitted do
+        assert(not omitted[token],'cyclic omitted growth support graph')
+        omitted[token]=true
+        t=token.growth_t or 1
+        token=assert(token.growth_parent,'omitted growth support has no parent')
+      end
+      local parent=assert(tokens[token],'growth support stem was not painted')
       assert(parent.stem,'growth support is not a stem')
       resolve(parent)
       p.support=parent
-      p.support_fraction=G.mapped_fraction(p.support_token.pts,parent.stem,p.support_source_fraction)
+      p.support_fraction=G.mapped_fraction(token.pts,parent.stem,t)
       p.birth=math.max(p.birth,parent.birth+parent.duration*p.support_fraction)
     end
     state[p]=2
