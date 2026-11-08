@@ -1,4 +1,5 @@
 local H = dofile("tests/helper.lua")
+local F = require("flora.flower")
 local Compose = require("flora.compose")
 local Paint = require("flora.paint")
 local Frames = require("flora.frames")
@@ -84,17 +85,35 @@ do
   H.check(worst < 1e-6, string.format("right is not left mirrored (off by %.3g pt)", worst))
 end
 
--- No layout paints over text.
-for _, lay in ipairs({ "right", "centered", "surround", "title", "split" }) do
-  for seed = 1, 1 do
-    local spec = (lay == "right" or lay == "split") and mirrored(seed) or centred(seed)
-    if lay == "title" then
-      spec.lines = { { x0 = 170, x1 = 425, y0 = 560, y1 = 600 }, { x0 = 230, x1 = 365, y0 = 530, y1 = 545 } }
+-- No layout paints over text, with and without the top inset.
+for _, inset in ipairs({ 0, 48 }) do
+  for _, lay in ipairs({ "right", "centered", "surround", "title", "split" }) do
+    for seed = 1, 1 do
+      local spec = (lay == "right" or lay == "split") and mirrored(seed) or centred(seed)
+      if lay == "title" then
+        spec.lines = { { x0 = 170, x1 = 425, y0 = 560, y1 = 600 }, { x0 = 230, x1 = 365, y0 = 530, y1 = 545 } }
+      end
+      spec.layout, spec.page = lay, 1
+      if inset > 0 then spec.tune = { gesture = { top_inset = inset } } end
+      local where = on_text(spec, points(spec))
+      H.check(not where, string.format("%s seed %d inset %d paints on text at %s",
+        lay, seed, inset, tostring(where)))
     end
-    spec.layout, spec.page = lay, 1
-    local where = on_text(spec, points(spec))
-    H.check(not where, string.format("%s seed %d paints on text at %s", lay, seed, tostring(where)))
   end
+end
+
+-- A reserved rectangle stays empty.
+do
+  local spec = H.page(7)
+  local r = { 200, 400, 350, 500 }
+  spec.reserve = { r }
+  local inside = 0
+  spec.probe = function(x, y)
+    if x > r[1] and x < r[3] and y > r[2] and y < r[4] then inside = inside + 1 end
+  end
+  Paint.reset_resources()
+  Compose.page(spec)
+  H.check(inside == 0, string.format("flora paints %d points inside a reserved rectangle", inside))
 end
 
 -- Surround: each plant keeps to its own side. The first never enters the
@@ -152,6 +171,54 @@ do
   Compose.page(spec)
   H.check(deep > 500, string.format("only %d points grow into the clearing", deep))
   H.check(not bad, "flora in the clearing lands on text at " .. tostring(bad))
+end
+
+-- The upper crown stops below gesture.top_inset; the inset lowers its
+-- topmost painted point by the same amount.
+do
+  local top = H.page(6).height
+  local function upper_top(inset)
+    local spec = centred(6)
+    spec.layout, spec.tune = "surround", { gesture = { top_inset = inset } }
+    local label, highest = nil, 0
+    spec.on_frame = function(f) label = f.label end
+    spec.probe = function(_, y)
+      if label == "right" then highest = math.max(highest, y) end
+    end
+    Paint.reset_resources()
+    Compose.page(spec)
+    return highest
+  end
+  local plain, lowered = upper_top(0), upper_top(48)
+  H.check(plain > top - 40, string.format("upper crown starts too low without an inset: %.1f", plain))
+  H.check(lowered < top - 47.5, string.format("upper crown ignores the inset: %.1f", lowered))
+  H.check(math.abs((plain - lowered) - 48) < 2,
+    string.format("inset moves the crown by %.1f pt, not 48", plain - lowered))
+end
+
+-- gesture.header_clip clips margin-mode plants at the running head, and
+-- title furniture follows the clip.
+do
+  local spec = H.page(11)
+  spec.backend, spec.header, spec.frametitle = "pdf", "margin", true
+  spec.tune = { gesture = { header_clip = 1 } }
+  Paint.reset_resources()
+  local pt = Compose.page(spec)
+  H.check(pt.header_clip == spec.header_y, "header_clip did not record the boundary")
+  H.check(pt:body():match("^q 0%.00 0%.00 m") ~= nil,
+    "the header clip is not the first paint operation")
+
+  spec.layout = "title"
+  spec.title = { x0 = 170, x1 = 425, y0 = 530, y1 = 600 }
+  Paint.reset_resources()
+  local st = Compose.page(spec)
+  H.check(st.header_clip == spec.header_y and st.title ~= nil,
+    "the title-furniture path did not run under the header clip")
+
+  spec.tune = { gesture = { header_clip = 0 } }
+  Paint.reset_resources()
+  H.check(Compose.page(spec).header_clip == nil,
+    "header_clip clipped without the setting")
 end
 
 -- Split follows page parity: odd pages are mirrored, even ones are not.
