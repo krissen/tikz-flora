@@ -211,6 +211,23 @@ try {
     await p.close();
   }
 
+  // Normal motion also finishes the last plant at the page's foot,
+  // including a viewport tall enough that the page does not scroll.
+  for (const vh of [800, 6000]) {
+    const p = await open("", { viewport: { width: 1280, height: vh } });
+    await p.waitForFunction(() => window.__floraMargins?.state.runs.length > 0);
+    await p.evaluate(() => {
+      window.__floraMargins.tune({ slow: 90000, top: 90000, ease: 0.05 });
+      window.scrollTo(0, document.documentElement.scrollHeight);
+    });
+    await p.waitForFunction(() => {
+      const s = window.__floraMargins.state;
+      return s.runs.length > 0 && s.runs.every((r) => r.full > 0 && r.u >= r.full)
+        && s.tiles.every((t) => t.state === "done");
+    }, null, { timeout: 60000 }).catch(() => check(false, `normal motion: plants never finish at foot (viewport ${vh})`));
+    await p.close();
+  }
+
   // Under reduced motion each plant in view appears whole.
   {
     const p = await open("", { reducedMotion: "reduce" });
