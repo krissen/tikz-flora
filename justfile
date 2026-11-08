@@ -26,14 +26,9 @@ bench:
     pdfinfo build/manuscript.pdf | grep -E 'Pages|File size'
 
 # Run the Lua unit tests under texlua, and the tune.lua writer's test.
-# The list lives in tools/test.sh, shared with the pre-push hook and CI.
 test:
-    FLORA_PYTHON={{PYTHON}} tools/test.sh
-
-# The tests that finish in seconds (the pre-push hook); the full set takes
-# ~12 min and runs in CI.
-test-fast:
-    FLORA_PYTHON={{PYTHON}} tools/test.sh fast
+    for f in tests/test_*.lua; do texlua "$f" || exit 1; done
+    {{PYTHON}} -I tests/test_bake.py
 
 # The ornament gallery: every ornament kind, labelled, for three seeds
 # (tex/gallery.tex), to build/gallery.pdf and .png. ONLY limits it to some
@@ -72,7 +67,7 @@ test-dist: dist
     done
     cd build/test-dist/tikzflora && env -u TEXINPUTS -u FLORA_TUNE latexmk -quiet example > latexmk.out 2>&1 || (tail -30 example.log; exit 1)
     test "$(pdfinfo build/test-dist/tikzflora/example.pdf | awk '/^Pages/ {print $2}')" = 7
-    grep -q 'flora: coverage' build/test-dist/tikzflora/example.log
+    grep -q 'painted objects' build/test-dist/tikzflora/example.log
     # An edit, as a user makes one: latexmk must settle again (the page
     # cache's index must stop changing once the pages do).
     cd build/test-dist/tikzflora && sed -i.orig "s/a hen's egg/a goose's egg/" example.tex && ! cmp -s example.tex example.tex.orig
@@ -185,6 +180,10 @@ test-tex:
     grep -q 'measure: ok' build/measure.log && echo "measure: ok"
     lualatex -interaction=nonstopmode -halt-on-error -output-directory=build tests/letters.tex > build/letters.out || (grep -A3 '^!' build/letters.log; exit 1)
     grep -q 'letters: ok' build/letters.log && echo "letters: ok"
+    lualatex -interaction=nonstopmode -halt-on-error -output-directory=build tests/reserve-dimensions.tex > build/reserve-dimensions.out || (grep -A3 '^!' build/reserve-dimensions.log; exit 1)
+    echo "reserve-dimensions: ok"
+    lualatex -interaction=nonstopmode -halt-on-error -output-directory=build tests/inline.tex > build/inline.out || (grep -A3 '^!' build/inline.log; exit 1)
+    echo "inline: ok"
     # The package lowers LaTeX's compression level 9 to 4, and keeps a
     # lower one a document set before loading it.
     for pre in 9:4 1:1; do \

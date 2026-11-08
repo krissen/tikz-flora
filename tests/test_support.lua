@@ -97,7 +97,7 @@ for _,part in ipairs(actual.parts) do
   end
 end
 H.check(attached>1000,'seed3: regression no longer exercises dense sprays')
-H.check(math.abs(actual.area-6012.07)<.01,'support metadata changed measured painted area')
+H.check(math.abs(actual.area-6118.08)<.01,'support metadata changed measured painted area')
 H.check(#P.stages(actual,4)==4,'seed3 overlay stages rejected')
 Paint.reset_resources()
 local ordinary=Compose.page(fixture)

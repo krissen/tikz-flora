@@ -32,13 +32,15 @@ function M.draw(kind, width, height, baseline, seed, color)
 end
 function M.typeset(kind, width, height, baseline, seed, color)
   local pt, b, base = M.draw(kind, width, height, baseline, seed, color)
-  tex.sprint("\\begin{pgfpicture}")
+  -- The mark makes the measurer (measure.lua) take the box as ink, so the
+  -- flora keeps clear of the ornament's real size.
+  tex.sprint("\\hbox{\\directlua{flora.mark('ink')}\\begin{pgfpicture}")
   tex.sprint(string.format("\\pgfsetbaseline{%.5fpt}", base))
   require("flora.init").typeset(pt)
   tex.sprint("\\pgfresetboundingbox")
   tex.sprint(string.format(
     "\\pgfpathrectangle{\\pgfqpoint{%.5fpt}{%.5fpt}}{\\pgfqpoint{%.5fpt}{%.5fpt}}\\pgfusepath{use as bounding box}",
     b.x0, b.y0, b.x1 - b.x0, b.y1 - b.y0))
-  tex.sprint("\\end{pgfpicture}")
+  tex.sprint("\\end{pgfpicture}}")
 end
 return M

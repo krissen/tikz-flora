@@ -154,7 +154,7 @@ function B.stem(pt, rng, pts, wfn, cfg)
     return Color.oklch(l, k * Color.max_chroma(l, h), h)
   end
   local body = tone(L, 0.85)
-  local taper = cfg.end_taper or 0.04
+  local taper = cfg.end_taper or 0
   local function half(t)
     local k = taper > 0 and math.min(1, t / taper, (1 - t) / taper) or 1
     return wfn(t) / 2 * k

@@ -116,7 +116,7 @@ text/overlapping reservation protection. Standalone stage PDFs each contain thei
 own resources; shared forms reduce a multi-frame document, not a directory of
 independent PDFs.
 
-An integration measurement with beamer-floral's dense 8-second, 20-fps fixture
+A measurement with a dense 8-second, 20-fps presentation frame
 (161 samples) reduced the PDF from 122.9 MB to 5.1 MB and build time from
 349.7 s to 14.1 s with shared Forms; peak RSS was about 437 MB. Acrobat Reader
 26.00222031 still advanced at roughly 4 fps in the initial playback test.

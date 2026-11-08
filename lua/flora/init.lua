@@ -40,6 +40,7 @@ function M.typeset(pt)
   else
     for _, c in ipairs(pt.out) do tex.sprint(c) end
   end
+  texio.write_nl("log", string.format("flora: %d painted objects", pt.count or 0))
 end
 
 -- Write the held PDF content as one literal, in the same coordinate mode
@@ -259,7 +260,8 @@ function M.page(a)
     if file then
       node.write(img.node(img.scan({ filename = file })))
       texio.write_nl("log", string.format("flora: page %d %s", a.page, hit and "from the cache" or "grown and cached"))
-      texio.write_nl("log", string.format("flora: coverage %.2f", e.coverage))
+      texio.write_nl("log", string.format("flora: %d painted objects", e.count or 0))
+      texio.write_nl("log", string.format("flora: page %d coverage %.2f", a.page or 0, e.coverage or 0))
       return
     end
   end
@@ -303,7 +305,7 @@ function M.typeset_page(pt, spec, a)
   M.typeset(pt)
   if #(spec.reserve or {}) > 0 then tex.sprint("\\end{pgfscope}") end
   tex.sprint("\\end{pgfpicture}")
-  texio.write_nl("log", string.format("flora: coverage %.2f", pt.coverage or 0))
+  if a.page then texio.write_nl("log", string.format("flora: page %d coverage %.2f", a.page, pt.coverage or 0)) end
 end
 
 return M

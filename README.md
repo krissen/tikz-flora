@@ -76,6 +76,8 @@ compile with a message naming the key.
 | Key | Values | Effect |
 |---|---|---|
 | `layout` | `left`, `right`, `centered`, `split`, `title`, `surround`, `flank`, `wreath`, `bouquet`, `scrollwork` | Where the flora grows (below) |
+| `header` | `body`, `margin` | For packages that supply a measured title (see Using flora from another package) |
+| `tune` | `{section={key=value, ...}, ...}` | Overrides values in `lua/flora/tune.lua` for following pages |
 | `seed` | a number, or `random` | Which garden; each page varies it |
 | `mix` | `{kind=weight, ...}` | How much of each kind: 1 usual, 0 none, 2 about double |
 | `density` | 0 to 10 | Fuller (above 1) or airier (below 1) |
@@ -209,6 +211,21 @@ with a comment at every setting; `tex/titles.tex` (`titles.tex` in the
 zip) has a title page in each of the other four, lettered with
 `\floraletters`.
 
+### Inline ornaments
+
+`\floraornament[width=1em,height=1em,baseline=0pt,seed=1,color=.]{gilt_star}`
+draws one ornament in the text, for a bullet or a divider, in a single colour.
+Any ornament kind is accepted (see the gallery). Width and height are its
+nominal box, in any TeX units, and the baseline is measured up from that box's
+bottom. `color` is an xcolor expression; `.` is the current colour. It has its
+own random stream, leaves the page's settings alone, and works with `\floraoff`.
+
+```latex
+\floraornament[width=6em,height=1em,color=blue]{fleuron_rule}
+```
+
+The simple `gilt_*` kinds suit small bullets; detailed cartouches need room.
+
 ### Long documents
 
 Growing a page's flora takes a few seconds. Each page's flora is kept in
@@ -233,60 +250,47 @@ compression, so the package lowers LaTeX's compression level from 9 to
 time. Set `\pdfvariable compresslevel=9` after `\usepackage{tikzflora}`
 for the smallest file.
 
-## Working on tikz-flora
+## Using flora from another package
 
-### Integration hooks in this fork
+A package that lays out its own pages, a presentation theme for example,
+can tell flora what it knows. None of this changes an ordinary document:
+without these settings every page is drawn as before.
 
-This fork adds hooks used by beamer-floral. They are not yet available in
-upstream tikz-flora.
-
-`\floraornament[width=1em,height=1em,baseline=0pt,seed=1,color=.]{gilt_star}`
-draws one inline ornament. Any registered ornament name is accepted (see the
-gallery). Width and height describe its nominal box; the TeX box additionally
-includes registered reach and measured drawing extents. Baseline is measured
-upward from the nominal box's bottom. Dimensions accept TeX units/expressions.
-Seed must be a finite integer; rendering uses an independent local RNG.
-Color is an xcolor expression (`.` means current color), applied to every
-pigment while retaining opacity. The command does not change page settings,
-consume `\florathispage`, or advance the page RNG. It works with `\floraoff`.
-
-For example, `\floraornament[width=6em,height=1em,color=blue]{fleuron_rule}`
-draws a divider. Prefer simple `gilt_*` kinds for small bullets; detailed
-cartouches need more room. This inline interface deliberately uses the PGF
-backend regardless of the page backend.
-
-Lua integrations calling `flora.page(a)` may provide `a.prepare_spec(spec)`.
-Check `flora.prepare_spec_version == 1` before using this integration hook.
-The callback runs after content/title measurements and derived header bounds,
-before diagnostic export and composition. It mutates the spec in place; its
-return value is ignored and errors propagate. Adapters can supply a logical
-seed and shared geometry without changing physical `a.page`, page filtering
-or diagnostic filenames. With no callback the rendering path is unchanged.
-The callback is not called for filtered pages unless diagnostic export is on.
-
-- `\florasetup{header=body}` keeps plants below the measured frame title;
-  `header=margin` lets them grow beside it. Integrations supply
-  `\floraframetitlepresent` (`0` or `1`) and `\floratitleheight` (expanded pt).
+- `\florasetup{header=body}` keeps the flora below a title the package has
+  measured; `header=margin` lets it grow in the margins beside it. The
+  package supplies `\floraframetitlepresent` (`0` or `1`) and
+  `\floratitleheight` (a dimension in pt). A header mode also fits the hero
+  bloom into narrow margins and keeps it above the ornaments.
 - `\florasetup{tune={gesture={top_inset=24}, compose={hero_shift=21}}}`
-  overrides engine settings for subsequent pages. Dotted paths also work.
-  Named tables merge recursively; lists replace whole lists. Unknown paths
-  and mismatched types produce errors. The engine restores its tune values
-  after rendering, including when rendering fails.
-- `\florareserve{x0}{y0}{x1}{y1}` reserves rectangles on following pages;
-  `\floraclearreserve` clears them. Arguments must expand to numbers or
-  numbers with a `pt` suffix (use `\the\dimexpr...\relax` for dimensions).
-  Coordinates start at the paper's lower-left corner. Reserved areas are
-  excluded by clipping the plants, preserving the background beneath.
-- `\florabackground[top]{color}{height}` paints a band before the flora;
-  use `bottom` for a bottom band and height `0pt` to disable it.
-- `\floratextblockx{left}{right}` supplies horizontal text boundaries,
-  expanded as numbers in pt, instead of the document geometry defaults.
+  overrides values in `lua/flora/tune.lua`. Dotted paths also work. Named
+  tables merge at every depth and lists are replaced whole. An unknown path
+  or a value of the wrong type stops the compile, and the values are
+  restored after each page.
+- `\florareserve{x0}{y0}{x1}{y1}` keeps the flora out of a rectangle on the
+  following pages, and `\floraclearreserve` clears them. Coordinates start
+  at the paper's lower-left corner and may be TeX dimension expressions.
+- `\florabackground[top]{color}{height}` paints a band under the flora at
+  the top (or `bottom`) of the page; height `0pt` removes it.
+- `\floratextblockx{left}{right}` gives the text block's horizontal limits,
+  as dimensions in pt, in place of the ones read from the page geometry.
 
-`\florathispage` still applies to one shipped PDF page. Seeds also vary by
-physical page. Beamer overlays therefore do not currently guarantee stable
-decoration or frame-wide one-shot settings. Overlay stability remains a
-release requirement under investigation with beamer-floral; changing only
-the seed is insufficient because measured content can change too.
+Pages with a reserved rectangle or a background band are not kept in the
+page cache.
+
+From Lua, `flora.page(a)` accepts `a.prepare_spec(spec)`; check
+`flora.prepare_spec_version == 1` first. It runs after the page's content
+is measured and before it is drawn, and changes the spec in place, so a
+package can give several pages one seed and one geometry. Without the
+callback nothing changes.
+
+`flora.page(a)` also accepts `a.render_page(spec, a)`, checked by
+`flora.render_page_version == 1`. It may return a painter, `true` once it has
+set the page itself, or nil to draw as usual; such pages skip the page cache.
+The [versioned Lua progression API](docs/progression.md) plans a whole page
+once and reuses its painting for overlays or timed frames. `tex/progression.tex`
+and `tools/progression.lua` demonstrate TeX and standalone PDF rendering.
+
+## Working on tikz-flora
 
 The repository uses [just](https://github.com/casey/just). These recipes
 add the TinyTeX binaries to `PATH`:
@@ -309,10 +313,6 @@ add the TinyTeX binaries to `PATH`:
   `lua/flora/tune.lua`, drawing `tex/reference.tex` beside the de-warped
   reference photo when `tex/reference/rectified.png` is present (it is not
   tracked). It needs Python 3 with numpy and Pillow, and Node.
-
-The [versioned Lua progression API](docs/progression.md) plans a whole page once
-and reuses its painting for overlays or timed frames. `tex/progression.tex` and
-`tools/progression.lua` demonstrate TeX and standalone PDF rendering.
 
 ## Licence
 

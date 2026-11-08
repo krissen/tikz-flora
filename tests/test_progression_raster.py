@@ -16,7 +16,7 @@ local P=require('flora.progression')
 local PDF=require('flora.pdfout')
 local prefix=arg[1]
 local s={width=360,height=270,text={x0=65,y0=35,x1=295,y1=235},seed=7,
-  layout='centered',mix={gyps=0,cyme=0,umbel=0,ghost=0},
+  layout='centered',header='margin',mix={gyps=0,cyme=0,umbel=0,ghost=0},
   tune={compose={sprays=0,leaves=2,small_blooms=1,curls=0,no_leaflets=true}}}
 local p=P.plan(s)
 assert(#P.stages(p,64)==64)

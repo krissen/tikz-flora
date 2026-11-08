@@ -83,11 +83,11 @@ local function plant(spec, pt, prog)
 
   local cfg = Mix.budget(Mix.cfg(Tune.compose, spec.mix), spec.budget)
   local R = G.clamp(mw * cfg.hero, cfg.hero_min or 28, cfg.hero_max or 80)
-  -- A hero may use the whole margin up to the text block, not just the
-  -- inset growing region; on a 1 cm margin that is the difference between
-  -- a visible bloom and a clipped sliver.
+  -- With a header mode set (a presentation's narrow margin), the hero may
+  -- use the whole margin up to the text block, not just the inset growing
+  -- region: on a 1 cm margin that is a visible bloom, not a clipped sliver.
   local hw = math.max(1, spec.text.x0 - 2)
-  R = math.min(R, math.max(1, (hw - 4) * 0.45))
+  if spec.header then R = math.min(R, math.max(1, (hw - 4) * 0.45)) end
   -- As in the reference, the hero's heart sits just below the running-head
   -- rule, so the bloom fills the top corner of the page up to the paper's
   -- edge (its projected top kept HERO_TOP pt inside it).
@@ -105,7 +105,8 @@ local function plant(spec, pt, prog)
     hy = math.min(top - R * 0.32 - (cfg.hero_shift or 0), spec.height - HERO_TOP - rh)
     if clip_y then hy = math.min(hy, clip_y - rh - 2) end
   end
-  local cx = math.max(math.min(m.x0 + mw * 0.5, hw - R - 2), R + 2)
+  local cx = spec.header and math.max(math.min(m.x0 + mw * 0.5, hw - R - 2), R + 2)
+    or G.clamp(m.x0 + mw * 0.5, m.x0 + R * 0.75, m.x1 - R * 0.95)
   local hero = { cx, hy, R }
   -- The clearance field sees the text and the region's edges from here on.
   g:field()
@@ -319,7 +320,6 @@ local function plant(spec, pt, prog)
     pt.probe = spec.probe
     pt.gilt_dpi, pt.gilt_env, pt.gilt_look = spec.gilt_dpi, spec.gilt_env, spec.gilt_look
   end
-  pt.hero = hero
   local function layer(tag, fn)
     pt:begin_group(tag)
     fn()
@@ -395,10 +395,20 @@ local function plant(spec, pt, prog)
   layer("leaves", function()
     for _, f in ipairs(leaves) do draw(f, 0.06); paid(1) end
   end)
+  local hero_draw = function(p) F.hero(p, rng:fork("hero"), hero) end
+  local function paint_hero()
+    if clock then clock:draw(pt, hero_draw, hero, 0.15)
+    elseif growth then
+      local cap = strands[1].pts[#strands[1].pts]
+      Progression.part(pt, "hero", cap, birth(cap), 0.15, function() hero_draw(pt) end, nil,
+        {parent=strands[1],t=1})
+    else hero_draw(pt) end
+    paid(BATCH.hero)
+  end
   layer("blooms", function()
     for _, f in ipairs(blooms) do draw(f, 0.1, 10); paid(BLOOM) end
+    if not spec.header then paint_hero() end
   end)
-  local hero_draw = function(p) F.hero(p, rng:fork("hero"), hero) end
   if ctx.visitors then
     layer("visitors", function()
       for _, f in ipairs(ctx.visitors) do draw(f, 0.08, clock and clock.reach * 0.25); paid(1) end
@@ -421,15 +431,8 @@ local function plant(spec, pt, prog)
     end
     if not spec.bare then draw(function(p) O.compass(p, midfoot[1], midfoot[2], 7, { hair = 0.9, ring = 0 }) end, 0.15) end
   end)
-  layer("hero", function()
-    if clock then clock:draw(pt, hero_draw, hero, 0.15)
-    elseif growth then
-      local cap = strands[1].pts[#strands[1].pts]
-      Progression.part(pt, "hero", cap, birth(cap), 0.15, function() hero_draw(pt) end, nil,
-        {parent=strands[1],t=1})
-    else hero_draw(pt) end
-    paid(BATCH.hero)
-  end)
+  -- With a header mode set, the hero stays above the ornaments around it.
+  if spec.header then layer("hero", paint_hero) end
   paid(BATCH.finish)
   pt.clock = nil
   pt.growth_clock = nil
@@ -492,15 +495,8 @@ function C.frames(spec)
   pt.gilt_dpi, pt.gilt_env, pt.gilt_look = spec.gilt_dpi, spec.gilt_env, spec.gilt_look
   Progression.attach(pt, spec)
   local clip = header_clip(pt, spec)
-  local function record_hero(s, label)
-    if not pt.hero then return end
-    pt.heroes = pt.heroes or {}
-    pt.heroes[#pt.heroes + 1] = { hero = pt.hero, width = s.width, height = s.height, label = label }
-    pt.hero = nil
-  end
   if #frames == 1 and not frames[1].fn then
     plant(spec, pt, prog)
-    record_hero(spec, "single")
     if clip then pt:clip_end() end
     prog:at(1)
     return pt
@@ -535,7 +531,6 @@ function C.frames(spec)
     else
       plant(f.spec, pt, prog:part(plants * (k - 1) / #frames, plants * k / #frames))
     end
-    record_hero(f.spec, f.label)
     if cl then pt:clip_end() end
     cover = cover + pt.coverage / #frames
   end

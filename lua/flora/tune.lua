@@ -35,7 +35,7 @@ local T = {
     fork_ratio = 0.8,      -- width of a long shoot relative to its parent
     stem_l = 0.25,          -- OKLCH lightness of the main stem and long shoots
     stem_brush = 1,         -- brushwork along those stems; 0 paints them flat
-    end_taper = 0.04,       -- share of a stem's length over which each end narrows to a point
+    end_taper = 0,          -- share of a stem's length over which each end narrows to a point
   },
   hero = {
     style = "wedge",            -- bloom style (tune.blooms): fan, round, soft, obovate or wedge
