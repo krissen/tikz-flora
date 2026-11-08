@@ -24,8 +24,16 @@ parts, reset Paint resources while it is live, or reuse it in another PDF.
 
 Stems extend along their original curved paths. Complete forms scale from
 their attachment points; ornaments without an attachment grow about their
-painted centroid. Birth times follow the plant's stem-distance field, normalized
-across plants so growth occurs around the whole page. A monotone inverse of
+painted centroid. Provisional birth times follow the plant's stem-distance field, normalized
+across plants so growth occurs around the whole page. Actual dependencies come
+from the construction graph: a shoot, stalk, spray ray or leaflet records its
+supporting stem and attachment arc fraction; florets and buds record their own
+pedicel. The planner resolves this graph recursively, independent of painting
+layers, width buckets and provisional times. A child starts only after that
+specific parent reaches its attachment. Basal foliage can therefore open while
+higher stems are still extending; there are no global stem/leaf/flower phases.
+Crossings never select a different supporting stem. A nonlinear frame preserves
+the attachment's sampled path segment when converting its arc fraction. A monotone inverse of
 summed painted part areas distributes requested progression over the page.
 A part's repeated watercolor passes count once in its footprint. The default
 measurement grid is 1 pt; `plan(spec, {resolution=0.5})` refines it. Curves are
@@ -121,3 +129,10 @@ clipped before scaling (allowing a one-pixel antialias edge). The Lua/TeX growth
 API requires no external Python or Poppler process. Those tools are dependencies
 of the explicitly invoked raster integration test; raster animation workflows in
 adapters must document their additional external tooling separately.
+
+The support regression includes adversarial paint order and a misleading nearby
+crossing, actual umbel/cyme/gypsophila builders after batch merge, self-crossing
+paths and nonlinear arc mapping. `tests/fixtures/support-seed3.lua` records the
+measured seed-3 Beamer frame that formerly showed floating sprays at stage 2/4;
+every foreground botanical part must trace its support chain to a main stem.
+Its painted area and canonical endpoint are checked unchanged.

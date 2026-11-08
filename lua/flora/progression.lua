@@ -115,11 +115,20 @@ function Rec:measure(pt,cmds,width)
     end
   end
 end
-function Rec:part(pt,kind,anchor,birth,duration,fn,stem)
+function Rec:part(pt,kind,anchor,birth,duration,fn,stem,support)
   assert(not self.active,'nested progression parts')
   local pj=pt.frame_fn
   local function page(p) if pj then local x,y=pj(p[1],p[2]); return {x,y} end return {p[1],p[2]} end
   local p={kind=kind,anchor=anchor and page(anchor),birth=birth or 0,duration=math.max(1e-9,duration or .15),cells={},chunks={}}
+  if support then
+    p.token=support.token; p.support_token=support.parent
+    if support.parent then
+      local t=math.max(0,math.min(1,support.t or 1))
+      p.support_source_fraction=t
+      p.support_point=page(G.at(support.parent.pts,t))
+      p.anchor=p.support_point
+    end
+  end
   if stem then p.stem={}; for _,q in ipairs(stem) do p.stem[#p.stem+1]=page(q) end end
   self.parts[#self.parts+1]=p; self.events[#self.events+1]=p
   -- Keep the final source silhouette before applying growth transforms.
@@ -192,8 +201,8 @@ function M.attach(pt,spec)
     if not r.suspended then r.clips[#r.clips]=nil end
   end
 end
-function M.part(pt,kind,anchor,birth,duration,fn,stem)
-  if pt.progression and not pt.progression.suspended then return pt.progression:part(pt,kind,anchor,birth,duration,fn,stem) end
+function M.part(pt,kind,anchor,birth,duration,fn,stem,support)
+  if pt.progression and not pt.progression.suspended then return pt.progression:part(pt,kind,anchor,birth,duration,fn,stem,support) end
   local result=fn()
   if pt.gilt_pending then require('flora.orn_raster').flush(pt) end
   return result
@@ -209,43 +218,31 @@ function M.plan(spec,opts)
     nx=math.ceil(s.width/step),ny=math.ceil(s.height/step),parts={},events={},clips={}},Rec)
   s._progression=r
   local pt=require('flora.compose').page(s)
-  -- Enforce attachments against the recorded branch graph, including fine
-  -- stalks not present in the placement clock. A node can open only after
-  -- its supporting stem has extended to that point.
-  local stems={}
-  for _,p in ipairs(r.parts) do if p.stem then stems[#stems+1]=p end end
-  table.sort(stems,function(a,b) return a.birth<b.birth end)
-  local index={}
-  local function key(x,y) return math.floor(x/4)..":"..math.floor(y/4) end
-  local function attachment(p)
-    local best,when=2.1,nil
-    for dx=-1,1 do for dy=-1,1 do
-      for _,seg in ipairs(index[key(p.anchor[1]+4*dx,p.anchor[2]+4*dy)] or {}) do
-        local st,a,b=seg.st,seg.a,seg.b
-        if st~=p then
-          local x,y=b[1]-a[1],b[2]-a[2]; local len2=x*x+y*y
-          local t=len2>0 and math.max(0,math.min(1,((p.anchor[1]-a[1])*x+(p.anchor[2]-a[2])*y)/len2)) or 0
-          local d=G.dist(p.anchor,{a[1]+t*x,a[2]+t*y})
-          if d<best then best=d; when=st.birth+st.duration*(seg.arc+seg.len*t)/math.max(seg.total,1e-9) end
-        end
-      end
-    end end
-    if when then p.birth=math.max(p.birth,when) end
-  end
-  local function insert(st)
-    local total=G.length(st.stem); local arc=0
-    for i=2,#st.stem do
-      local a,b=st.stem[i-1],st.stem[i]; local len=G.dist(a,b)
-      local seg={st=st,a=a,b=b,arc=arc,len=len,total=total}; local seen={}
-      for j=0,math.max(1,math.ceil(len/2)) do
-        local t=j/math.max(1,math.ceil(len/2)); local k=key(a[1]+(b[1]-a[1])*t,a[2]+(b[2]-a[2])*t)
-        if not seen[k] then index[k]=index[k] or {}; index[k][#index[k]+1]=seg; seen[k]=true end
-      end
-      arc=arc+len
+  -- Resolve the construction DAG, independent of paint layer, width bucket
+  -- or provisional birth time. A child cannot start until its actual parent
+  -- reaches the attachment; resolving recursively propagates that guarantee
+  -- all the way to the main stem. Crossing nearby stems are never candidates.
+  local tokens={}
+  for _,p in ipairs(r.parts) do if p.token then
+    assert(not tokens[p.token], 'duplicate growth stem token')
+    tokens[p.token]=p
+  end end
+  local state={}
+  local function resolve(p)
+    if state[p]==2 then return end
+    assert(state[p]~=1,'cyclic growth support graph')
+    state[p]=1
+    if p.support_token then
+      local parent=assert(tokens[p.support_token],'growth support stem was not painted')
+      assert(parent.stem,'growth support is not a stem')
+      resolve(parent)
+      p.support=parent
+      p.support_fraction=G.mapped_fraction(p.support_token.pts,parent.stem,p.support_source_fraction)
+      p.birth=math.max(p.birth,parent.birth+parent.duration*p.support_fraction)
     end
+    state[p]=2
   end
-  for _,p in ipairs(stems) do attachment(p); insert(p) end
-  for _,p in ipairs(r.parts) do if not p.stem then attachment(p) end end
+  for _,p in ipairs(r.parts) do resolve(p) end
   local area=0; local finish=0
   for _,p in ipairs(r.parts) do area=area+p.area; finish=math.max(finish,p.birth+p.duration) end
   local changes={}

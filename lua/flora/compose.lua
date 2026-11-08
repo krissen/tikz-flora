@@ -128,10 +128,14 @@ local function plant(spec, pt, prog)
   local strands, root = Layout.strands(rng:fork("strands"), m, hero, W, gest,
     { m.x0, py - ph / 2 - 3, m.x0 + pw + 5, py + ph / 2 + 3 })
   local excursion = not spec.frame_only and Layout.excursion(rng:fork("excursion"), spec, root)
-  if excursion then strands[#strands + 1] = excursion end
+  if excursion then
+    excursion.growth_parent,excursion.growth_t=strands[1],G.nearest_fraction(strands[1].pts,excursion.pts[1])
+    strands[#strands + 1] = excursion
+  end
   -- A bare frame (a curved one: frames.lua) has no outer corner, so no
   -- corner runner, star panel or foot compass.
   local runners = spec.bare and {} or Layout.runners(rng:fork("runners"), m, strands[1].pts[1], W, edge, g)
+  for _,runner in ipairs(runners) do runner.growth_parent,runner.growth_t=strands[1],0 end
   Plant.fork(strands[1], 0.005, 0.8)
   local stems = {}
   local stem_batch, spray_batch = S.batch(), S.batch()
@@ -174,6 +178,7 @@ local function plant(spec, pt, prog)
   local ghost
   local ctx = {
     cfg = cfg, mix = spec.mix, progression = spec._progression, pos = (spec.grow or spec._progression) and setmetatable({}, { __mode = "k" }), mw = mw, dens = dens, ylo = ylo, span = span, strands = strands, stems = stems,
+    support = spec._progression and {},
     stem_batch = stem_batch, sprays = spray_batch, blooms = blooms, back = back,
     leaves = leaves, leaflets = leaflet_items,
   }
@@ -283,6 +288,7 @@ local function plant(spec, pt, prog)
   for _, s in ipairs(cfg.no_leaflets and {} or strands) do
     for _, it in ipairs(S.leaflet_items(rng, s.pts, cfg.leaflet_spacing, cfg.leaflet_size)) do
       if g:room(it[1], it[2]) >= it[4] * 0.3 and rng:next() < dens(it[1], it[2]) then
+        it.support={parent=s,t=it.stem_t}
         leaflet_items[#leaflet_items + 1] = it
       end
     end
@@ -296,13 +302,13 @@ local function plant(spec, pt, prog)
   -- sprig and the excursion stay pen work.
   local painted = {}
   for _, s in ipairs(strands) do
-    if s.cum then painted[#painted + 1] = s else stem_batch:stem_by(s.pts, s.width) end
+    if s.cum then painted[#painted + 1] = s else stem_batch:stem_by(s.pts, s.width, s) end
   end
   local rf = Tune.compose.runners or 1
   if rf > 0 then
     for _, s in ipairs(runners) do
       local w = s.width
-      stem_batch:stem_by(s.pts, function(t) return w(t) * rf end)
+      stem_batch:stem_by(s.pts, function(t) return w(t) * rf end, s)
     end
   end
 
@@ -338,7 +344,7 @@ local function plant(spec, pt, prog)
   local function draw(f, dur, delay)
     if clock then clock:draw(pt, f, ctx.pos[f], dur, delay)
     elseif growth then Progression.part(pt, pt.group and pt.group.tag, ctx.pos[f], birth(ctx.pos[f]), dur,
-      function() f(pt) end)
+      function() f(pt) end, nil, ctx.support[f])
     else
       f(pt)
       if pt.gilt_pending then require("flora.orn_raster").flush(pt) end
@@ -358,7 +364,8 @@ local function plant(spec, pt, prog)
         local off = growth.offset[s] / growth.reach * 0.7
         local dur = G.length(s.pts) / growth.reach * 0.7
         Progression.part(pt, "stem", s.pts[1], off, dur,
-          function() Brush.stem(pt, sr, s.pts, s.width, Tune.plant) end, s.pts)
+          function() Brush.stem(pt, sr, s.pts, s.width, Tune.plant) end, s.pts,
+          {token=s,parent=s.growth_parent,t=s.growth_t})
       else
         Brush.stem(pt, sr, s.pts, s.width, Tune.plant)
       end
@@ -377,7 +384,7 @@ local function plant(spec, pt, prog)
       local lr = rng:fork("leaflets")
       for _,it in ipairs(leaflet_items) do
         Progression.part(pt, "leaflet", it, birth(it), 0.05,
-          function() L.leaflets(pt, lr, {it}) end)
+          function() L.leaflets(pt, lr, {it}) end, nil, it.support)
       end
     else
       L.leaflets(pt, rng:fork("leaflets"), leaflet_items)
@@ -417,7 +424,8 @@ local function plant(spec, pt, prog)
     if clock then clock:draw(pt, hero_draw, hero, 0.15)
     elseif growth then
       local cap = strands[1].pts[#strands[1].pts]
-      Progression.part(pt, "hero", cap, birth(cap), 0.15, function() hero_draw(pt) end)
+      Progression.part(pt, "hero", cap, birth(cap), 0.15, function() hero_draw(pt) end, nil,
+        {parent=strands[1],t=1})
     else hero_draw(pt) end
     paid(BATCH.hero)
   end)
