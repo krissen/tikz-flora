@@ -324,7 +324,7 @@ export function startMargins({ doc = document, win = window } = {}) {
       if (!r.rows) continue;
       const reach = target - r.y;
       const full = fullOf(r);
-      const cap = Math.min(full, rowGrowth(r.rows, r.cell, reach) + (reach > 0 ? SOFT() * 0.6 : 0));
+      const cap = reach >= r.h ? full : Math.min(full, rowGrowth(r.rows, r.cell, reach) + (reach > 0 ? SOFT() * 0.6 : 0));
       let u = r.u < 0 ? 0 : r.u;
       if (reduce.matches) u = reach > 0 ? full : u;
       else if (u < cap) {
