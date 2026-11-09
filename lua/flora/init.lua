@@ -188,6 +188,21 @@ local function reserve_copy()
   return out
 end
 
+-- A deep copy, so a per-page callback cannot change document settings.
+local function detached(v)
+  if type(v) ~= "table" then return v end
+  local out = {}
+  for k, x in pairs(v) do out[k] = detached(x) end
+  return out
+end
+
+-- The seed a saved spec was compiled with ("doc"), or one derived from an
+-- explicit document seed.
+function M.spec_seed(spec, seed, page)
+  if seed == "doc" then return spec.prepared_seed or M.seed(spec.doc_seed or "1", page) end
+  return M.seed(seed, page)
+end
+
 function M.clear_reserve()
   M.reserve = {}
 end
@@ -249,7 +264,10 @@ function M.page(a)
   -- Integration adapters may replace measured geometry and the logical seed.
   -- Keep a.page as the physical page for filtering and diagnostic filenames.
   local derived_seed = spec.seed
-  if a.prepare_spec then a.prepare_spec(spec) end
+  if a.prepare_spec then
+    for _, k in ipairs({ "mix", "palette", "tune", "ornaments", "backdrop" }) do spec[k] = detached(spec[k]) end
+    a.prepare_spec(spec)
+  end
   if dump and dump ~= "" then
     local f = assert(io.open(string.format("%s/spec-%d.lua", dump, a.page), "w"))
     local saved = {}
