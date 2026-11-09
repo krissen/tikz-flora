@@ -45,6 +45,14 @@ a.prepare_spec = function(s) s.reserve[1][1] = 99; s.reserve[#s.reserve + 1] = {
 Flora.page(a)
 H.check(#Flora.reserve == 1 and Flora.reserve[1][1] == 1, "callback changed the document's reservations")
 Flora.clear_reserve()
+for _, k in ipairs({ "mix", "palette", "tune", "ornaments" }) do
+  Flora.settings = { [k] = { probe = { 1 } } }
+  a = args()
+  a.prepare_spec = function(s) s[k].probe[1] = 2 end
+  pcall(Flora.page, a)
+  H.check(Flora.settings[k].probe[1] == 1, "callback changed document setting " .. k)
+end
+Flora.settings = {}
 a = args()
 a.only = "8"
 a.prepare_spec = function() error("filtered page callback ran") end
