@@ -28,4 +28,21 @@ H.check(over.gesture.bow_amp[1] == 0.1, "restoration changed caller's list")
 H.check(not pcall(Tune._with, over, function() error("render failure") end),
   "render failure was swallowed")
 H.check(Tune.compose.hero == before, "failed render leaked tuning")
+-- A cached raster ramp must remain immutable after leaving its scope,
+-- including nested scopes and failure restoration.
+local Serial = require("flora.serial")
+local original = Serial.encode(Tune.gilt_looks.studio.gold)
+local ramp = { { 0, { 1, 0, 0 } }, { 1, { 1, 0, 0 } } }
+local outer, inner
+Tune._with({ gilt_looks = { studio = { gold = ramp } } }, function()
+  outer = Tune.gilt_looks.studio.gold
+  pcall(Tune._with, { gilt_looks = { studio = { gold = { { 0, { 0, 1, 0 } }, { 1, { 0, 1, 0 } } } } } }, function()
+    inner = Tune.gilt_looks.studio.gold
+    error("restore nested ramp")
+  end)
+  H.check(Serial.encode(Tune.gilt_looks.studio.gold) == Serial.encode(ramp), "nested ramp not restored")
+end)
+H.check(Serial.encode(Tune.gilt_looks.studio.gold) == original, "default ramp not restored")
+H.check(Serial.encode(outer) == Serial.encode(ramp), "restoration mutated memoized ramp")
+H.check(inner[1][2][2] == 1, "nested restoration mutated memoized ramp")
 H.done("settings")
