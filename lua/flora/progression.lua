@@ -329,14 +329,44 @@ function M.render(plan,t)
     else for _,s in ipairs(part.chunks) do pt:emit(s) end end
   end
   local groups={}
+  local function mature_batch(e)
+    for _,child in ipairs(e.batch) do
+      if progress(child,u)<1 then return false end
+    end
+    return true
+  end
+  -- Under TeX a frame's own resource dictionary lands in a size-limited object
+  -- stream, so it must not list every Form of the plan. Runs of content between
+  -- transparency groups become Forms on the plan's shared resources, which
+  -- leaves the frame naming only those Forms and its groups.
+  local native=pdf and pdf.immediateobj and not Paint.standalone
+  local split=false
+  if native then
+    for _,e in ipairs(plan.events) do
+      if type(e)=='table' and e.batch and not mature_batch(e) then split=true; break end
+    end
+  end
+  local frame
+  local function open_run()
+    if split and not frame then frame=pt; pt=Paint.new({backend='pdf'}) end
+  end
+  local function close_run()
+    if not frame then return end
+    local run=pt; pt=frame; frame=nil
+    local body=run:body()
+    if body~='' then
+      local bbox=string.format('[0 0 %.6f %.6f]',plan.width*BP,plan.height*BP)
+      local f=Paint.run_form(Paint.batch_name(),body,bbox,plan.pdf_resources)
+      groups[#groups+1]=f
+      pt:emit('/'..f.name..' Do')
+    end
+    pt.count=(pt.count or 0)+(run.count or 0)
+  end
   local function event(e)
     if type(e)=='string' then pt:emit(e)
     elseif e.batch then
-      local mature=true
-      for _,child in ipairs(e.batch) do
-        if progress(child,u)<1 then mature=false; break end
-      end
-      if mature then pt:emit(e.canonical); return end
+      if mature_batch(e) then pt:emit(e.canonical); return end
+      close_run()
       local outer=pt
       pt=Paint.new({backend='pdf'})
       for _,child in ipairs(e.batch) do event(child) end
@@ -366,8 +396,23 @@ function M.render(plan,t)
       end
     end
   end
-  for _,e in ipairs(plan.events) do event(e) end
-  if #groups>0 then
+  for _,e in ipairs(plan.events) do
+    -- Bare strings open and close clip scopes across parts, so they stay on
+    -- the frame; only self-balanced parts may move into a run's Form.
+    if type(e)=='string' then close_run(); event(e)
+    elseif e.batch and not mature_batch(e) then event(e)
+    else open_run(); event(e) end
+  end
+  close_run()
+  if native and #groups>0 then
+    local refs={}
+    for _,f in ipairs(groups) do refs[#refs+1]='/'..f.name..' '..f.object..' 0 R' end
+    for _,im in ipairs(Paint.resources().xobjects) do
+      if im.object then refs[#refs+1]='/'..im[1]..' '..im.object..' 0 R' end
+    end
+    pt.xobjects=groups
+    pt.pdf_resources=plan.pdf_resources:gsub('/XObject .*','/XObject << '..table.concat(refs,' ')..' >>')
+  elseif #groups>0 then
     local forms,refs={},{}
     for _,f in ipairs(plan.forms) do forms[#forms+1]=f end
     for _,f in ipairs(groups) do forms[#forms+1]=f end
