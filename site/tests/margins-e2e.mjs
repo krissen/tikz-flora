@@ -120,12 +120,20 @@ try {
         constructor(url, o) {
           super(url, o);
           this.margin = String(url).includes("margins.worker");
-          this.slow = this.margin && ++made === 2;
+          this.tiles = new Set();
+        }
+        postMessage(msg, ...args) {
+          if (this.margin && msg.kind === "tile") {
+            if (this.slow === undefined) this.slow = ++made === 2;
+            this.tiles.add(msg.id);
+          }
+          return super.postMessage(msg, ...args);
         }
         // The delay counts from the first reply, so that how long the
         // slow worker took on its own doesn't add to it.
         set onmessage(f) {
           super.onmessage = !this.margin ? f : (e) => {
+            if (!this.tiles.delete(e.data.id)) { f(e); return; }
             window.__firstReply ??= performance.now();
             const wait = this.slow ? window.__firstReply + 700 - performance.now() : 0;
             if (wait > 0) setTimeout(() => f(e), wait); else f(e);
