@@ -147,6 +147,20 @@ for _, inset in ipairs({ 0, 48 }) do
   end
 end
 
+-- A reservation on the oval's seam closes only the arc near it.
+do
+  local s = {width=400,height=300,layout='wreath',text={x0=160,y0=110,x1=240,y1=190},reserve={{350,0,400,300}}}
+  local fs, n = Frames.of(s), 0
+  for _, f in ipairs(fs) do
+    for _, r in ipairs(f.spec.reserve) do
+      n = n + 1
+      local x = f.fn((r[1] + r[3]) / 2, (r[2] + r[4]) / 2)
+      H.check(x > 300, string.format('seam reservation closed the far arc at page x=%.0f', x))
+    end
+  end
+  H.check(n > 0, 'seam reservation closed nothing')
+end
+
 -- A reserved rectangle stays empty.
 do
   local spec = H.page(7)
