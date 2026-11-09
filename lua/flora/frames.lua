@@ -153,6 +153,41 @@ local function inv_box(inv, bx, w, h)
   return clip({ x0 = x0, y0 = y0, x1 = x1, y1 = y1 }, w, h)
 end
 
+-- Page reservations in a curved frame. The inverse wraps its frame y at the
+-- oval's seam, so one box round a reservation there would bridge the whole
+-- arc. Each is taken in small cells, and a cell on the seam is halved until
+-- it is dropped; compose's page clip still excludes that sliver.
+local function curved_reservations(spec, inv, w, h)
+  local out = {}
+  local function cell(x0, y0, x1, y1)
+    local lo, hi = math.huge, -math.huge
+    for _, p in ipairs({ { x0, y0 }, { x1, y0 }, { x0, y1 }, { x1, y1 } }) do
+      local _, y = inv(p[1], p[2])
+      lo, hi = math.min(lo, y), math.max(hi, y)
+    end
+    if hi - lo > h / 2 then
+      if x1 - x0 < 2 and y1 - y0 < 2 then return end
+      local mx, my = (x0 + x1) / 2, (y0 + y1) / 2
+      cell(x0, y0, mx, my); cell(mx, y0, x1, my)
+      cell(x0, my, mx, y1); cell(mx, my, x1, y1)
+      return
+    end
+    local b = inv_box(inv, { x0 = x0, y0 = y0, x1 = x1, y1 = y1 }, w, h)
+    if b then out[#out + 1] = { b.x0, b.y0, b.x1, b.y1 } end
+  end
+  for _, r in ipairs(spec.reserve or {}) do
+    local nx = math.max(1, math.ceil((r[3] - r[1]) / 12))
+    local ny = math.max(1, math.ceil((r[4] - r[2]) / 12))
+    local dx, dy = (r[3] - r[1]) / nx, (r[4] - r[2]) / ny
+    for i = 0, nx - 1 do
+      for j = 0, ny - 1 do
+        cell(r[1] + i * dx, r[2] + j * dy, r[1] + (i + 1) * dx, r[2] + (j + 1) * dy)
+      end
+    end
+  end
+  return out
+end
+
 -- A curved frame of size w x h, mapped to the page by fn and back by inv,
 -- whose text block is `text` (in frame coordinates). The page's measured
 -- lines are carried in through inv. It only frames the text.
@@ -168,7 +203,7 @@ local function curved(spec, fn, inv, w, h, text, opts)
   local s = {}
   for k, v in pairs(spec) do s[k] = v end
   s.width, s.height, s.text, s.lines = w, h, text, lines
-  s.reserve = reservations(spec, function(b) return inv_box(inv, b, w, h) end)
+  s.reserve = curved_reservations(spec, inv, w, h)
   s.header_y, s.layout, s.frame_only, s.bare = nil, nil, true, true
   -- Page-space vertical limits are enforced by compose's outer clip. They
   -- cannot be interpreted as vertical coordinates in an oval frame.
