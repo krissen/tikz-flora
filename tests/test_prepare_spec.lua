@@ -38,7 +38,13 @@ os.getenv, io.open = getenv, open
 H.check(seen.seed == 42 and seen.lines[1].x0 == 10, "compose missed callback mutations")
 H.check(a.page == 7 and filename == "diagnostics/spec-7.lua", "callback changed physical output identity")
 local saved = assert(load("return " .. exported, "diagnostic", "t", {}))()
-H.check(saved.lines[1].x0 == 10 and saved.seed == nil, "export missed prepared geometry or exported seed")
+H.check(saved.lines[1].x0 == 10 and saved.seed == nil and saved.prepared_seed == 42, "export missed prepared geometry or exported seed")
+a = args()
+Flora.add_reserve("1pt", "2pt", "3pt", "4pt")
+a.prepare_spec = function(s) s.reserve[1][1] = 99; s.reserve[#s.reserve + 1] = { 5, 6, 7, 8 } end
+Flora.page(a)
+H.check(#Flora.reserve == 1 and Flora.reserve[1][1] == 1, "callback changed the document's reservations")
+Flora.clear_reserve()
 a = args()
 a.only = "8"
 a.prepare_spec = function() error("filtered page callback ran") end
