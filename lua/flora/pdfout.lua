@@ -13,10 +13,18 @@ for i = 0, 255 do HEX[string.char(i)] = string.format("%02x", i) end
 
 -- A stream object: Flate-compressed at `level` (default 6) where zlib
 -- exists (texlua has it), else hex, so the PDF stays ASCII text (the site
--- hands it to pdf.js as a JavaScript string).
-local function stream(attr, data, level)
+-- hands it to pdf.js as a JavaScript string). `memo`, a table kept with the
+-- source, reuses the last deflate of exactly this data at this level.
+local function stream(attr, data, level, memo)
   if zlib and zlib.compress then
-    data = zlib.compress(data, level or 6)
+    local deflate_level = level or 6
+    if memo and memo.data == data and memo.level == deflate_level then
+      data = memo.deflated
+    else
+      local source = data
+      data = zlib.compress(source, deflate_level)
+      if memo then memo.data, memo.level, memo.deflated = source, deflate_level, data end
+    end
     attr = attr .. " /Filter /FlateDecode"
   else
     data = data:gsub(".", HEX) .. ">"
@@ -59,9 +67,11 @@ function M.encode(pt, width, height, level)
     local has_groups=false
     for i,f in ipairs(pt.xobjects) do
       local id=form_resources+i
+      -- Stage after stage writes the same Forms; deflate each only once.
+      f.pdf_stream=f.pdf_stream or {}
       local resource=f.group and group_resources or form_resources
       local group=f.group and ' /Group << /S /Transparency /I true /K false >>' or ''
-      objects[id]=stream(string.format("/Type /XObject /Subtype /Form /BBox %s /Resources %d 0 R%s",f.bbox,resource,group),f.body,level)
+      objects[id]=stream(string.format("/Type /XObject /Subtype /Form /BBox %s /Resources %d 0 R%s",f.bbox,resource,group),f.body,level,f.pdf_stream)
       xobj[#xobj+1]=string.format("/%s %d 0 R",f.name,id)
       if f.group then has_groups=true else static[#static+1]=xobj[#xobj] end
     end
