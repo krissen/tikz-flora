@@ -18,6 +18,17 @@ function M.draw(kind, width, height, baseline, seed, color)
   -- Override this painter only. Keep opacity and path geometry, but map
   -- every pigment to the requested xcolor expression.
   function pt:color(_) return color end
+  pt.flat_gilt = true
+  function pt:shading(name, _)
+    self.shadings = self.shadings or {}
+    if not self.shadings[name] then
+      self.shadings[name] = true
+      self.defs[#self.defs + 1] = string.format(
+        "\\pgfdeclarehorizontalshading{%s}{100bp}{color(0bp)=(%s); color(100bp)=(%s)}",
+        name, color, color)
+    end
+    return name
+  end
   pt:begin_group("inline")
   Orn.draw(k, pt, Rng.new(seed), { 0, 0, width, height }, { cord = height / 3 })
   pt:end_group()

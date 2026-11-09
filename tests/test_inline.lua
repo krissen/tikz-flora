@@ -12,6 +12,8 @@ for _, name in ipairs(Orn.order) do
   H.check(p.count > 0 and b.x0 <= 0 and b.x1 >= 24 and b.y0 <= 0 and b.y1 >= 24,
     "missing painting/bounds for " .. name)
   H.check(not table.concat(p.out):find("pgfsetfillcolor{fl%d"), "unmapped pigment: " .. name)
+  H.check(not table.concat(p.defs):find("rgb(", 1, true), "unmapped gradient: " .. name)
+  H.check(not p.gilt_pending, "inline ornament generated raster gilt: " .. name)
 end
 local a = Inline.draw("gilt_star", 12, 12, 0, 3, "inlineink")
 local b = Inline.draw("gilt_star", 12, 12, 0, 3, "inlineink")
