@@ -37,5 +37,18 @@ local s = preview(with({ tune = tuned }), "doc", "tune={compose={hero=0.3}}")
 H.check(s.tune.compose.hero == 0.3 and s.tune.compose.leaves == 2, "settings did not merge over the page's tuning")
 H.check(preview(with({ tune = tuned }), "doc", "fresh").tune == nil, "fresh kept the page's tuning")
 
+-- The standalone progression tool shares the same seed rule.
+local planned
+package.loaded["flora.progression"] = {
+  plan = function(s) planned = s; return { api_version = 1, parts = {}, area = 0 } end,
+  stages = function() return {} end,
+}
+local f = assert(io.open(path, "w"))
+f:write(Serial.encode(with({ prepared_seed = 42 })), "\n")
+f:close()
+arg = { path, "doc", "7", "out", "1" }
+dofile("tools/progression.lua")
+H.check(planned.seed == 42, "progression doc mode lost the prepared seed")
+
 os.remove(path)
 H.done("preview")
