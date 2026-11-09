@@ -1,6 +1,11 @@
 local H=dofile('tests/helper.lua')
-md5=md5 or require('md5')
-lfs=lfs or require('lfs')
+md5=md5 or select(2,pcall(require,'md5'))
+lfs=lfs or select(2,pcall(require,'lfs'))
+-- LuaTeX bundles both; the standalone Lua 5.4 target has neither.
+if type(md5)~='table' or type(lfs)~='table' then
+  print('cache_key: skipped, needs LuaTeX md5 and lfs')
+  return
+end
 local Cache=assert(loadfile('lua/flora/cache.lua'))('flora.cache','./lua/flora/cache.lua')
 local Tune=require('flora.tune')
 local spec={width=400,height=300,seed=7,text={x0=40,y0=30,x1=360,y1=270}}
