@@ -596,6 +596,21 @@ end
 
 -- Stable semantic parts share one resource dictionary and compressed Form
 -- streams. Forms stay document-local, just like the patterns they reference.
+function P.batch_name()
+  registered.batches = (registered.batches or 0) + 1
+  return "flbatch" .. registered.batches
+end
+
+function P.transparency_form(name, body, bbox, resources)
+  local attr = "/Type /XObject /Subtype /Form /BBox " .. bbox
+    .. " /Resources << " .. resources .. " >> /Group << /S /Transparency /I true /K false >>"
+  local object
+  if pdf and pdf.immediateobj and not P.standalone then object = pdf.immediateobj("stream", body, attr)
+  else object = pdf_object("") end
+  local f = {name=name,body=body,bbox=bbox,object=object,group=true}
+  return f
+end
+
 function P.forms(parts, width, height)
   local gs, patterns, images = {}, {}, {}
   for _,x in ipairs(registered.xobjects) do
