@@ -162,11 +162,26 @@ end
 -- Alternate part streams for batched pen work, retaining the original final
 -- stream byte for byte. The alternate consumes no composition randomness.
 function Rec:alternate(pt,fn,canonical)
+  local first=#pt.out
   self.suspended=true; canonical(); self.suspended=false
+  local canonical_chunks={}
+  for i=first+1,#pt.out do canonical_chunks[#canonical_chunks+1]=pt.out[i] end
   local out,count=pt.out,pt.count; pt.out={}
   local probe=pt.probe; pt.probe=nil
   self.capturing_alternate=true
-  fn(); self.capturing_alternate=nil; pt.out=out; pt.count=count; pt.probe=probe
+  fn(canonical_chunks); self.capturing_alternate=nil; pt.out=out; pt.count=count; pt.probe=probe
+end
+-- A batched translucent stroke applies alpha/blend once to its union.
+-- Paint its independently growing parts opaquely inside an isolated group.
+function Rec:batch(pt, opacity, fn, canonical)
+  local start = #self.events
+  fn()
+  local children = {}
+  for i=start+1,#self.events do children[#children+1]=self.events[i] end
+  for i=#self.events,start+1,-1 do self.events[i]=nil end
+  if #children==0 then return end
+  local blend = pt:blend('multiply') or 'normal'
+  self.events[#self.events+1]={batch=children,opacity=opacity,blend=blend,name=Paint.batch_name(),canonical=canonical}
 end
 function M.attach(pt,spec)
   local r=spec._progression
@@ -218,6 +233,11 @@ function M.plan(spec,opts)
     nx=math.ceil(s.width/step),ny=math.ceil(s.height/step),parts={},events={},clips={}},Rec)
   s._progression=r
   local pt=require('flora.compose').page(s)
+  -- Allocate extra group states only after the canonical stream is done;
+  -- its original resource names must remain byte-for-byte unchanged.
+  for _,e in ipairs(r.events) do if type(e)=='table' and e.batch then
+    e.gstate=pt:gstate(e.opacity,1,({multiply='Multiply',screen='Screen',normal='Normal'})[e.blend])
+  end end
   -- Resolve the construction DAG, independent of paint layer, width bucket
   -- or provisional birth time. A child cannot start until its actual parent
   -- reaches the attachment; resolving recursively propagates that guarantee
@@ -307,8 +327,23 @@ function M.render(plan,t)
     if part.form then pt:emit('/'..part.form..' Do')
     else for _,s in ipairs(part.chunks) do pt:emit(s) end end
   end
-  for _,e in ipairs(plan.events) do
+  local groups={}
+  local function event(e)
     if type(e)=='string' then pt:emit(e)
+    elseif e.batch then
+      local mature=true
+      for _,child in ipairs(e.batch) do
+        if progress(child,u)<1 then mature=false; break end
+      end
+      if mature then pt:emit(e.canonical); return end
+      local outer=pt
+      pt=Paint.new({backend='pdf'})
+      for _,child in ipairs(e.batch) do event(child) end
+      local bbox=string.format('[0 0 %.6f %.6f]',plan.width*BP,plan.height*BP)
+      local f=Paint.transparency_form(e.name,pt:body(),bbox,plan.pdf_resources)
+      groups[#groups+1]=f
+      pt=outer
+      pt:emit('q /'..e.gstate..' gs /'..f.name..' Do Q')
     else local k=progress(e,u)
       if k>0 then
         pt:emit('q')
@@ -329,6 +364,18 @@ function M.render(plan,t)
         pt:emit('Q'); pt.count=pt.count+1
       end
     end
+  end
+  for _,e in ipairs(plan.events) do event(e) end
+  if #groups>0 then
+    local forms,refs={},{}
+    for _,f in ipairs(plan.forms) do forms[#forms+1]=f end
+    for _,f in ipairs(groups) do forms[#forms+1]=f end
+    for _,f in ipairs(forms) do refs[#refs+1]='/'..f.name..' '..f.object..' 0 R' end
+    for _,im in ipairs(Paint.resources().xobjects) do
+      if im.object then refs[#refs+1]='/'..im[1]..' '..im.object..' 0 R' end
+    end
+    pt.xobjects=forms
+    pt.pdf_resources=plan.pdf_resources:gsub('/XObject .*','/XObject << '..table.concat(refs,' ')..' >>')
   end
   for _ in ipairs(exclusions) do pt:emit('Q') end
   return pt

@@ -121,27 +121,31 @@ function Batch:born(clock)
   return b
 end
 
-function Batch:paint(pt, ink)
+function Batch:paint(pt, ink, opaque)
   local rec, clock = pt.progression, pt.growth_clock
   if rec and clock and not rec.active and not rec.suspended then
     local Progression = require("flora.progression")
-    rec:alternate(pt, function()
+    rec:alternate(pt, function(canonical)
+      local index=0
+      local function chunk(nonempty)
+        if nonempty then index=index+1; return canonical[index] end
+      end
       local function part(b, at, stem, kind, token, support)
         support=support or (token and {parent=token.growth_parent,t=token.growth_t}) or {}
         if support.parent then at=G.at(support.parent.pts,support.t or 1) end
         local birth = clock:birth(at[1], at[2]) / clock.reach * 0.7
         local duration = stem and math.max(0.01, G.length(stem) / clock.reach * 0.7) or 0.05
-        Progression.part(pt, kind, at, birth, duration, function() b:paint(pt, ink) end, stem,
+        Progression.part(pt, kind, at, birth, duration, function() b:paint(pt, ink, true) end, stem,
           {token=token,parent=support.parent,t=support.t})
       end
-      for _,c in ipairs(self.ribbons) do
+      rec:batch(pt,0.92,function() for _,c in ipairs(self.ribbons) do
         local b=S.batch(); b.ribbons={c}; local pts=self.growth[c]
         part(b, pts[1], pts, "stem", self.tokens[c])
-      end
-      for i=1,3 do for _,c in ipairs(self.lines[i]) do
+      end end,chunk(#self.ribbons>0))
+      for i=1,3 do rec:batch(pt,0.85,function() for _,c in ipairs(self.lines[i]) do
         local b=S.batch(); b.lines[i]={c}; local pts=self.growth[c]
         part(b, pts[1], pts, "spray-stem", self.tokens[c])
-      end end
+      end end,chunk(#self.lines[i]>0)) end
       for _,name in ipairs({"buds", "florets", "stars"}) do for _,it in ipairs(self[name]) do
         local b=S.batch(); b[name]={it}; part(b, it, nil, name, nil, self.supports[it])
       end end
@@ -159,12 +163,12 @@ function Batch:paint(pt, ink)
   local tint = Color.part_ink("sprays")
   ink = Color.recolor(ink or pal.ink, tint)
   if #self.ribbons > 0 then
-    pt:fill(self.ribbons, ink, 0.92, { many = true, blend = "multiply" })
+    pt:fill(self.ribbons, ink, opaque and 1 or 0.92, { many = true, blend = not opaque and "multiply" or nil })
   end
   local widths = { 0.32, 0.22, 0.14 }
   for i = 1, 3 do
     if #self.lines[i] > 0 then
-      pt:stroke(self.lines[i], ink, widths[i], 0.85, { many = true, blend = "multiply" })
+      pt:stroke(self.lines[i], ink, widths[i], opaque and 1 or 0.85, { many = true, blend = not opaque and "multiply" or nil })
     end
   end
   for _, b in ipairs(self.buds) do F.bud(pt, b[1], b[2], b[3], b[4], tint and Color.recolor(pal.deep, tint)) end

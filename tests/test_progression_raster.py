@@ -26,7 +26,9 @@ end
 PDF.write(prefix..'-ordinary.pdf',p.final,s.width,s.height)
 local names={}
 for i,part in ipairs(p.parts) do names[i]=part.form; part.form=nil end
-local unfactored=P.render(p,.5); unfactored.xobjects=nil
+-- Batch transparency groups remain Forms even when their children use
+-- raw paths; discard only the semantic part indirection above.
+local unfactored=P.render(p,.5)
 PDF.write(prefix..'-unfactored.pdf',unfactored,s.width,s.height)
 for i,part in ipairs(p.parts) do part.form=names[i] end
 s.reserve={{15,80,55,100},{30,90,70,110}}
@@ -38,6 +40,38 @@ print(string.format('%d parts; %.1f pt2; Lua memory %.1f MiB',#p.parts,p.area,co
 local Paint=require('flora.paint')
 local Compose=require('flora.compose')
 local original=Compose.page
+-- Standalone composition must honor the same exclusions as the TeX
+-- wrapper, including a full-page reserve and overlapping boxes.
+local ordinary_spec={width=120,height=100,text={x0=40,y0=20,x1=100,y1=80},seed=7,
+  reserve={{0,0,120,100}},gilt_dpi=72}
+PDF.write(prefix..'-reserved-ordinary.pdf',Compose.page(ordinary_spec),120,100)
+local S=require('flora.sprig')
+local G=require('flora.geom')
+Compose.page=function(spec)
+  local pt=Paint.new({backend='pdf'}); P.attach(pt,spec)
+  pt:fill({{'m',0,0},{'l',100,0},{'l',100,100},{'l',0,100},{'z'}},{.8,.6,.4})
+  pt.growth_clock={reach=100,birth=function() return 0 end}
+  local b=S.batch()
+  for class=1,3 do
+    b:line({{10,20+class*15},{90,20+class*15}},class)
+    b:line({{10,20+class*15},{90,20+class*15}},class)
+    b:line({{50,5},{50,95}},class)
+  end
+  b:stem({{10,10},{90,90}},5,5)
+  b:stem({{10,90},{90,10}},5,5)
+  local merged=S.batch(); merged:merge(b); merged:paint(pt)
+  -- Keep growth running after the spray batches mature, to compare their
+  -- ordinary compositing before the canonical endpoint is selected.
+  P.part(pt,'late-marker',{95,95},2,1,function()
+    pt:fill({{'o',95,95,1}},{1,0,0})
+  end)
+  return pt
+end
+Paint.reset_resources()
+local crossing=P.plan({width=100,height=100,text={x0=100,y0=0,x1=100,y1=100},lines={}})
+PDF.write(prefix..'-batch-grown.pdf',P.render(crossing,1-1e-10),100,100)
+PDF.write(prefix..'-batch-final.pdf',P.render(crossing,1),100,100)
+Compose.page=original
 local function fixture(cut)
   Compose.page=function(spec)
     local pt=Paint.new({backend='pdf'}); P.attach(pt,spec)
@@ -120,6 +154,15 @@ def main():
         ordinary = raster(root / 'stage-ordinary.pdf')
         assert ImageChops.difference(ordinary, images[-1]).getbbox() is None, 'final composition changed'
         protected = raster(root / 'stage-protected.pdf')
+        reserved = raster(root / 'stage-reserved-ordinary.pdf')
+        assert painted(reserved.crop((2, 2, reserved.width-2, reserved.height-2))) == 0, 'standalone reserve ignored'
+        grown = raster(root / 'stage-batch-grown.pdf')
+        final = raster(root / 'stage-batch-final.pdf')
+        delta = list(pixels(ImageChops.difference(grown, final)))
+        # Forms and transparency-group edges can antialias differently;
+        # interiors (especially the crossings) must retain batch opacity.
+        assert max(map(max, delta)) <= 32, 'batch overlap changed opacity'
+        assert sum(map(sum, delta)) / (3 * len(delta)) < .05, 'batch endpoint jump'
         # The interior of each exclusion is white, including their overlap.
         bp = 72 / 72.27
         for x0, y0, x1, y1 in [(15, 80, 55, 100), (30, 90, 70, 110), (65, 35, 295, 235)]:

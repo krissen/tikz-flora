@@ -60,7 +60,11 @@ and `final` for diagnostics. Treat other fields as implementation details.
 `plan` stores the semantic parts as PDF Form XObjects with a shared resource
 dictionary. `render` emits transforms, curved stem clips and references to these
 forms; it allocates no new gradients, opacity states, motifs or layouts. Mature
-parts reuse the same form at the same scale. The original final batched stream
+parts reuse the same form at the same scale. Spray ribbons and each stroke-width
+bucket additionally use a small isolated transparency Form per rendered frame:
+their parts grow independently inside it, while opacity and blending apply once
+to the combined batch. This preserves the original compositing at intersections.
+The original final batched stream
 is retained for exact endpoint painting. `flora.typeset` registers PDF definitions
 once per document; PGF definitions retain their normal scope behavior.
 `flora.flush` uses a native LuaTeX frame Form for every stage, including the

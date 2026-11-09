@@ -54,10 +54,20 @@ function M.encode(pt, width, height, level)
     local form_resources=5+#res.patterns+2*#(res.xobjects or {})
     objects[form_resources]=string.format("<< /ExtGState << %s >> /Pattern << %s >> /XObject << %s >> >>",
       table.concat(gs," "),table.concat(pats," "),table.concat(xobj," "))
+    local group_resources=form_resources+#pt.xobjects+1
+    local static={}
+    local has_groups=false
     for i,f in ipairs(pt.xobjects) do
       local id=form_resources+i
-      objects[id]=stream(string.format("/Type /XObject /Subtype /Form /BBox %s /Resources %d 0 R",f.bbox,form_resources),f.body,level)
+      local resource=f.group and group_resources or form_resources
+      local group=f.group and ' /Group << /S /Transparency /I true /K false >>' or ''
+      objects[id]=stream(string.format("/Type /XObject /Subtype /Form /BBox %s /Resources %d 0 R%s",f.bbox,resource,group),f.body,level)
       xobj[#xobj+1]=string.format("/%s %d 0 R",f.name,id)
+      if f.group then has_groups=true else static[#static+1]=xobj[#xobj] end
+    end
+    if has_groups then
+      objects[group_resources]=string.format("<< /ExtGState << %s >> /Pattern << %s >> /XObject << %s >> >>",
+        table.concat(gs,' '),table.concat(pats,' '),table.concat(static,' '))
     end
   end
   local content = pt:body()
