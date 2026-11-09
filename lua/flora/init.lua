@@ -137,6 +137,13 @@ function M.add_reserve(x0, y0, x1, y1)
   M.reserve[#M.reserve + 1] = { pt_of(x0), pt_of(y0), pt_of(x1), pt_of(y1) }
 end
 
+-- A page's own copy, so a per-page callback cannot change the document's.
+local function reserve_copy()
+  local out = {}
+  for i, r in ipairs(M.reserve) do out[i] = { r[1], r[2], r[3], r[4] } end
+  return out
+end
+
 function M.clear_reserve()
   M.reserve = {}
 end
@@ -177,7 +184,7 @@ function M.page(a)
     palette = set.palette, spin = set.spin, tune = set.tune,
     header = set.header, frametitle = a.frametitle == "1",
     frametitle_height = a.frametitle_height and pt_of(a.frametitle_height),
-    reserve = M.reserve,
+    reserve = reserve_copy(),
     gilt = set.gilt, gilt_dpi = set.giltdpi, gilt_env = set.giltenv, gilt_look = set.giltlook,
     backdrop = set.backdrop,
     doc_seed = tostring(set.seed or a.seed),
@@ -197,11 +204,13 @@ function M.page(a)
   end
   -- Integration adapters may replace measured geometry and the logical seed.
   -- Keep a.page as the physical page for filtering and diagnostic filenames.
+  local derived_seed = spec.seed
   if a.prepare_spec then a.prepare_spec(spec) end
   if dump and dump ~= "" then
     local f = assert(io.open(string.format("%s/spec-%d.lua", dump, a.page), "w"))
     local saved = {}
     for k, v in pairs(spec) do if k ~= "seed" then saved[k] = v end end
+    if spec.seed ~= derived_seed then saved.prepared_seed = spec.seed end
     f:write(require("flora.serial").encode(saved), "\n")
     f:close()
   end
