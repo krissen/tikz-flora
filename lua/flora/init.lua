@@ -246,6 +246,7 @@ function M.page(a)
     reserve = reserve_copy(),
     gilt = set.gilt, gilt_dpi = set.giltdpi, gilt_env = set.giltenv, gilt_look = set.giltlook,
     backdrop = set.backdrop,
+    pattern = set.pattern, pattern_edge = set.edge, pattern_outer = set.outer, pattern_scale = set.scale,
     doc_seed = tostring(set.seed or a.seed),
   }
   if marks and marks["title-start"] and lines then
@@ -265,7 +266,7 @@ function M.page(a)
   -- Keep a.page as the physical page for filtering and diagnostic filenames.
   local derived_seed = spec.seed
   if a.prepare_spec then
-    for _, k in ipairs({ "mix", "palette", "tune", "ornaments", "backdrop" }) do spec[k] = detached(spec[k]) end
+    for _, k in ipairs({ "mix", "palette", "tune", "ornaments", "backdrop", "pattern" }) do spec[k] = detached(spec[k]) end
     a.prepare_spec(spec)
   end
   if dump and dump ~= "" then

@@ -511,6 +511,14 @@ function C.frames(spec)
     })
   end
   local clip = header_clip(pt, spec)
+  -- A page given a pattern is filled with it instead of flora.
+  if spec.pattern and require("flora.pattern").paint(spec, pt) then
+    if clip then pt:clip_end() end
+    for _ in ipairs(spec.reserve or {}) do pt:clip_end() end
+    if page_clip then pt:clip_end() end
+    prog:at(1)
+    return pt
+  end
   if #frames == 1 and not frames[1].fn then
     plant(spec, pt, prog)
     if clip then pt:clip_end() end
