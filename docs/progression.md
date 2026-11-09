@@ -140,3 +140,24 @@ paths and nonlinear arc mapping. `tests/fixtures/support-seed3.lua` records the
 measured seed-3 Beamer frame that formerly showed floating sprays at stage 2/4;
 every foreground botanical part must trace its support chain to a main stem.
 Its painted area and canonical endpoint are checked unchanged.
+
+## Standalone export cost and floret passes
+
+`tools/render_animation.lua` in beamer-floral and similar adapters write one PDF
+per sample, and every PDF carries every Form of the plan. `pdfout.lua` therefore
+keeps each Form's deflate with the Form, keyed on its content and level. Without
+that, zlib took 96–98% of export time, recompressing identical data each sample.
+On the 161-sample title and the 1771-sample slideshow, encode fell from 233 s to
+8 s and from 689 s to 24 s, with byte-identical PDFs. Peak RSS rose from 730 to
+823 MB and from 867 to 929 MB. The cache is released with the plan and needs no
+limit.
+
+During growth each floret paints once per pass in `F.FLORET_PASSES`, so overlaps
+layer as in the finished page. These passes cost about 23% more parts on the title
+and 8–10% more rasterization than one part per floret. Do not merge them to
+recover that cost: merging to two passes (`body`, `details`) saved 2% of parts and
+no measurable raster time, because the extra part comes from separating a floret's
+details from its body. One part per floret restores the layering error, where a
+later floret's petals cover an earlier floret's eye until the final stage.
+
+Measured on 2026-11-09 from engine acd177c, one run per variant, at 144 dpi.
