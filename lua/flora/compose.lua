@@ -470,10 +470,6 @@ local function header_clip(pt, spec)
   elseif (Tune.gesture.header_clip or 0) > 0 and spec.header_y and spec.frametitle then
     y, through = spec.header_y - (Tune.gesture.header_gap or 0), false
   end
-  local inset = spec.top_inset or Tune.gesture.top_inset or 0
-  if inset > 0 and not (spec.probe or spec.keep_bounds) then
-    y, through = math.min(y or spec.height, spec.height - inset), true
-  end
   if not y then return nil end
   local w = spec.width
   pt:clip_begin({ { "m", 0, 0 }, { "l", w, 0 }, { "l", w, y }, { "l", 0, y }, { "z" } })
@@ -498,6 +494,13 @@ function C.frames(spec)
   pt.probe = spec.probe
   pt.gilt_dpi, pt.gilt_env, pt.gilt_look = spec.gilt_dpi, spec.gilt_env, spec.gilt_look
   Progression.attach(pt, spec)
+  -- Keep page clearance outside the header clip: margin-mode title
+  -- furniture may cross that header boundary, but never the page inset.
+  local page_clip = inset > 0 and not (spec.probe or spec.keep_bounds)
+  if page_clip then
+    local w, y = spec.width, spec.height - inset
+    pt:clip_begin({ { "m", 0, 0 }, { "l", w, 0 }, { "l", w, y }, { "l", 0, y }, { "z" } })
+  end
   -- Exclusions belong to the page, outside every plant's frame map.
   -- Reverse each inner contour so the nonzero clip subtracts its box.
   for _, r in ipairs(spec.reserve or {}) do
@@ -512,6 +515,7 @@ function C.frames(spec)
     plant(spec, pt, prog)
     if clip then pt:clip_end() end
     for _ in ipairs(spec.reserve or {}) do pt:clip_end() end
+    if page_clip then pt:clip_end() end
     prog:at(1)
     return pt
   end
@@ -569,6 +573,7 @@ function C.frames(spec)
   prog:at(1)
   if clip and clip.through then pt:clip_end() end
   for _ in ipairs(spec.reserve or {}) do pt:clip_end() end
+  if page_clip then pt:clip_end() end
   pt.title = frames.title
   pt.coverage = cover
   pt.frames = frames
