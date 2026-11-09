@@ -255,10 +255,21 @@ do
 
   spec.layout = "title"
   spec.title = { x0 = 170, x1 = 425, y0 = 530, y1 = 600 }
+  spec.tune.gesture.top_inset = 48
+  spec.reserve = {{0,0,10,10},{5,5,15,15}}
+  local Title = require("flora.orn_title")
+  local paint, depth = Title.paint
+  Title.paint = function(p, ...)
+    depth = p.clips
+    return paint(p, ...)
+  end
   Paint.reset_resources()
   local st = Compose.page(spec)
+  Title.paint = paint
   H.check(st.header_clip == spec.header_y and st.title ~= nil,
     "the title-furniture path did not run under the header clip")
+  H.check(depth == 3 and st.clips == 0,
+    "title furniture lost page/reserve protection or retained the margin header clip")
 
   spec.tune = { gesture = { header_clip = 0 } }
   Paint.reset_resources()
