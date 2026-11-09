@@ -156,7 +156,8 @@ function Rec:part(pt,kind,anchor,birth,duration,fn,stem,support)
   p.chunks=chunks
   local n,sx,sy=0,0,0
   for key,weight in pairs(p.cells) do n=n+weight; sx=sx+(key%self.nx+.5)*self.resolution*weight; sy=sy+(key//self.nx+.5)*self.resolution*weight end
-  p.area=n*self.resolution^2; p.cells=nil
+  -- A later pass over a part's own footprint adds no new ink to pace by.
+  p.area=(support and support.no_area) and 0 or n*self.resolution^2; p.cells=nil
   if not p.anchor then p.anchor=n>0 and {sx/n,sy/n} or {0,0} end
 end
 -- Alternate part streams for batched pen work, retaining the original final

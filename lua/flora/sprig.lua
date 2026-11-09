@@ -136,7 +136,7 @@ function Batch:paint(pt, ink, opaque)
         local birth = clock:birth(at[1], at[2]) / clock.reach * 0.7
         local duration = stem and math.max(0.01, G.length(stem) / clock.reach * 0.7) or 0.05
         Progression.part(pt, kind, at, birth, duration, function() b:paint(pt, ink, true) end, stem,
-          {token=token,parent=support.parent,t=support.t})
+          {token=token,parent=support.parent,t=support.t,no_area=b.floret_pass and b.floret_pass~="body"})
       end
       rec:batch(pt,0.92,function() for _,c in ipairs(self.ribbons) do
         local b=S.batch(); b.ribbons={c}; local pts=self.growth[c]
@@ -146,9 +146,17 @@ function Batch:paint(pt, ink, opaque)
         local b=S.batch(); b.lines[i]={c}; local pts=self.growth[c]
         part(b, pts[1], pts, "spray-stem", self.tokens[c])
       end end,chunk(#self.lines[i]>0)) end
-      for _,name in ipairs({"buds", "florets", "stars"}) do for _,it in ipairs(self[name]) do
-        local b=S.batch(); b[name]={it}; part(b, it, nil, name, nil, self.supports[it])
-      end end
+      local function singles(name, pass)
+        for _,it in ipairs(self[name]) do
+          if not pass or F.floret_paints(it, pass) then
+            local b=S.batch(); b[name]={it}; b.floret_pass=pass
+            part(b, it, nil, name, nil, self.supports[it])
+          end
+        end
+      end
+      singles("buds")
+      for _,pass in ipairs(F.FLORET_PASSES) do singles("florets", pass) end
+      singles("stars")
     end, function() self:paint(pt, ink) end)
     return
   end
@@ -172,7 +180,7 @@ function Batch:paint(pt, ink, opaque)
     end
   end
   for _, b in ipairs(self.buds) do F.bud(pt, b[1], b[2], b[3], b[4], tint and Color.recolor(pal.deep, tint)) end
-  if #self.florets > 0 then F.florets(pt, self.florets) end
+  if #self.florets > 0 then F.florets(pt, self.florets, self.floret_pass) end
   if #self.stars > 0 then
     local paths = {}
     for _, s in ipairs(self.stars) do
