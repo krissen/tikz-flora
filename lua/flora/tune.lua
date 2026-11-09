@@ -496,7 +496,11 @@ local function restore(dst, src)
   end
   for k, v in pairs(src) do
     if setting(k) then
-      if type(v) == "table" then
+      if type(v) == "table" and #v > 0 then
+        -- Lists can be memoized by identity (the raster gilt ramps are).
+        -- Never rewrite an overridden list after its lookup was cached.
+        dst[k] = clone(v)
+      elseif type(v) == "table" then
         if type(dst[k]) ~= "table" then dst[k] = {} end
         restore(dst[k], v)
       else
