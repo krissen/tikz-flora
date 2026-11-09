@@ -611,6 +611,13 @@ function P.transparency_form(name, body, bbox, resources)
   return f
 end
 
+-- A plain Form for a run of frame content that uses a plan's shared resources.
+function P.run_form(name, body, bbox, resources)
+  local attr = "/Type /XObject /Subtype /Form /BBox " .. bbox .. " /Resources << " .. resources .. " >>"
+  local object = pdf.immediateobj("stream", body, attr)
+  return {name=name,body=body,bbox=bbox,object=object}
+end
+
 function P.forms(parts, width, height)
   local gs, patterns, images = {}, {}, {}
   for _,x in ipairs(registered.xobjects) do
