@@ -77,6 +77,15 @@ local function clip(bx, w, h)
   return c
 end
 
+local function reservations(spec, transform)
+  local out = {}
+  for _, r in ipairs(spec.reserve or {}) do
+    local b = transform({ x0 = r[1], y0 = r[2], x1 = r[3], y1 = r[4] })
+    if b then out[#out + 1] = { b.x0, b.y0, b.x1, b.y1 } end
+  end
+  return out
+end
+
 -- A frame of size w x h whose map to the page is `m`. The page's text block
 -- (or `block`, a page box standing in for it) and its measured lines are
 -- carried into the frame; lines outside the frame are dropped.
@@ -96,6 +105,7 @@ local function frame(spec, m, w, h, opts)
   local s = {}
   for k, v in pairs(spec) do s[k] = v end
   s.width, s.height, s.text, s.lines = w, h, text, lines
+  s.reserve = reservations(spec, function(b) return clip(map_box(inv, b), w, h) end)
   if opts.header or ((Tune.gesture.header_clip or 0) > 0 and m[4] == 1) then
     s.header_y = spec.header_y
   else
@@ -104,9 +114,13 @@ local function frame(spec, m, w, h, opts)
   -- Vertical header limits survive a horizontal mirror; a frame that turns
   -- the y axis must use its own coordinates instead.
   if m[4] == 1 then
-    s.header, s.body_top, s.top_inset = spec.header, spec.body_top, spec.top_inset
+    s.header = spec.header
+    s.header_y = s.header_y and s.header_y - m[6]
+    s.body_top = spec.body_top and spec.body_top - m[6]
+    local inset = spec.top_inset or Tune.gesture.top_inset or 0
+    s.top_inset = math.max(0, h - (spec.height - inset - m[6]))
   else
-    s.header, s.body_top, s.top_inset = spec.header and "margin", nil, nil
+    s.header, s.body_top, s.top_inset = spec.header and "margin", nil, 0
   end
   s.closed = opts.closed
   -- A wreath or a crown frames the text; it does not grow into it.
@@ -154,10 +168,11 @@ local function curved(spec, fn, inv, w, h, text, opts)
   local s = {}
   for k, v in pairs(spec) do s[k] = v end
   s.width, s.height, s.text, s.lines = w, h, text, lines
+  s.reserve = reservations(spec, function(b) return inv_box(inv, b, w, h) end)
   s.header_y, s.layout, s.frame_only, s.bare = nil, nil, true, true
   -- Page-space vertical limits are enforced by compose's outer clip. They
   -- cannot be interpreted as vertical coordinates in an oval frame.
-  s.header, s.body_top, s.top_inset = spec.header and "margin", nil, nil
+  s.header, s.body_top, s.top_inset = spec.header and "margin", nil, 0
   if opts.seed then s.seed = opts.seed end
   if opts.density then
     s.mix = {}

@@ -7,6 +7,51 @@ local Settings = require("flora.settings")
 
 local W = 595.28
 
+-- Reservations are page boxes. Each plant closes only the inverse-mapped
+-- portion in its own frame, including mirrors, rotations and ovals.
+do
+  local Layout = require("flora.layout")
+  local Tune = require("flora.tune")
+  local Serial = require("flora.serial")
+  for _, name in ipairs(Frames.order) do
+    local s = { width = 400, height = 300, layout = name, page = 1,
+      text = { x0 = 80, y0 = 60, x1 = 320, y1 = 240 },
+      reserve = { { 0, 80, 50, 160 }, { 390, 0, 410, 20 } } }
+    local original = Serial.encode(s.reserve)
+    Tune._with({ gesture = { top_inset = 70 } }, function()
+      for _, f in ipairs(Frames.of(s)) do
+        H.check(f.spec.top_inset ~= nil or not f.fn, name .. ': inherited a page inset')
+        if f.map then
+          local inv = Frames.invert(f.map)
+          local expected = {}
+          for _, r in ipairs(s.reserve) do
+            local a,b = Frames.apply(inv,r[1],r[2])
+            local c,d = Frames.apply(inv,r[3],r[4])
+            local q = { math.max(0,math.min(a,c)), math.max(0,math.min(b,d)),
+              math.min(f.spec.width,math.max(a,c)), math.min(f.spec.height,math.max(b,d)) }
+            if q[1]<q[3] and q[2]<q[4] then expected[#expected+1]=q end
+          end
+          H.check(Serial.encode(f.spec.reserve)==Serial.encode(expected), name .. ': reservation not mapped/clipped')
+          if f.map[4] ~= 1 then
+            local _,m = Layout.region(f.spec)
+            H.check(f.spec.top_inset==0 and m.y1==f.spec.height-(f.spec.edge or 16)-6,
+              name .. ': page inset leaked into a turned frame')
+          end
+        elseif f.inv then
+          for _, r in ipairs(f.spec.reserve) do
+            H.check(r[1]>=0 and r[2]>=0 and r[3]<=f.spec.width and r[4]<=f.spec.height,
+              name .. ': curved reservation escaped frame')
+          end
+        end
+      end
+    end)
+    H.check(Serial.encode(s.reserve)==original,name .. ': mutated page reservations')
+  end
+  local s = {width=400,height=300,layout='centered',text={x0=80,y0=60,x1=320,y1=240},reserve={{0,80,50,160}}}
+  local fs = Frames.of(s)
+  H.check(#fs[1].spec.reserve==1 and #fs[2].spec.reserve==0,'left reservation closes right margin')
+end
+
 -- The helper's page with its text block (and lines) mirrored, so the wide
 -- margin is on the right.
 local function mirrored(seed)
