@@ -29,12 +29,7 @@ assert(spec_path and seed and page and out, "usage: preview.lua SPEC SEED PAGE O
 local f = assert(io.open(spec_path))
 local spec = Serial.decode(f:read("a"))
 f:close()
--- "doc" means this page as compiled, including a seed set by an adapter.
-if seed == "doc" then
-  spec.seed = spec.prepared_seed or Init.seed(spec.doc_seed or "1", page)
-else
-  spec.seed = Init.seed(seed, page)
-end
+spec.seed = Init.spec_seed(spec, seed, page)
 spec.grow = T
 if extra then
   local flags = {}
