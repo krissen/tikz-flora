@@ -35,8 +35,9 @@
 --          While the cell grows its construction lines show only inside
 --          a wedge about that point that opens through a full turn
 --          (progression.lua's wedge), so a circle about it is drawn as an
---          arc from a0, and the cell is painted once the turn is done. A
---          page that does not grow never reads it.
+--          arc from a0; once that turn is done its paint is drawn the
+--          same way in a second turn. A page that does not grow never
+--          reads it.
 
 local M = { list = {}, by_name = {}, tags = {} }
 

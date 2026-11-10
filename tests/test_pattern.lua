@@ -401,7 +401,7 @@ do
 end
 
 -- Compass growth: a circle pattern's construction lines are drawn as a
--- compass turns about each circle's centre, then the cell is painted.
+-- compass turns about each circle's centre, then its bands in a second turn.
 -- `wedges` finds the wedge clips in a frame's body: the compass point,
 -- how far it has turned (a fraction of a turn) and the line that follows.
 local function wedges(body)
@@ -447,26 +447,30 @@ for _, name in ipairs({ "overlapping_circles", "shippo", "seigaiha" }) do
     H.check(c.sweep and c.sweep[1] == c.circle[1] and c.sweep[2] == c.circle[2], name .. ": a circle without its compass point")
   end
 
-  -- Progression: every cell's lines are swept, the cell painted after.
+  -- Progression: every cell's lines and bands are swept, the bands
+  -- after the lines.
   Paint.reset_resources()
   local plan = P.plan(spec(), { resolution = 1 })
-  local line_of, forms, swept = {}, {}, 0
+  local swept_parts, forms, swept = {}, {}, { pattern_line = 0, pattern = 0 }
   for i, part in ipairs(plan.parts) do
+    if swept[part.kind] then
+      swept[part.kind] = swept[part.kind] + (part.sweep and 1 or 0)
+      if part.form then swept_parts[#swept_parts + 1] = part; forms[part.form] = part end
+    end
     if part.kind == "pattern_line" then
-      swept = swept + (part.sweep and 1 or 0)
       local cell = plan.parts[i + 1]
       H.check(cell.kind == "pattern" and cell.birth >= part.birth + part.duration - 1e-12,
         name .. ": a cell is painted before its compass turn is done")
-      if part.form then line_of[#line_of + 1] = part; forms[part.form] = part end
     end
   end
-  H.check(swept > 20 and swept == plan.final.pattern.cells, name .. ": lines not swept")
+  local cells = plan.final.pattern.cells
+  H.check(cells > 20 and swept.pattern_line == cells and swept.pattern == cells, name .. ": lines or bands not swept")
 
-  -- How far each cell's lines are drawn in a frame: 0 before, the wedge's
+  -- How far each swept part is drawn in a frame: 0 before, the wedge's
   -- turn while it opens, 1 after.
   local function drawn(body)
     local out = {}
-    for _, part in ipairs(line_of) do
+    for _, part in ipairs(swept_parts) do
       out[part] = body:find("/" .. part.form .. " Do", 1, true) and 1 or 0
     end
     for _, w in ipairs(wedges(body)) do
@@ -475,20 +479,23 @@ for _, name in ipairs({ "overlapping_circles", "shippo", "seigaiha" }) do
     end
     return out
   end
-  local before, partial = {}, false
+  local before, partial = {}, {}
   for _, t in ipairs({ 0.05, 0.15, 0.25, 0.35, 0.5, 0.65, 0.75, 0.9, 0.97 }) do
     local now = drawn(P.render(plan, t):body())
     for part, f in pairs(now) do
       H.check(f + 1e-3 >= (before[part] or 0), string.format("%s: a compass turned back at t = %.2f", name, t))
-      if t == 0.5 and f > 0.02 and f < 0.98 then partial = true end
+      if t == 0.5 and f > 0.02 and f < 0.98 then partial[part.kind] = true end
     end
     before = now
   end
-  H.check(partial, name .. ": a half-grown frame holds no partial arc")
+  H.check(partial.pattern_line, name .. ": a half-grown frame holds no partial construction arc")
+  H.check(partial.pattern, name .. ": a half-grown frame holds no partial band")
 
   -- spec.grow frames: partial arcs while growing, turning only forward,
-  -- and the page grows.
-  local last, sizes, seen = {}, {}, false
+  -- and the page grows. A cell's compass first turns once for its lines
+  -- (the thin construction stroke follows the wedge), then once for its
+  -- bands: its progress is the line's turn, or 1 and the band's.
+  local last, sizes, seen = {}, {}, {}
   for _, g in ipairs({ 0.2, 0.4, 0.5, 0.6, 0.8 }) do
     Paint.reset_resources()
     local body = Compose.page(spec({ grow = g })):body()
@@ -496,14 +503,17 @@ for _, name in ipairs({ "overlapping_circles", "shippo", "seigaiha" }) do
     local now = {}
     for _, w in ipairs(wedges(body)) do
       local key = string.format("%.2f,%.2f", w.x, w.y)
-      now[key] = w.f
+      local band = not w.next:find(" 0.40 w ", 1, true)
+      local p = (band and 1 or 0) + w.f
+      H.check(not now[key] or now[key] < 1 and p > 1, name .. ": a spec.grow cell swept twice at once")
+      now[key] = p
       H.check(w.f > 0 and w.f < 1, name .. ": a spec.grow wedge outside the turn")
-      H.check(not last[key] or w.f + 1e-3 >= last[key], name .. ": a spec.grow compass turned back")
-      seen = true
+      H.check(not last[key] or p + 1e-3 >= last[key], name .. ": a spec.grow compass turned back")
+      seen[band and "band" or "line"] = true
     end
     last = now
   end
-  H.check(seen, name .. ": spec.grow drew no partial arc")
+  H.check(seen.line and seen.band, name .. ": spec.grow drew no partial line or band")
   for i = 2, #sizes do H.check(sizes[i] > sizes[i - 1], name .. ": spec.grow frames do not grow") end
 end
 
