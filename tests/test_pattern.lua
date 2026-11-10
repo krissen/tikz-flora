@@ -304,4 +304,69 @@ for _, entry in ipairs(Patterns.list) do
   H.check(early and #early:body() < #plan.final:body(), name .. ": an early frame paints everything")
 end
 
+-- Celtic knotwork: every crossing has exactly one over strand, and a
+-- strand alternates over and under along its whole length, for the weave
+-- and for panels of mirrors; every strand closes; a cell's curves stay
+-- inside its square and pad.
+do
+  local engine = Patterns.by_name.celtic_knot.engine
+  local function check(label, inner, nx, ny)
+    local loops = engine.trace(nx, ny, inner)
+    local at = {}
+    local crossings = 0
+    for _, pts in ipairs(loops) do
+      local last, first, n = nil, nil, 0
+      for _, p in ipairs(pts) do
+        local k = p.X .. "," .. p.Y
+        at[k] = at[k] or { passes = 0, over = 0, cross = p.cross }
+        at[k].passes = at[k].passes + 1
+        if p.over then at[k].over = at[k].over + 1 end
+        if p.cross then
+          n = n + 1
+          if last ~= nil then H.check(p.over ~= last, label .. ": two over or two under in a row at " .. k) end
+          last, first = p.over, first == nil and p.over or first
+        end
+      end
+      if n > 0 then H.check(n % 2 == 0 and last ~= first, label .. ": a strand does not close over/under") end
+    end
+    for k, v in pairs(at) do
+      if v.cross then
+        crossings = crossings + 1
+        H.check(v.passes == 2 and v.over == 1, label .. ": crossing " .. k .. " has " .. v.over .. " over of " .. v.passes)
+      end
+    end
+    H.check(crossings > 20, label .. ": too few crossings (" .. crossings .. ")")
+  end
+  check("weave", nil, 12, 9)
+  for seed = 1, 6 do
+    local rng, memo = Rng.new(seed), {}
+    check("panels " .. seed, function(X, Y)
+      local k = X * 1000 + Y
+      if memo[k] == nil then memo[k] = rng:next() < 0.25 end
+      return memo[k]
+    end, 8, 8)
+  end
+  -- A cell's curves, as the field builds them, stay inside its square.
+  for _, name in ipairs({ "celtic_knot", "celtic_panels" }) do
+    local p = Patterns.by_name[name]
+    for _, size in ipairs({ p.scale, p.scale * 2.5 }) do
+      local cells = p.cells({ x0 = 0, y0 = 0, x1 = 200, y1 = 160, size = size, rng = Rng.new(2) })
+      local reach = size * 0.1
+      local bad = 0
+      for _, c in ipairs(cells) do
+        local lo, hi = c.x - size / 4 - reach, c.x + size / 4 + reach
+        local lo2, hi2 = c.y - size / 4 - reach, c.y + size / 4 + reach
+        for _, piece in ipairs(c.lines) do
+          for _, cmd in ipairs(piece) do
+            for i = 2, #cmd, 2 do
+              if cmd[i] < lo or cmd[i] > hi or cmd[i + 1] < lo2 or cmd[i + 1] > hi2 then bad = bad + 1 end
+            end
+          end
+        end
+      end
+      H.check(bad == 0, name .. ": " .. bad .. " curve points outside their cell's square and pad at size " .. size)
+    end
+  end
+end
+
 H.done("pattern")
