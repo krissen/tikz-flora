@@ -38,8 +38,8 @@ M.about = {
     "What the flora is painted over: light, white paper (the default); dark, a near-black page; or that colour. On a dark backdrop every ink is painted light, as if lit, and gold stays gold." },
   { "pattern", "a pattern or group name, {name=weight, ...} with weights 0 to 10, or none",
     "Fills the page with a geometric pattern instead of flora: one picked per page by weight. A group name (such as japanese or girih) weighs every pattern in it, except the emblem patterns (hexagram_lattice, khatam, greek_crosses), which only their own name or the group symbol picks. Each setting replaces the last; none grows flora again." },
-  { "edge", "dissolve, cell, fade, border",
-    "How a pattern meets the text: cells falling away (the default), whole cells to a hard edge, cells paling into the paper, or a ruled frame round the text." },
+  { "edge", "dissolve, cell, fade, border, guilloche",
+    "How a pattern meets the text: cells falling away (the default), whole cells to a hard edge, cells paling into the paper, a ruled frame round the text, or a guilloche band round it." },
   { "hero", "rosette, phyllotaxis, rose, guilloche, none",
     "One large radial motif at a top corner of a pattern page, which the cells give way to: rings of petals, seeds set as a sunflower sets them, a rose window, or guilloche rings. It sits on the top corner of the pattern's side (top right for right, top left for left; top right for layouts with both sides or the whole page) and grows ring by ring from its centre. none (the default) paints none." },
   { "outer", "bleed, margin", "How a pattern meets the paper's edge: running off the page (the default), or whole cells inside a small margin." },
@@ -153,7 +153,7 @@ end)
 
 M.define("edge", function(v)
   if require("flora.pattern").edges[v] then return v end
-  return nil, "edge must be dissolve, cell, fade or border"
+  return nil, "edge must be dissolve, cell, fade, border or guilloche"
 end)
 
 M.define("hero", function(v)

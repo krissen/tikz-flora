@@ -14,8 +14,8 @@ local s = Settings.parse("pattern=asanoha, edge=fade, outer=margin, scale=1.5")
 H.check(s.pattern.asanoha == 1 and s.edge == "fade" and s.outer == "margin" and s.scale == 1.5, "pattern keys parse")
 s = Settings.parse("pattern={japanese=2, stars_8_4=0}")
 H.check(s.pattern.japanese == 2 and s.pattern.stars_8_4 == 0, "pattern weights and groups parse")
-s = Settings.parse("hero=rose")
-H.check(s.hero == "rose" and Settings.to_spec(s, {}).pattern_hero == "rose", "hero parses")
+s = Settings.parse("hero=rose, edge=guilloche")
+H.check(s.hero == "rose" and s.edge == "guilloche" and Settings.to_spec(s, {}).pattern_hero == "rose", "hero and guilloche parse")
 for _, bad in ipairs({ "pattern=paisley", "pattern={asanoha=11}", "edge=soft", "outer=wrap", "scale=9", "hero=sun" }) do
   H.check(not pcall(Settings.parse, bad), bad .. " was accepted")
 end
@@ -189,7 +189,7 @@ local bad = 0
 for _, p in ipairs(Patterns.list) do
   for _, scale in ipairs({ 1, 2.5, 4 }) do
     for _, layout in ipairs({ "right", "surround" }) do
-      for _, edge in ipairs({ "cell", "dissolve", "fade", "border" }) do
+      for _, edge in ipairs({ "cell", "dissolve", "fade", "border", "guilloche" }) do
         for _, outer in ipairs({ "bleed", "margin" }) do
           local pt = page({ pattern = { [p.name] = 1 }, pattern_scale = scale, layout = layout, pattern_edge = edge,
             pattern_outer = outer, mix = { density = 2 }, lines = layout == "surround" and lines or nil,
@@ -578,7 +578,7 @@ do
   for _, pname in ipairs({ "stars_8_4", "rosette_lattice", "overlapping_circles", "penrose_rhombs" }) do
     for _, name in ipairs({ "rosette", "phyllotaxis", "rose", "guilloche" }) do
       for _, layout in ipairs({ "left", "right", "surround", "split" }) do
-        for _, edge in ipairs({ "dissolve", "cell", "border" }) do
+        for _, edge in ipairs({ "dissolve", "cell", "guilloche" }) do
           local right = layout == "right" or layout == "split"
           local pt = page({ pattern = { [pname] = 1 }, pattern_hero = name, layout = layout, pattern_edge = edge,
             page = 1, mix = { density = 3 }, lines = layout == "surround" and lines or nil,
@@ -636,7 +636,7 @@ end
 -- A hero grows: its rings as parts from the centre out, the last frame the
 -- page; spec.grow frames grow monotonically and end at the page.
 for _, name in ipairs({ "rosette", "phyllotaxis", "rose", "guilloche" }) do
-  for _, edge in ipairs({ "dissolve", "border" }) do
+  for _, edge in ipairs({ "dissolve", "guilloche" }) do
     local function spec()
       return { width = 360, height = 270, text = { x0 = 120, y0 = 40, x1 = 330, y1 = 230 }, seed = 7,
         layout = "left", pattern = { stars_8_4 = 1 }, pattern_hero = name, pattern_edge = edge }
@@ -665,6 +665,35 @@ for _, name in ipairs({ "rosette", "phyllotaxis", "rose", "guilloche" }) do
     Paint.reset_resources()
     H.check(Compose.page(s):body() == ordinary:body(), name .. ": spec.grow = 1 differs from the page")
   end
+end
+
+-- The guilloche band lies between the text and the field: every point of
+-- it, strokes included, at least 2pt from the text block and 2pt short
+-- of the gap the cells keep, at several block sizes and strand widths.
+do
+  for _, t in ipairs({ { x0 = 120, y0 = 40, x1 = 330, y1 = 230 }, { x0 = 30, y0 = 40, x1 = 240, y1 = 230 }, { x0 = 50, y0 = 50, x1 = 70, y1 = 60 } }) do
+    for _, w in ipairs({ 0.6, 1.6 }) do
+      local b = Hero.band(t, 9, 4, w)
+      local near, far = math.huge, 0
+      local function at(x, y, r)
+        local d = rdist(x, y, { t.x0, t.y0, t.x1, t.y1 })
+        near = math.min(near, d - r); far = math.max(far, d + r)
+      end
+      for _, sp in ipairs(b.spans) do reach_of(sp.under, w, at); reach_of(sp.over, w, at) end
+      reach_of(b.dots, 0.35, at)
+      reach_of(b.rules, 0.5, at)
+      H.check(#b.spans % 2 == 0 and #b.spans >= 4, "the band's crossings do not alternate round it")
+      H.check(near >= 2 and far <= 18 - 2, string.format("guilloche band from %.2f to %.2f of the text", near, far))
+    end
+  end
+  -- The page paints it: a strand point 9 +- 4 out from the text's bottom.
+  local _, seen2 = page({ pattern_edge = "guilloche" })
+  local banded = false
+  for _, q in ipairs(seen2) do
+    local d = rdist(q[1], q[2], { sp.text.x0, sp.text.y0, sp.text.x1, sp.text.y1 })
+    if q[2] < sp.text.y0 and d > 4.9 and d < 13.1 then banded = true end
+  end
+  H.check(banded, "edge=guilloche painted no band round the text")
 end
 
 H.done("pattern")

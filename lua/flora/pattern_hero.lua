@@ -1,6 +1,7 @@
 -- A pattern page's hero (pattern.lua): one large radial motif centred on
 -- a top corner of the page, which the field of cells gives way to, as
--- flora gives way to its hero bloom (compose.lua).
+-- flora gives way to its hero bloom (compose.lua). And the guilloche band
+-- that edge=guilloche draws round the text in place of the ruled frame.
 --
 -- A motif is a list of rings, from the centre outward: { r = its outer
 -- radius, paint = fn(pt), construct = fn(pt) }. Every point a motif
@@ -278,6 +279,90 @@ end
 -- the centre outward, early, as the hero is at the page's outer edge.
 function M.birth(i, n)
   return 0.02 + 0.5 * (i - 1) / n
+end
+
+-- The guilloche band round text block t: two strands winding about the
+-- line `o` out from the text, `a` to either side of it, crossing over and
+-- under in turn, with a dot in each eye between them and a fine rule
+-- inside and out. All of it lies between o - a - 1.5 - w/2 and
+-- o + a + 1.5 + w/2 from the text, w the strands' width. Returns the
+-- strokes and fills, in the order painted, as lists of polylines.
+function M.band(t, o, a, w)
+  local x0, y0, x1, y1 = t.x0, t.y0, t.x1, t.y1
+  local sw, sh, q = x1 - x0, y1 - y0, pi * o / 2
+  -- The line o out from the text: four sides and four quarter turns,
+  -- from the bottom left; at(s) is the point of the text the line's
+  -- point s along is o out from, and the outward normal there.
+  local legs = {
+    { sw, function(u) return x0 + u, y0, 0, -1 end },
+    { q, function(u) local b = -pi / 2 + u / o; return x1, y0, cos(b), sin(b) end },
+    { sh, function(u) return x1, y0 + u, 1, 0 end },
+    { q, function(u) local b = u / o; return x1, y1, cos(b), sin(b) end },
+    { sw, function(u) return x1 - u, y1, 0, 1 end },
+    { q, function(u) local b = pi / 2 + u / o; return x0, y1, cos(b), sin(b) end },
+    { sh, function(u) return x0, y1 - u, -1, 0 end },
+    { q, function(u) local b = pi + u / o; return x0, y0, cos(b), sin(b) end },
+  }
+  local L = 2 * (sw + sh) + 4 * q
+  local function at(s)
+    s = s % L
+    for _, g in ipairs(legs) do
+      if s <= g[1] then return g[2](s) end
+      s = s - g[1]
+    end
+    return legs[#legs][2](legs[#legs][1])
+  end
+  local function point(s, off)
+    local px, py, nx, ny = at(s)
+    return { px + nx * (o + off), py + ny * (o + off) }
+  end
+  -- An even number of crossings, about three strand widths apart.
+  local nz = 2 * math.max(2, math.floor(L / (6 * a) + 0.5))
+  local Z = L / nz
+  local function strand(sign, s0, s1)
+    local pts = {}
+    for i = 0, 10 do
+      local s = s0 + (s1 - s0) * i / 10
+      local p = point(s, sign * a * sin(pi * s / Z))
+      pts[#pts + 1] = (i == 0) and { "m", p[1], p[2] } or { "l", p[1], p[2] }
+    end
+    return pts
+  end
+  local spans, dots = {}, {}
+  for k = 0, nz - 1 do
+    local over = k % 2 == 0 and 1 or -1
+    local s0, s1 = (k - 0.5) * Z, (k + 0.5) * Z
+    spans[#spans + 1] = { under = strand(-over, s0, s1), over = strand(over, s0, s1), sign = over }
+    local c = point((k + 0.5) * Z, 0)
+    dots[#dots + 1] = circle(c[1], c[2], 0.38 * a)
+  end
+  local function rule(off)
+    local pts, n = {}, math.ceil(L / 2)
+    for i = 0, n - 1 do
+      local p = point(L * i / n, off)
+      pts[#pts + 1] = (i == 0) and { "m", p[1], p[2] } or { "l", p[1], p[2] }
+    end
+    pts[#pts + 1] = { "z" }
+    return pts
+  end
+  return { spans = spans, dots = dots, rules = { rule(-(a + 1.5)), rule(a + 1.5) }, w = w }
+end
+
+-- Paint the guilloche band round text block t, in `ink`.
+function M.paint_band(pt, t, o, a, ink)
+  local w = math.min(ink.width, 1.6)
+  local b = M.band(t, o, a, w)
+  pt:stroke(b.rules, ink.band, 0.5, 1, { many = true })
+  for _, s in ipairs(b.spans) do
+    local under, over = s.sign > 0 and ink.fill[2] or ink.fill[1], s.sign > 0 and ink.fill[1] or ink.fill[2]
+    pt:stroke(s.under, ink.band, w, 1)
+    pt:stroke(s.under, under, w * 0.55, 1)
+    pt:stroke(s.over, ink.band, w, 1)
+    pt:stroke(s.over, over, w * 0.55, 1)
+  end
+  pt:fill(b.dots, ink.accent, 1, { many = true })
+  pt:stroke(b.dots, ink.band, 0.35, 1, { many = true })
+  return b
 end
 
 return M

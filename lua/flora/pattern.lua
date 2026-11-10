@@ -8,7 +8,8 @@
 --   edge     how the field meets the text: dissolve (cells fall away,
 --            more of them the nearer the text), cell (whole cells to a
 --            hard edge), fade (cells pale into the paper), border (whole
---            cells and a ruled frame round the text)
+--            cells and a ruled frame round the text), guilloche (whole
+--            cells and a guilloche band round the text, pattern_hero.lua)
 --   outer    how it meets the paper's edge: bleed (it runs off the page)
 --            or margin (whole cells only, inside a small margin)
 --   scale    the cell size, as a factor of the pattern's own
@@ -35,11 +36,13 @@ local Progression = require("flora.progression")
 
 local M = {}
 
-M.edges = { dissolve = true, cell = true, fade = true, border = true }
+M.edges = { dissolve = true, cell = true, fade = true, border = true, guilloche = true }
 M.outers = { bleed = true, margin = true }
 
 -- Distances in pt.
 local GAP, BORDER_GAP, OUTER_MARGIN = 6, 12, 4
+-- The edges that frame the text, and how far their cells keep from it.
+local FRAMED = { border = BORDER_GAP, guilloche = 18 }
 
 local function rect_dist(x, y, r)
   local dx = math.max(r[1] - x, 0, x - r[3])
@@ -182,7 +185,7 @@ local function avoid(spec, side, edge)
   local out = {}
   local t = spec.text
   -- A border frames the text block, so the field keeps clear of all of it.
-  if side or edge == "border" or not spec.lines or #spec.lines == 0 then out[#out + 1] = { t.x0, t.y0, t.x1, t.y1 } end
+  if side or FRAMED[edge] or not spec.lines or #spec.lines == 0 then out[#out + 1] = { t.x0, t.y0, t.x1, t.y1 } end
   for _, l in ipairs(spec.lines or {}) do out[#out + 1] = { l.x0, l.y0, l.x1, l.y1 } end
   for _, r in ipairs(spec.reserve or {}) do out[#out + 1] = { r[1], r[2], r[3], r[4] } end
   return out
@@ -265,7 +268,7 @@ function M.paint(spec, pt)
   local size = p.scale * (spec.pattern_scale or 1)
   local width = (p.width or size / 6) * (spec.pattern_scale or 1)
   local dens = Mix.weight(spec.mix, "density")
-  local gap = edge == "border" and BORDER_GAP or GAP
+  local gap = FRAMED[edge] or GAP
   -- The room the field has beside the text sets how far it takes to thin.
   local room = side and math.max(side.left and text.x0 or 0, side.right and W - text.x1 or 0) or 120
   local ramp = math.max(size, 0.6 * math.min(room, 120)) / math.max(dens, 1e-6)
@@ -363,6 +366,13 @@ function M.paint(spec, pt)
     end
   end
   if hero then M.paint_hero(pt, hero, inks(base, 1), grow) end
+  if edge == "guilloche" and (not grow or grow >= 0.1) then
+    local ink = inks(base, 1)
+    ink.width = width
+    Progression.part(pt, "pattern_border", { text.x0, text.y0 }, 0, 0.2, function()
+      require("flora.pattern_hero").paint_band(pt, text, gap / 2, 4, ink)
+    end)
+  end
   if edge == "border" and (not grow or grow >= 0.1) then
     local ink = inks(base, 1)
     local o = gap / 2

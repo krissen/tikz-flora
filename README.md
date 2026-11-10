@@ -92,7 +92,7 @@ compile with a message naming the key.
 | `giltlook` | `{key=value, ...}` | Changes keys of that look, e.g. `giltlook={horizon=0.1, grain=0}`: light, horizon, sky, ground, highlight, grain, sparkle, shadow and more (`lua/flora/gilt_look.lua` lists every key and its range) |
 | `backdrop` | `light` (default), `dark`, or a dark `#rrggbb` | What the flora is painted over. On `dark` every ink is painted light, as if lit, and gold stays gold; set the page to match, e.g. `\pagecolor[HTML]{0A1014}` |
 | `pattern` | a pattern or group name, `{name=weight, ...}`, or `none` | Fills the page with a geometric pattern instead of flora (see Patterns) |
-| `edge` | `dissolve` (default), `cell`, `fade`, `border` | How a pattern meets the text |
+| `edge` | `dissolve` (default), `cell`, `fade`, `border`, `guilloche` | How a pattern meets the text |
 | `hero` | `rosette`, `phyllotaxis`, `rose`, `guilloche`, `none` (default) | One large radial motif at a top corner of a pattern page |
 | `outer` | `bleed` (default), `margin` | How a pattern meets the paper's edge |
 | `scale` | 0.25 to 4 | The size of a pattern's cells |
@@ -247,8 +247,9 @@ Each `pattern` setting replaces the one before it, and
 `density` sets how close to the text the field comes and how sharply it
 thins there; `edge` how it meets the text: `dissolve` (cells fall away,
 more of them the nearer the text), `cell` (whole cells to a hard edge),
-`fade` (cells pale into the paper) or `border` (a ruled frame round the
-text); `outer` whether it runs off the paper (`bleed`) or stops in whole
+`fade` (cells pale into the paper), `border` (a ruled frame round the
+text) or `guilloche` (a guilloche band round it: two strands crossing over
+and under, a dot in each eye, between fine rules); `outer` whether it runs off the paper (`bleed`) or stops in whole
 cells inside it (`margin`); `scale` the cell size. The palette paints it
 as it paints flora: the bands take the `leaves` ink, the fills the
 `blooms` and `sprays` inks, one ink per page from a group, and the gold
@@ -272,7 +273,7 @@ clear of the text, and it grows ring by ring from its centre. `hero=none`
 
 ```latex
 \florasetup{layout=right, pattern=asanoha, edge=dissolve, colourway=autumn}
-\florathispage{pattern=stars_8_4, hero=rose}
+\florathispage{pattern=stars_8_4, hero=rose, edge=guilloche}
 ```
 
 A new pattern is a Lua file that returns its description (the fields are
