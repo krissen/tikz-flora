@@ -271,7 +271,8 @@ do
 end
 
 -- Growth: two parts per cell, the last frame the page painted at once.
-for _, name in ipairs({ "stars_8_4", "asanoha" }) do
+for _, entry in ipairs(Patterns.list) do
+  local name = entry.name
   local function spec()
     return { width = 360, height = 270, text = { x0 = 120, y0 = 40, x1 = 330, y1 = 230 }, seed = 7,
       layout = "left", pattern = { [name] = 1 } }

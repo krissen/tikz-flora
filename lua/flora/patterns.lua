@@ -27,7 +27,9 @@
 
 local M = { list = {}, by_name = {}, tags = {} }
 
-local MODULES = { "flora.pat_stars", "flora.pat_asanoha" }
+local MODULES = {
+  "flora.pat_stars", "flora.pat_asanoha", "flora.pat_kikko", "flora.pat_shippo", "flora.pat_seigaiha",
+}
 
 function M.register(p)
   assert(p.name and p.title and p.tags and p.scale and p.cells, "pattern needs name, title, tags, scale and cells")
