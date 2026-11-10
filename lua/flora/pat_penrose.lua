@@ -72,7 +72,7 @@ return {
         local P = { t[2], t[3], o[2], t[4] }
         local x = (t[2][1] + o[2][1]) / 2
         local y = (t[2][2] + o[2][2]) / 2
-        out[#out + 1] = { x = x, y = y, verts = P, path = K.path(P), thick = t[1] == 1,
+        out[#out + 1] = { x = x, y = y, verts = P, tile = P, path = K.path(P), thick = t[1] == 1,
           paint = paint, construct = construct }
       else
         half[k] = t

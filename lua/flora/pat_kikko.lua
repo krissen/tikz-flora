@@ -30,7 +30,7 @@ return {
       for j = math.floor(env.y0 / dy) - 1, math.ceil(env.y1 / dy) + 1 do
         local x, y = i * dx, j * dy + (i % 2) * dy / 2
         local P = K.regular(x, y, 6, s, 0)
-        out[#out + 1] = { x = x, y = y, verts = P, path = K.path(P), inner = K.path(K.scaled(P, x, y, 0.58)),
+        out[#out + 1] = { x = x, y = y, verts = P, tile = P, path = K.path(P), inner = K.path(K.scaled(P, x, y, 0.58)),
           tone = (i + j) % 3 == 0 and 2 or 1, paint = paint, construct = construct }
       end
     end
