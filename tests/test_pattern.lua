@@ -369,4 +369,35 @@ do
   end
 end
 
+-- Emblem patterns are opt-in: only their own name or the group symbol
+-- picks them, never an ordinary group.
+do
+  local emblems = { hexagram_lattice = true, khatam = true, greek_crosses = true }
+  local function picks(weights)
+    local got = {}
+    for seed = 1, 60 do
+      local p = Patterns.pick(Rng.new(seed), weights)
+      got[p and p.name or "none"] = true
+    end
+    return got
+  end
+  for name in pairs(emblems) do H.check(Patterns.by_name[name] and Patterns.by_name[name].opt_in, name .. ": not opt-in") end
+  for _, group in ipairs({ "square", "star", "triangular", "lattice", "tiling", "cross" }) do
+    for name in pairs(picks({ [group] = 1 })) do
+      H.check(not emblems[name], "pattern={" .. group .. "=1} picked the emblem " .. name)
+    end
+  end
+  local only = picks({ symbol = 1 })
+  local n = 0
+  for name in pairs(only) do n = n + 1; H.check(emblems[name], "pattern={symbol=1} picked " .. name) end
+  H.check(n == 3, "pattern={symbol=1} did not reach all three emblems (" .. n .. ")")
+  H.check(picks({ khatam = 1 }).khatam and next(picks({ khatam = 1 }), "khatam") == nil, "pattern=khatam did not pick only khatam")
+  H.check(Patterns.weight({ symbol = 2, khatam = 0 }, Patterns.by_name.khatam) == 0, "a name overrides symbol")
+  H.check(Patterns.weight({ square = 3, star = 3 }, Patterns.by_name.khatam) == 0, "an ordinary group weighed an emblem")
+  H.check(Patterns.weight({ symbol = 2 }, Patterns.by_name.asanoha) == 0, "symbol weighed an ordinary pattern")
+  for _, e in ipairs(require("flora.catalog").build().patterns) do
+    H.check(e.opt_in == (emblems[e.name] or false), e.name .. ": catalog opt_in")
+  end
+end
+
 H.done("pattern")
