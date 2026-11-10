@@ -465,6 +465,12 @@ for _, name in ipairs({ "overlapping_circles", "shippo", "seigaiha" }) do
   end
   local cells = plan.final.pattern.cells
   H.check(cells > 20 and swept.pattern_line == cells and swept.pattern == cells, name .. ": lines or bands not swept")
+  -- Every swept part is done by 0.97, as every cell was before it swept.
+  local late = 0
+  for _, part in ipairs(plan.parts) do
+    if part.sweep and part.birth + part.duration > 0.97 + 1e-9 then late = late + 1 end
+  end
+  H.check(late == 0, name .. ": " .. late .. " swept parts end after 0.97")
 
   -- How far each swept part is drawn in a frame: 0 before, the wedge's
   -- turn while it opens, 1 after.
@@ -515,6 +521,15 @@ for _, name in ipairs({ "overlapping_circles", "shippo", "seigaiha" }) do
   end
   H.check(seen.line and seen.band, name .. ": spec.grow drew no partial line or band")
   for i = 2, #sizes do H.check(sizes[i] > sizes[i - 1], name .. ": spec.grow frames do not grow") end
+  -- From 0.97 on, a spec.grow frame is the finished page: no compass is
+  -- still turning, so the last frames of a sequence do not jump.
+  Paint.reset_resources()
+  local finished = Compose.page(spec()):body()
+  for _, g in ipairs({ 0.97, 0.999 }) do
+    Paint.reset_resources()
+    local body = Compose.page(spec({ grow = g })):body()
+    H.check(#wedges(body) == 0 and body == finished, string.format("%s: the spec.grow frame at %s is not the page", name, g))
+  end
 end
 
 H.done("pattern")

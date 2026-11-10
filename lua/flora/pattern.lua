@@ -119,6 +119,9 @@ end
 -- How long a cell's construction lines and its painting take, as
 -- growth time.
 local LINES, BAND = 0.07, 0.08
+-- When the latest cell is finished, as growth time: the latest birth
+-- (0.88) and its lines and painting (0.05 + 0.04 in a spec.grow frame).
+local DONE = 0.97
 
 -- A wedge about compass point w that covers all of cell c's lines: its
 -- outline, half a band and its pad beyond.
@@ -275,7 +278,10 @@ function M.paint(spec, pt)
     -- page painted at once and the last frame of its growth are the same.
     local birth = 0.78 * root(c) / far + 0.1 * k.jitter
     -- A cell with a compass point (c.sweep) draws its lines as the
-    -- compass turns, then its bands as a second turn once the first is done.
+    -- compass turns, then its bands as a second turn once the first is
+    -- done. Its births are drawn closer together so that the last of those
+    -- turns, as the last cell's painting, ends by DONE.
+    if c.sweep then birth = birth * (DONE - LINES - BAND) / 0.88 end
     local painted = birth + (c.sweep and LINES or 0.05)
     if grow then
       -- A "watch it grow" frame (spec.grow, tools/grow-frame.sh) shows a
