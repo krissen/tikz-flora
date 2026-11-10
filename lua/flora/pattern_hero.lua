@@ -285,8 +285,15 @@ end
 -- line `o` out from the text, `a` to either side of it, crossing over and
 -- under in turn, with a dot in each eye between them and a fine rule
 -- inside and out. All of it lies between o - a - 1.5 - w/2 and
--- o + a + 1.5 + w/2 from the text, w the strands' width. Returns the
--- strokes and fills, in the order painted, as lists of polylines.
+-- o + a + 1.5 + w/2 from the text, w the strands' width.
+--
+-- Each strand is one closed path, so no stroke ends, and no round cap
+-- shows, anywhere along the band. The strand painted second lies on top
+-- at every crossing; where the first should, its piece across that
+-- crossing is painted again through a disc of radius `clip` round it, the
+-- piece's ends lying outside the disc. Returns the strands (by side, 1
+-- and -1), the crossings {x, y, over = side, piece, clip}, the dots and
+-- the rules, as polylines.
 function M.band(t, o, a, w)
   local x0, y0, x1, y1 = t.x0, t.y0, t.x1, t.y1
   local sw, sh, q = x1 - x0, y1 - y0, pi * o / 2
@@ -319,25 +326,36 @@ function M.band(t, o, a, w)
   -- An even number of crossings, about three strand widths apart.
   local nz = 2 * math.max(2, math.floor(L / (6 * a) + 0.5))
   local Z = L / nz
-  local function strand(sign, s0, s1)
+  -- A strand's points from s0 to s1, n of them; a closed strand starts
+  -- at an eye, where the two strands lie apart.
+  local function strand(sign, s0, s1, n, closed)
     local pts = {}
-    for i = 0, 10 do
-      local s = s0 + (s1 - s0) * i / 10
+    for i = 0, closed and n - 1 or n do
+      local s = s0 + (s1 - s0) * i / n
       local p = point(s, sign * a * sin(pi * s / Z))
       pts[#pts + 1] = (i == 0) and { "m", p[1], p[2] } or { "l", p[1], p[2] }
     end
+    if closed then pts[#pts + 1] = { "z" } end
     return pts
   end
-  local spans, dots = {}, {}
+  local strands = { [1] = strand(1, Z / 2, Z / 2 + L, nz * 12, true), [-1] = strand(-1, Z / 2, Z / 2 + L, nz * 12, true) }
+  local crossings, dots = {}, {}
   for k = 0, nz - 1 do
+    local c = point(k * Z, 0)
     local over = k % 2 == 0 and 1 or -1
-    local s0, s1 = (k - 0.5) * Z, (k + 0.5) * Z
-    spans[#spans + 1] = { under = strand(-over, s0, s1), over = strand(over, s0, s1), sign = over }
-    local c = point((k + 0.5) * Z, 0)
-    dots[#dots + 1] = circle(c[1], c[2], 0.38 * a)
+    local piece = strand(over, (k - 0.5) * Z, (k + 0.5) * Z, 12)
+    -- The clip disc: a + w round the crossing, less where a tight corner
+    -- brings the piece's ends nearer, so they and their caps stay outside.
+    local r = a + w
+    for _, e in ipairs({ piece[1], piece[#piece] }) do
+      r = math.min(r, sqrt((e[2] - c[1]) ^ 2 + (e[3] - c[2]) ^ 2) - w / 2 - 0.25)
+    end
+    crossings[#crossings + 1] = { x = c[1], y = c[2], over = over, piece = piece, clip = r }
+    local e = point((k + 0.5) * Z, 0)
+    dots[#dots + 1] = circle(e[1], e[2], 0.38 * a)
   end
   local function rule(off)
-    local pts, n = {}, math.ceil(L / 2)
+    local pts, n = {}, math.ceil(L)
     for i = 0, n - 1 do
       local p = point(L * i / n, off)
       pts[#pts + 1] = (i == 0) and { "m", p[1], p[2] } or { "l", p[1], p[2] }
@@ -345,20 +363,28 @@ function M.band(t, o, a, w)
     pts[#pts + 1] = { "z" }
     return pts
   end
-  return { spans = spans, dots = dots, rules = { rule(-(a + 1.5)), rule(a + 1.5) }, w = w }
+  return { strands = strands, crossings = crossings, dots = dots,
+    rules = { rule(-(a + 1.5)), rule(a + 1.5) }, w = w }
 end
 
 -- Paint the guilloche band round text block t, in `ink`.
 function M.paint_band(pt, t, o, a, ink)
   local w = math.min(ink.width, 1.6)
   local b = M.band(t, o, a, w)
+  local colour = { [1] = ink.fill[1], [-1] = ink.fill[2] }
   pt:stroke(b.rules, ink.band, 0.5, 1, { many = true })
-  for _, s in ipairs(b.spans) do
-    local under, over = s.sign > 0 and ink.fill[2] or ink.fill[1], s.sign > 0 and ink.fill[1] or ink.fill[2]
-    pt:stroke(s.under, ink.band, w, 1)
-    pt:stroke(s.under, under, w * 0.55, 1)
-    pt:stroke(s.over, ink.band, w, 1)
-    pt:stroke(s.over, over, w * 0.55, 1)
+  -- Side -1 first, so side 1 lies on top wherever it is not painted again.
+  for _, side in ipairs({ -1, 1 }) do
+    pt:stroke(b.strands[side], ink.band, w, 1)
+    pt:stroke(b.strands[side], colour[side], w * 0.55, 1)
+  end
+  for _, c in ipairs(b.crossings) do
+    if c.over == -1 then
+      pt:clip_begin(circle(c.x, c.y, c.clip))
+      pt:stroke(c.piece, ink.band, w, 1)
+      pt:stroke(c.piece, colour[-1], w * 0.55, 1)
+      pt:clip_end()
+    end
   end
   pt:fill(b.dots, ink.accent, 1, { many = true })
   pt:stroke(b.dots, ink.band, 0.35, 1, { many = true })

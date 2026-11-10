@@ -690,11 +690,57 @@ do
         local d = rdist(x, y, { t.x0, t.y0, t.x1, t.y1 })
         near = math.min(near, d - r); far = math.max(far, d + r)
       end
-      for _, sp in ipairs(b.spans) do reach_of(sp.under, w, at); reach_of(sp.over, w, at) end
+      reach_of(b.strands[1], w, at); reach_of(b.strands[-1], w, at)
+      for _, c in ipairs(b.crossings) do
+        reach_of(c.piece, w, at)
+        -- The clip covers the crossing: both strands, outlines included.
+        H.check(c.clip >= 2 * w, string.format("a crossing's clip of %.2f is too small for strands %.1f wide", c.clip, w))
+      end
       reach_of(b.dots, 0.35, at)
       reach_of(b.rules, 0.5, at)
-      H.check(#b.spans % 2 == 0 and #b.spans >= 4, "the band's crossings do not alternate round it")
+      H.check(#b.crossings % 2 == 0 and #b.crossings >= 4, "the band's crossings do not alternate round it")
       H.check(near >= 2 and far <= 18 - 2, string.format("guilloche band from %.2f to %.2f of the text", near, far))
+    end
+  end
+  -- No strand stroke ends where it can be seen: in the emitted stream,
+  -- every stroke at a strand's width is closed, or lies inside a clip disc
+  -- with both its ends, caps included, outside the disc. So no outline's
+  -- round cap can fall across the other strokes of a strand at an eye.
+  for _, t in ipairs({ { x0 = 120, y0 = 40, x1 = 330, y1 = 230 }, { x0 = 50, y0 = 50, x1 = 70, y1 = 60 } }) do
+    for _, w in ipairs({ 1.6, 1.0 }) do
+      local pb = Paint.new({ backend = "pdf" })
+      local ink = { band = { 0, 0, 0.2 }, core = { 1, 1, 1 }, accent = { 1, 0.8, 0 }, line = { .5, .5, .5 },
+        fill = { { 0.9, 0.1, 0.1 }, { 0.1, 0.1, 0.9 } }, width = w }
+      local b = Hero.paint_band(pb, t, 9, 4, ink)
+      local function nums(str) local out = {} for v in str:gmatch("%-?[%d%.]+") do out[#out + 1] = tonumber(v) end return out end
+      local clip, closed, pieces, seams = nil, 0, 0, 0
+      for _, line in ipairs(pb.out) do
+        if line:find(" W n$") then
+          local n = nums(line:match("^q (.*) W n$"))
+          local cx, cy = 0, 0
+          for j = 7, 25, 6 do cx, cy = cx + n[j] / 4, cy + n[j + 1] / 4 end
+          clip = { cx, cy, math.sqrt((n[1] - cx) ^ 2 + (n[2] - cy) ^ 2) }
+        elseif line == "Q" then clip = nil
+        elseif line:find(" S Q$") then
+          local width = tonumber(line:match("([%d%.]+) w "))
+          local strand = math.abs(width - w * 72 / 72.27) < 0.02 or math.abs(width - 0.55 * w * 72 / 72.27) < 0.02
+          if strand then
+            local path = line:match(" 1 j (.*) S Q$")
+            if path:find(" h$") then closed = closed + 1
+            else
+              local n = nums(path)
+              local ends = { { n[1], n[2] }, { n[#n - 1], n[#n] } }
+              local hidden = clip ~= nil
+              for _, e in ipairs(ends) do
+                if hidden and math.sqrt((e[1] - clip[1]) ^ 2 + (e[2] - clip[2]) ^ 2) < clip[3] + width / 2 then hidden = false end
+              end
+              if hidden then pieces = pieces + 1 else seams = seams + 1 end
+            end
+          end
+        end
+      end
+      H.check(seams == 0, seams .. " strand strokes end in sight on the guilloche band")
+      H.check(closed == 4 and pieces == #b.crossings, string.format("guilloche band: %d closed strand strokes, %d clipped pieces for %d crossings", closed, pieces, #b.crossings))
     end
   end
   -- The page paints it: a strand point 9 +- 4 out from the text's bottom.
