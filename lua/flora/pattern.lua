@@ -243,6 +243,7 @@ function M.paint(spec, pt)
   local far = 1e-6
   for _, k in ipairs(kept) do far = math.max(far, root(k.cell)) end
 
+  local grow = spec.grow and spec.grow < 1 and math.max(0, spec.grow) or nil
   pt:begin_group("pattern")
   for _, k in ipairs(kept) do
     local c, ink = k.cell, inks(base, k.a)
@@ -250,12 +251,20 @@ function M.paint(spec, pt)
     -- The construction lines lie under the finished cell's bands, so a
     -- page painted at once and the last frame of its growth are the same.
     local birth = 0.78 * root(c) / far + 0.1 * k.jitter
-    Progression.part(pt, "pattern_line", { c.x, c.y }, birth, 0.07,
-      function() c.construct(pt, c, ink) end, nil, { no_area = true })
-    Progression.part(pt, "pattern", { c.x, c.y }, birth + 0.05, 0.08,
-      function() c.paint(pt, c, ink) end)
+    if grow then
+      -- A "watch it grow" frame (spec.grow, tools/grow-frame.sh) shows a
+      -- cell's lines once it is born and the cell halfway through its
+      -- painting, on the times the progression parts below use.
+      if grow >= birth then c.construct(pt, c, ink) end
+      if grow >= birth + 0.09 then c.paint(pt, c, ink) end
+    else
+      Progression.part(pt, "pattern_line", { c.x, c.y }, birth, 0.07,
+        function() c.construct(pt, c, ink) end, nil, { no_area = true })
+      Progression.part(pt, "pattern", { c.x, c.y }, birth + 0.05, 0.08,
+        function() c.paint(pt, c, ink) end)
+    end
   end
-  if edge == "border" then
+  if edge == "border" and (not grow or grow >= 0.1) then
     local ink = inks(base, 1)
     local o = gap / 2
     local frame = { { "m", text.x0 - o, text.y0 - o }, { "l", text.x1 + o, text.y0 - o },

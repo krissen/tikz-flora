@@ -196,6 +196,16 @@ local plain = page():body()
 local inked = page({ palette = { leaves = "kon-peki", blooms = "yu-yake" } }):body()
 H.check(plain ~= inked, "the palette did not change the pattern's colours")
 
+-- A "watch it grow" frame (spec.grow, as tools/grow-frame.sh renders)
+-- paints more the later it is, nothing at 0, and the whole page at 1.
+do
+  local sizes = {}
+  for _, g in ipairs({ 0, 0.3, 0.6, 0.9, 1 }) do sizes[#sizes + 1] = #page({ grow = g }):body() end
+  H.check(sizes[1] < sizes[2] and sizes[2] < sizes[3] and sizes[3] < sizes[4], "spec.grow frames do not grow")
+  H.check(page({ grow = 1 }):body() == page():body(), "spec.grow = 1 differs from the page")
+  H.check(#page({ grow = 0 }).out <= 4, "spec.grow = 0 painted cells")
+end
+
 -- Growth: two parts per cell, the last frame the page painted at once.
 for _, name in ipairs({ "stars_8_4", "asanoha" }) do
   local function spec()
