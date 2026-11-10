@@ -98,7 +98,9 @@ for _,part in ipairs(actual.parts) do
 end
 H.check(attached>1000,'seed3: regression no longer exercises dense sprays')
 -- Turned frames no longer inherit the page's top inset as a local limit.
-H.check(math.abs(actual.area-6157.48)<.01,'support metadata changed measured painted area')
+-- The titled frame's head mark has no whole band under its header clip and
+-- is left out; placed as before, the area is 6157.48.
+H.check(math.abs(actual.area-6152.48)<.01,'support metadata changed measured painted area')
 H.check(#P.stages(actual,4)==4,'seed3 overlay stages rejected')
 Paint.reset_resources()
 local ordinary=Compose.page(fixture)

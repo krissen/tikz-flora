@@ -29,6 +29,50 @@ local pal = Paint.palette
 local C = {}
 local pi = math.pi
 local HERO_TOP = 8
+-- The running-head mark: its full size, the smallest size worth drawing, and
+-- its clearances from the paper's edge, from the running head or a clip, and
+-- from ink.
+local MARK_SIZE, MARK_MIN, MARK_EDGE, MARK_HEAD, MARK_INK = 26, 16, 6, 2, 2
+C.MARK = { size = MARK_SIZE, min = MARK_MIN, edge = MARK_EDGE, head = MARK_HEAD, ink = MARK_INK }
+
+-- Where the running-head mark and its rule go: at the top of the free band
+-- between the lowest ceiling (paper edge, running head, page inset, header
+-- clip, body top) and the highest measured ink under it across the rule's
+-- span. Returns nil when the band cannot hold the mark whole, else
+-- { y = centre, size = edge length, rule = { x0, x1 } }.
+-- An adapter that knows whether the page shows its running head sets
+-- spec.running_head (true: keep below header_y; false: no head on this
+-- page). Unset, the mark may reach as high as it always did (centre 3 pt
+-- below header_y, kept on the paper), so callers that do not know keep
+-- their placement.
+function C.header_mark(spec, inset, clip_y)
+  local H = spec.height
+  local hx = spec.text.x0 - 6
+  local x0, x1 = hx - MARK_SIZE / 2, spec.text.x1
+  local ceil
+  if spec.running_head == nil then
+    ceil = math.min(H, spec.header_y - 3 + MARK_SIZE / 2)
+  elseif spec.running_head then
+    ceil = math.min(H - MARK_EDGE, spec.header_y - MARK_HEAD)
+  else
+    ceil = H - MARK_EDGE
+  end
+  if inset and inset > 0 then ceil = math.min(ceil, H - inset - MARK_HEAD) end
+  if clip_y then ceil = math.min(ceil, clip_y - MARK_HEAD) end
+  if spec.header == "body" and spec.body_top then ceil = math.min(ceil, spec.body_top - MARK_HEAD) end
+  local floor = 0
+  for _, l in ipairs(spec.lines or {}) do
+    if l.x1 > x0 and l.x0 < x1 and l.y0 < ceil then
+      if l.y1 > ceil then return nil end
+      floor = math.max(floor, l.y1)
+    end
+  end
+  local band = ceil - (floor + MARK_INK)
+  if band < MARK_MIN then return nil end
+  local size = math.min(MARK_SIZE, band)
+  local y = ceil - size / 2
+  return { y = y, size = size, rule = { hx + 4 * size / MARK_SIZE, x1 } }
+end
 
 -- Progress through a page (C.page's spec.progress): a span [lo, hi] of the
 -- whole page maps its own 0..1 into it. A value is sent once it passes the
@@ -224,12 +268,14 @@ local function plant(spec, pt, prog)
   prog:at(GROWN.nodes)
 
   -- Gilt ornaments claim their space before the sprays fill in.
-  if spec.header_y then
-    local hx, hy = spec.text.x0 - 6, spec.header_y - 3
+  -- The mark and its rule are drawn whole inside the free band, or not at all.
+  local place = spec.header_y and C.header_mark(spec, inset, clip_y)
+  if place then
+    local hx, hy, r = spec.text.x0 - 6, place.y, place.size / 2
     local mark = Orn.pick(rng:fork("choose header"), "header", spec.ornaments)
     orn[#orn + 1] = function(pt)
-      pt:stroke(G.polyline({ { hx + 4, hy }, { spec.text.x1, hy } }), pal.ink, 0.4, 0.9)
-      if mark then Orn.draw(mark, pt, rng:fork("header"), { hx - 13, hy - 13, hx + 13, hy + 13 }) end
+      pt:stroke(G.polyline({ { place.rule[1], hy }, { place.rule[2], hy } }), pal.ink, 0.4, 0.9)
+      if mark then Orn.draw(mark, pt, rng:fork("header"), { hx - r, hy - r, hx + r, hy + r }) end
     end
   end
   -- A pendant knot hangs in the foot's corner on a cord from the foliage
