@@ -59,4 +59,14 @@ do
   local back = Settings.from_spec(spec)
   H.check(back.edge == "fade" and back.scale == 2 and back.giltdpi == 300, "from_spec is not to_spec's inverse")
 end
+-- A fresh restyle keeps every setting but the dropped few, so a new key
+-- (such as hero) survives tools/preview.lua's "fresh" without being listed.
+do
+  local keep = Settings.fresh_keys()
+  for k in pairs(Settings.SPEC) do
+    H.check((keep[k] == true) ~= (Settings.FRESH_DROPS[k] == true), "fresh neither keeps nor drops " .. k)
+  end
+  for k in pairs(Settings.FRESH_DROPS) do H.check(Settings.SPEC[k], "FRESH_DROPS names a key not in SPEC: " .. k) end
+  H.check(keep.hero and keep.pattern and keep.ornaments and not keep.mix, "fresh keeps the wrong keys")
+end
 H.done("settings")

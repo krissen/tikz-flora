@@ -8,7 +8,8 @@
 --   edge     how the field meets the text: dissolve (cells fall away,
 --            more of them the nearer the text), cell (whole cells to a
 --            hard edge), fade (cells pale into the paper), border (whole
---            cells and a ruled frame round the text)
+--            cells and a ruled frame round the text), guilloche (whole
+--            cells and a guilloche band round the text, pattern_hero.lua)
 --   outer    how it meets the paper's edge: bleed (it runs off the page)
 --            or margin (whole cells only, inside a small margin)
 --   scale    the cell size, as a factor of the pattern's own
@@ -21,6 +22,10 @@
 -- a compass turns about it, then its bands in a second turn. The
 -- lines are painted on a page that does not grow too, under the bands,
 -- so its last frame and the page are the same.
+--
+-- spec.pattern_hero (hero=) adds one large radial motif at a top corner
+-- (pattern_hero.lua): the cells keep clear of its disc, as they keep
+-- clear of the text, and it grows ring by ring from its centre.
 
 local Rng = require("flora.rng")
 local Paint = require("flora.paint")
@@ -31,11 +36,13 @@ local Progression = require("flora.progression")
 
 local M = {}
 
-M.edges = { dissolve = true, cell = true, fade = true, border = true }
+M.edges = { dissolve = true, cell = true, fade = true, border = true, guilloche = true }
 M.outers = { bleed = true, margin = true }
 
 -- Distances in pt.
 local GAP, BORDER_GAP, OUTER_MARGIN = 6, 12, 4
+-- The edges that frame the text, and how far their cells keep from it.
+local FRAMED = { border = BORDER_GAP, guilloche = 18 }
 
 local function rect_dist(x, y, r)
   local dx = math.max(r[1] - x, 0, x - r[3])
@@ -104,6 +111,24 @@ function M.clearance(c, r)
   return d
 end
 
+-- How far cell `c`'s outline lies from disc d = {x, y, r}: 0 when they
+-- meet or one holds the other, as M.clearance measures it from a
+-- rectangle.
+function M.disc_clearance(c, d)
+  if c.circle then
+    local dx, dy = c.circle[1] - d[1], c.circle[2] - d[2]
+    return math.max(0, math.sqrt(dx * dx + dy * dy) - c.circle[3] - d[3])
+  end
+  local P = c.verts
+  if in_poly(d[1], d[2], P) then return 0 end
+  local e, j = math.huge, #P
+  for i = 1, #P do
+    e = math.min(e, seg_point(d[1], d[2], P[j], P[i]))
+    j = i
+  end
+  return math.max(0, e - d[3])
+end
+
 -- Whether cell `c` lies wholly inside rectangle r, shrunk by m.
 local function within(c, r, m)
   if c.circle then
@@ -160,7 +185,7 @@ local function avoid(spec, side, edge)
   local out = {}
   local t = spec.text
   -- A border frames the text block, so the field keeps clear of all of it.
-  if side or edge == "border" or not spec.lines or #spec.lines == 0 then out[#out + 1] = { t.x0, t.y0, t.x1, t.y1 } end
+  if side or FRAMED[edge] or not spec.lines or #spec.lines == 0 then out[#out + 1] = { t.x0, t.y0, t.x1, t.y1 } end
   for _, l in ipairs(spec.lines or {}) do out[#out + 1] = { l.x0, l.y0, l.x1, l.y1 } end
   for _, r in ipairs(spec.reserve or {}) do out[#out + 1] = { r[1], r[2], r[3], r[4] } end
   return out
@@ -202,6 +227,36 @@ local function weights(v)
   return v or {}
 end
 
+-- The page's hero disc {x, y, r, name} (pattern_hero.lua), or nil when
+-- spec.pattern_hero is unset or none, or its corner has no room. Under
+-- outer=margin it lies wholly inside the page's margin, as the cells do.
+function M.hero(spec, side, top, keep, gap)
+  local name = spec.pattern_hero
+  if not name or name == "none" then return nil end
+  local margin = spec.pattern_outer == "margin" and OUTER_MARGIN or nil
+  return require("flora.pattern_hero").place(name, spec, side, top, keep, gap, margin)
+end
+
+-- Paint hero disc d's rings, from the centre outward, as the cells are
+-- painted: progression parts, or for a spec.grow frame those born by
+-- `grow`.
+function M.paint_hero(pt, d, ink, grow)
+  local Hero = require("flora.pattern_hero")
+  local rings = Hero.rings(d, ink)
+  for i, ring in ipairs(rings) do
+    local birth = Hero.birth(i, #rings)
+    if grow then
+      if grow >= birth then ring.construct(pt) end
+      if grow >= birth + 0.09 then ring.paint(pt) end
+    else
+      Progression.part(pt, "pattern_hero_line", { d[1], d[2] }, birth, 0.07,
+        function() ring.construct(pt) end, nil, { no_area = true })
+      Progression.part(pt, "pattern_hero", { d[1], d[2] }, birth + 0.05, 0.08,
+        function() ring.paint(pt) end)
+    end
+  end
+end
+
 -- Lay out and paint the page's pattern onto `pt`. Returns false when the
 -- pattern weights leave nothing to pick, so the caller grows flora.
 function M.paint(spec, pt)
@@ -215,7 +270,7 @@ function M.paint(spec, pt)
   local size = p.scale * (spec.pattern_scale or 1)
   local width = (p.width or size / 6) * (spec.pattern_scale or 1)
   local dens = Mix.weight(spec.mix, "density")
-  local gap = edge == "border" and BORDER_GAP or GAP
+  local gap = FRAMED[edge] or GAP
   -- The room the field has beside the text sets how far it takes to thin.
   local room = side and math.max(side.left and text.x0 or 0, side.right and W - text.x1 or 0) or 120
   local ramp = math.max(size, 0.6 * math.min(room, 120)) / math.max(dens, 1e-6)
@@ -225,6 +280,7 @@ function M.paint(spec, pt)
   local inset = spec.top_inset or require("flora.tune").gesture.top_inset or 0
   local top = math.min(H, inset > 0 and H - inset or H, pt.header_clip or H)
   local base = base_inks(rng:fork("pattern inks"))
+  local hero = M.hero(spec, side, top, keep_rects, gap)
 
   local cells = p.cells({ x0 = 0, y0 = 0, x1 = W, y1 = H, size = size, rng = rng:fork("cells") })
   local fall = rng:fork("dissolve")
@@ -236,7 +292,7 @@ function M.paint(spec, pt)
     -- Paint reaches half a band and the cell's own pad beyond its outline.
     local reach = width / 2 + (c.pad or 0)
     local page = { 0, 0, W, top }
-    local placed = in_side
+    local placed = in_side and not (hero and M.disc_clearance(c, hero) - reach < GAP)
     if outer == "margin" then
       placed = placed and within(c, page, OUTER_MARGIN + reach)
     else
@@ -311,6 +367,14 @@ function M.paint(spec, pt)
         function() c.paint(pt, c, ink) end, nil, c.sweep and { sweep = c.sweep } or nil)
     end
   end
+  if hero then M.paint_hero(pt, hero, inks(base, 1), grow) end
+  if edge == "guilloche" and (not grow or grow >= 0.1) then
+    local ink = inks(base, 1)
+    ink.width = width
+    Progression.part(pt, "pattern_border", { text.x0, text.y0 }, 0, 0.2, function()
+      require("flora.pattern_hero").paint_band(pt, text, gap / 2, 4, ink)
+    end)
+  end
   if edge == "border" and (not grow or grow >= 0.1) then
     local ink = inks(base, 1)
     local o = gap / 2
@@ -323,7 +387,7 @@ function M.paint(spec, pt)
   end
   pt:end_group()
   pt.coverage = offered > 0 and #kept / offered or 0
-  pt.pattern = { name = p.name, cells = #kept, offered = offered, kept = kept, avoid = keep_rects, reach = width / 2, gap = gap }
+  pt.pattern = { name = p.name, cells = #kept, offered = offered, kept = kept, avoid = keep_rects, reach = width / 2, gap = gap, hero = hero }
   return true
 end
 

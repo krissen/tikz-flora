@@ -14,7 +14,9 @@ local s = Settings.parse("pattern=asanoha, edge=fade, outer=margin, scale=1.5")
 H.check(s.pattern.asanoha == 1 and s.edge == "fade" and s.outer == "margin" and s.scale == 1.5, "pattern keys parse")
 s = Settings.parse("pattern={japanese=2, stars_8_4=0}")
 H.check(s.pattern.japanese == 2 and s.pattern.stars_8_4 == 0, "pattern weights and groups parse")
-for _, bad in ipairs({ "pattern=paisley", "pattern={asanoha=11}", "edge=soft", "outer=wrap", "scale=9" }) do
+s = Settings.parse("hero=rose, edge=guilloche")
+H.check(s.hero == "rose" and s.edge == "guilloche" and Settings.to_spec(s, {}).pattern_hero == "rose", "hero and guilloche parse")
+for _, bad in ipairs({ "pattern=paisley", "pattern={asanoha=11}", "edge=soft", "outer=wrap", "scale=9", "hero=sun" }) do
   H.check(not pcall(Settings.parse, bad), bad .. " was accepted")
 end
 
@@ -187,7 +189,7 @@ local bad = 0
 for _, p in ipairs(Patterns.list) do
   for _, scale in ipairs({ 1, 2.5, 4 }) do
     for _, layout in ipairs({ "right", "surround" }) do
-      for _, edge in ipairs({ "cell", "dissolve", "fade", "border" }) do
+      for _, edge in ipairs({ "cell", "dissolve", "fade", "border", "guilloche" }) do
         for _, outer in ipairs({ "bleed", "margin" }) do
           local pt = page({ pattern = { [p.name] = 1 }, pattern_scale = scale, layout = layout, pattern_edge = edge,
             pattern_outer = outer, mix = { density = 2 }, lines = layout == "surround" and lines or nil,
@@ -530,6 +532,272 @@ for _, name in ipairs({ "overlapping_circles", "shippo", "seigaiha" }) do
     local body = Compose.page(spec({ grow = g })):body()
     H.check(#wedges(body) == 0 and body == finished, string.format("%s: the spec.grow frame at %s is not the page", name, g))
   end
+end
+
+-- The hero (pattern_hero.lua). Every point a motif paints, Bezier control
+-- points and stroke widths included, lies inside its disc; a curve stays
+-- inside its control points, so this bounds the paint itself.
+local Pat, Hero = require("flora.pattern"), require("flora.pattern_hero")
+local function reach_of(cmds, width, f)
+  for _, c in ipairs(cmds) do
+    if type(c[1]) == "table" then reach_of(c, width, f)
+    elseif c[1] == "o" then f(c[2], c[3], c[4] + width / 2)
+    elseif c[1] ~= "z" then for i = 2, #c, 2 do f(c[i], c[i + 1], width / 2) end
+    end
+  end
+end
+local function hero_extent(d)
+  local far = 0
+  local probe = Paint.new({ backend = "pdf" })
+  local function at(x, y, r) far = math.max(far, math.sqrt((x - d[1]) ^ 2 + (y - d[2]) ^ 2) + r) end
+  probe.fill = function(_, cmds) reach_of(cmds, 0, at) end
+  probe.stroke = function(_, cmds, _, w) reach_of(cmds, w, at) end
+  local ink = { band = { 0, 0, 0 }, core = { 1, 1, 1 }, accent = { 1, 1, 0 }, line = { .5, .5, .5 }, fill = { { 1, 0, 0 }, { 0, 0, 1 } }, width = 1.5 }
+  local rings = Hero.rings(d, ink)
+  local last = 0
+  for _, ring in ipairs(rings) do
+    far = 0; ring.construct(probe); ring.paint(probe)
+    H.check(far <= ring.r + 1e-6, d.name .. ": a ring paints beyond its radius")
+    H.check(ring.r >= last - 1e-6, d.name .. ": rings do not run outward")
+    last = ring.r
+  end
+  return last, #rings
+end
+for _, name in ipairs({ "rosette", "phyllotaxis", "rose", "guilloche" }) do
+  for _, R in ipairs({ 24, 60, 135 }) do
+    local outer = hero_extent({ 100, 100, R, name = name })
+    H.check(outer <= R + 1e-6, name .. " paints beyond its disc")
+  end
+end
+
+-- No cell enters the hero's disc, and the disc keeps the gap from the
+-- text, for every hero on every pattern (opt-in ones by name), layout and
+-- edge; a hero sits on the top corner of the field's side.
+do
+  local bad, placed = 0, 0
+  for _, entry in ipairs(Patterns.list) do
+    local pname = entry.name
+    for _, name in ipairs({ "rosette", "phyllotaxis", "rose", "guilloche" }) do
+      for _, layout in ipairs({ "left", "right", "surround", "split" }) do
+        for _, edge in ipairs({ "dissolve", "cell", "guilloche" }) do
+          local right = layout == "right" or layout == "split"
+          local pt = page({ pattern = { [pname] = 1 }, pattern_hero = name, layout = layout, pattern_edge = edge,
+            page = 1, mix = { density = 3 }, lines = layout == "surround" and lines or nil,
+            text = right and { x0 = 30, y0 = 40, x1 = 240, y1 = 230 } or { x0 = 120, y0 = 40, x1 = 330, y1 = 230 } })
+          local info, d = pt.pattern, pt.pattern.hero
+          local where = string.format("%s %s %s %s", pname, name, layout, edge)
+          if not d then bad = bad + 1; io.stderr:write("no hero: " .. where .. "\n") else
+            placed = placed + 1
+            H.check(d[2] == 270 and d[1] == ((layout == "left") and 0 or 360), where .. ": hero off its corner")
+            for _, r in ipairs(info.avoid) do
+              if rdist(d[1], d[2], r) - d[3] < info.gap - 1e-6 then bad = bad + 1; io.stderr:write("hero near text: " .. where .. "\n") end
+            end
+            for _, k in ipairs(info.kept) do
+              local c = k.cell
+              local reach = info.reach + (c.pad or 0)
+              if covers(c, d[1], d[2]) then bad = bad + 1 end
+              for _, q in ipairs(samples(c)) do
+                if math.sqrt((q[1] - d[1]) ^ 2 + (q[2] - d[2]) ^ 2) - d[3] - reach < 6 - 1e-6 then
+                  bad = bad + 1; if bad < 4 then io.stderr:write("in the hero: " .. where .. "\n") end
+                end
+              end
+            end
+          end
+        end
+      end
+    end
+  end
+  H.check(bad == 0 and placed == 48 * #Patterns.list, bad .. " hero placements or cells too near the hero or text")
+end
+
+-- Under outer=margin the hero lies wholly on the page, inside the margin,
+-- in the top corner of the field's side, still clear of the text, and no
+-- cell enters it. Its paint lies within its disc (above), so the disc is
+-- its reach.
+do
+  local bad, placed = 0, 0
+  for _, pname in ipairs({ "stars_8_4", "rosette_lattice", "overlapping_circles", "celtic_knot" }) do
+    for _, name in ipairs({ "rosette", "phyllotaxis", "rose", "guilloche" }) do
+      for _, layout in ipairs({ "left", "right", "surround", "split" }) do
+        for _, edge in ipairs({ "dissolve", "guilloche" }) do
+          local right = layout == "right" or layout == "split"
+          local pt = page({ pattern = { [pname] = 1 }, pattern_hero = name, layout = layout, pattern_edge = edge,
+            pattern_outer = "margin", page = 1, mix = { density = 3 }, lines = layout == "surround" and lines or nil,
+            text = right and { x0 = 30, y0 = 40, x1 = 240, y1 = 230 } or { x0 = 120, y0 = 40, x1 = 330, y1 = 230 } })
+          local info, d = pt.pattern, pt.pattern.hero
+          local where = string.format("margin %s %s %s %s", pname, name, layout, edge)
+          -- The surround page's top corner, above its lines, is too
+          -- shallow for a whole disc: it gets none.
+          if not d then if layout ~= "surround" then bad = bad + 1; io.stderr:write("no hero: " .. where .. "\n") end else
+            placed = placed + 1
+            local x, y, R = d[1], d[2], d[3]
+            if x - R < 4 - 1e-6 or x + R > 360 - 4 + 1e-6 or y - R < 4 - 1e-6 or y + R > 270 - 4 + 1e-6 then
+              bad = bad + 1; io.stderr:write("hero past the margin: " .. where .. "\n")
+            end
+            local side_x = layout == "left" and x - R or 360 - (x + R)
+            H.check(math.abs(side_x - 4) < 1e-6 and math.abs(270 - (y + R) - 4) < 1e-6, where .. ": hero off its corner")
+            for _, r in ipairs(info.avoid) do
+              if rdist(x, y, r) - R < info.gap - 1e-6 then bad = bad + 1; io.stderr:write("hero near text: " .. where .. "\n") end
+            end
+            for _, k in ipairs(info.kept) do
+              local c = k.cell
+              local reach = info.reach + (c.pad or 0)
+              if covers(c, x, y) then bad = bad + 1 end
+              for _, q in ipairs(samples(c)) do
+                if math.sqrt((q[1] - x) ^ 2 + (q[2] - y) ^ 2) - R - reach < 6 - 1e-6 then bad = bad + 1 end
+              end
+            end
+          end
+        end
+      end
+    end
+  end
+  H.check(bad == 0 and placed >= 96, bad .. " margin heroes past the margin, near the text or under cells")
+  -- Under bleed the same page keeps its hero on the corner.
+  H.check(page({ pattern_hero = "rose" }).pattern.hero[1] == 0, "a bleed hero left its corner")
+end
+
+-- A corner with no room for a hero gets none, and the page is as without.
+do
+  local cramped = { pattern_hero = "rose", text = { x0 = 20, y0 = 40, x1 = 330, y1 = 260 } }
+  H.check(page(cramped).pattern.hero == nil, "a hero squeezed into a cramped corner")
+  cramped.pattern_hero = nil
+  local a = page(cramped):body()
+  cramped.pattern_hero = "rose"
+  H.check(page(cramped):body() == a, "a page without room for its hero differs from one without")
+end
+
+-- A page without a hero, or hero=none, is the page as it was; a hero
+-- changes it and still keeps its paint off the text.
+do
+  local plain = page():body()
+  H.check(page({ pattern_hero = "none" }):body() == plain, "hero=none changed the page")
+  local pt, seen = page({ pattern_hero = "rosette" })
+  H.check(pt:body() ~= plain and pt.pattern.hero, "a hero left the page unchanged")
+  local ok = true
+  for _, q in ipairs(seen) do
+    if q[1] + q[3] > sp.text.x0 and q[2] + q[3] > sp.text.y0 and q[2] - q[3] < sp.text.y1 and q[1] - q[3] < sp.text.x1 then ok = false end
+  end
+  H.check(ok, "a hero page painted on the text")
+end
+
+-- A hero grows: its rings as parts from the centre out, the last frame the
+-- page, its rings born early and done by 0.6, beside cells swept by a
+-- compass too; spec.grow
+-- frames grow monotonically and end at the page.
+for _, name in ipairs({ "rosette", "phyllotaxis", "rose", "guilloche" }) do
+  for _, case in ipairs({ { "stars_8_4", "dissolve" }, { "overlapping_circles", "guilloche" }, { "celtic_knot", "dissolve" } }) do
+    local pname, edge = case[1], case[2]
+    local function spec()
+      return { width = 360, height = 270, text = { x0 = 120, y0 = 40, x1 = 330, y1 = 230 }, seed = 7,
+        layout = "left", pattern = { [pname] = 1 }, pattern_hero = name, pattern_edge = edge }
+    end
+    Paint.reset_resources()
+    local ordinary = Compose.page(spec())
+    Paint.reset_resources()
+    local plan = P.plan(spec(), { resolution = 1 })
+    H.check(plan.final:body() == ordinary:body(), name .. " " .. pname .. ": the grown hero page differs from the page")
+    -- The hero's rings are born and done inside the growth, beside cells
+    -- swept by a compass too.
+    for _, part in ipairs(plan.parts) do
+      if part.kind:find("^pattern_hero") then
+        H.check(part.birth >= 0.02 - 1e-9 and part.birth + part.duration <= 0.6, name .. " " .. pname .. ": a hero ring outside its time")
+      end
+    end
+    local births, cells = {}, 0
+    for _, part in ipairs(plan.parts) do
+      if part.kind == "pattern_hero" then births[#births + 1] = part.birth end
+      if part.kind == "pattern" then cells = cells + 1 end
+    end
+    local _, n = hero_extent(ordinary.pattern.hero)
+    H.check(#births == n and cells == ordinary.pattern.cells, name .. ": parts per ring")
+    for i = 2, #births do H.check(births[i] > births[i - 1], name .. ": rings born out of order") end
+    local sizes = {}
+    for _, g in ipairs({ 0, 0.05, 0.2, 0.4, 0.6, 0.8, 0.95 }) do
+      local s = spec(); s.grow = g
+      Paint.reset_resources()
+      sizes[#sizes + 1] = #Compose.page(s):body()
+    end
+    for i = 2, #sizes do H.check(sizes[i] > sizes[i - 1], name .. " " .. edge .. ": spec.grow frames do not grow") end
+    local s = spec(); s.grow = 1
+    Paint.reset_resources()
+    H.check(Compose.page(s):body() == ordinary:body(), name .. ": spec.grow = 1 differs from the page")
+  end
+end
+
+-- The guilloche band lies between the text and the field: every point of
+-- it, strokes included, at least 2pt from the text block and 2pt short
+-- of the gap the cells keep, at several block sizes and strand widths.
+do
+  for _, t in ipairs({ { x0 = 120, y0 = 40, x1 = 330, y1 = 230 }, { x0 = 30, y0 = 40, x1 = 240, y1 = 230 }, { x0 = 50, y0 = 50, x1 = 70, y1 = 60 } }) do
+    for _, w in ipairs({ 0.6, 1.6 }) do
+      local b = Hero.band(t, 9, 4, w)
+      local near, far = math.huge, 0
+      local function at(x, y, r)
+        local d = rdist(x, y, { t.x0, t.y0, t.x1, t.y1 })
+        near = math.min(near, d - r); far = math.max(far, d + r)
+      end
+      reach_of(b.strands[1], w, at); reach_of(b.strands[-1], w, at)
+      for _, c in ipairs(b.crossings) do
+        reach_of(c.piece, w, at)
+        -- The clip covers the crossing: both strands, outlines included.
+        H.check(c.clip >= 2 * w, string.format("a crossing's clip of %.2f is too small for strands %.1f wide", c.clip, w))
+      end
+      reach_of(b.dots, 0.35, at)
+      reach_of(b.rules, 0.5, at)
+      H.check(#b.crossings % 2 == 0 and #b.crossings >= 4, "the band's crossings do not alternate round it")
+      H.check(near >= 2 and far <= 18 - 2, string.format("guilloche band from %.2f to %.2f of the text", near, far))
+    end
+  end
+  -- No strand stroke ends where it can be seen: in the emitted stream,
+  -- every stroke at a strand's width is closed, or lies inside a clip disc
+  -- with both its ends, caps included, outside the disc. So no outline's
+  -- round cap can fall across the other strokes of a strand at an eye.
+  for _, t in ipairs({ { x0 = 120, y0 = 40, x1 = 330, y1 = 230 }, { x0 = 50, y0 = 50, x1 = 70, y1 = 60 } }) do
+    for _, w in ipairs({ 1.6, 1.0 }) do
+      local pb = Paint.new({ backend = "pdf" })
+      local ink = { band = { 0, 0, 0.2 }, core = { 1, 1, 1 }, accent = { 1, 0.8, 0 }, line = { .5, .5, .5 },
+        fill = { { 0.9, 0.1, 0.1 }, { 0.1, 0.1, 0.9 } }, width = w }
+      local b = Hero.paint_band(pb, t, 9, 4, ink)
+      local function nums(str) local out = {} for v in str:gmatch("%-?[%d%.]+") do out[#out + 1] = tonumber(v) end return out end
+      local clip, closed, pieces, seams = nil, 0, 0, 0
+      for _, line in ipairs(pb.out) do
+        if line:find(" W n$") then
+          local n = nums(line:match("^q (.*) W n$"))
+          local cx, cy = 0, 0
+          for j = 7, 25, 6 do cx, cy = cx + n[j] / 4, cy + n[j + 1] / 4 end
+          clip = { cx, cy, math.sqrt((n[1] - cx) ^ 2 + (n[2] - cy) ^ 2) }
+        elseif line == "Q" then clip = nil
+        elseif line:find(" S Q$") then
+          local width = tonumber(line:match("([%d%.]+) w "))
+          local strand = math.abs(width - w * 72 / 72.27) < 0.02 or math.abs(width - 0.55 * w * 72 / 72.27) < 0.02
+          if strand then
+            local path = line:match(" 1 j (.*) S Q$")
+            if path:find(" h$") then closed = closed + 1
+            else
+              local n = nums(path)
+              local ends = { { n[1], n[2] }, { n[#n - 1], n[#n] } }
+              local hidden = clip ~= nil
+              for _, e in ipairs(ends) do
+                if hidden and math.sqrt((e[1] - clip[1]) ^ 2 + (e[2] - clip[2]) ^ 2) < clip[3] + width / 2 then hidden = false end
+              end
+              if hidden then pieces = pieces + 1 else seams = seams + 1 end
+            end
+          end
+        end
+      end
+      H.check(seams == 0, seams .. " strand strokes end in sight on the guilloche band")
+      H.check(closed == 4 and pieces == #b.crossings, string.format("guilloche band: %d closed strand strokes, %d clipped pieces for %d crossings", closed, pieces, #b.crossings))
+    end
+  end
+  -- The page paints it: a strand point 9 +- 4 out from the text's bottom.
+  local _, seen2 = page({ pattern_edge = "guilloche" })
+  local banded = false
+  for _, q in ipairs(seen2) do
+    local d = rdist(q[1], q[2], { sp.text.x0, sp.text.y0, sp.text.x1, sp.text.y1 })
+    if q[2] < sp.text.y0 and d > 4.9 and d < 13.1 then banded = true end
+  end
+  H.check(banded, "edge=guilloche painted no band round the text")
 end
 
 H.done("pattern")
