@@ -239,16 +239,13 @@ function M.page(a)
     text = { x0 = pt_of(a.text_x0), y0 = pt_of(a.text_y0), x1 = pt_of(a.text_x1), y1 = pt_of(a.text_y1) },
     header_y = a.header_y and pt_of(a.header_y),
     seed = M.seed(set.seed or a.seed, a.page),
-    lines = lines, layout = set.layout, page = a.page, mix = set.mix, ornaments = set.ornaments,
-    palette = set.palette, spin = set.spin, tune = set.tune,
+    lines = lines, layout = set.layout, page = a.page,
     header = set.header, frametitle = a.frametitle == "1",
     frametitle_height = a.frametitle_height and pt_of(a.frametitle_height),
     reserve = reserve_copy(),
-    gilt = set.gilt, gilt_dpi = set.giltdpi, gilt_env = set.giltenv, gilt_look = set.giltlook,
-    backdrop = set.backdrop,
-    pattern = set.pattern, pattern_edge = set.edge, pattern_outer = set.outer, pattern_scale = set.scale,
     doc_seed = tostring(set.seed or a.seed),
   }
+  require("flora.settings").to_spec(set, spec)
   if marks and marks["title-start"] and lines then
     spec.title = require("flora.frames").between(lines, marks["title-start"], marks["title-end"] or 0)
   end

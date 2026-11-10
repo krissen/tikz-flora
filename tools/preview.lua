@@ -36,16 +36,16 @@ if extra then
   for _, word in ipairs({ "noheader", "fresh" }) do
     extra = extra:gsub("%f[%w]" .. word .. "%f[%W],?%s*", function() flags[word] = true return "" end)
   end
-  local own = flags.fresh and { layout = spec.layout, header = spec.header, gilt = spec.gilt, giltdpi = spec.gilt_dpi, giltenv = spec.gilt_env, giltlook = spec.gilt_look,
-      backdrop = spec.backdrop }
-    or { layout = spec.layout, header = spec.header, tune = spec.tune, mix = spec.mix, palette = spec.palette, spin = spec.spin, gilt = spec.gilt, giltdpi = spec.gilt_dpi, giltenv = spec.gilt_env,
-      giltlook = spec.gilt_look, backdrop = spec.backdrop }
+  -- "fresh" drops the page's own mix, palette, spin and tune, keeping its
+  -- gilt, backdrop, ornaments and pattern.
+  local own = Settings.from_spec(spec, flags.fresh
+    and { gilt = true, giltdpi = true, giltenv = true, giltlook = true, backdrop = true, ornaments = true,
+      pattern = true, edge = true, outer = true, scale = true } or nil)
+  own.layout, own.header = spec.layout, spec.header
   local set = Settings.merge(own, Settings.parse(extra))
   local noheader = flags.noheader
-  spec.layout, spec.mix, spec.palette, spec.spin = set.layout, set.mix, set.palette, set.spin
-  spec.gilt, spec.gilt_dpi, spec.gilt_env, spec.gilt_look = set.gilt, set.giltdpi, set.giltenv, set.giltlook
-  spec.backdrop = set.backdrop
-  spec.tune = set.tune
+  Settings.to_spec(set, spec)
+  spec.layout = set.layout
   spec.header = set.header or spec.header
   if noheader then spec.header_y = nil end
 end

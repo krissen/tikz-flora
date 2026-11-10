@@ -443,6 +443,36 @@ local function merge_into(base, over)
   return t
 end
 
+-- The settings that pass to a page's spec as they are, by key -> spec
+-- field. Every place that builds a spec from settings (init.lua,
+-- garden.lua, tools/preview.lua) copies them with M.to_spec, so a new key
+-- reaches all of them. The others are folded into these (density,
+-- visitors, colourway) or set by each caller (layout, header, seed,
+-- cache): M.OWN lists them, and tests/test_settings.lua holds every key
+-- to one list or the other.
+M.SPEC = {
+  mix = "mix", ornaments = "ornaments", palette = "palette", spin = "spin", tune = "tune",
+  gilt = "gilt", giltdpi = "gilt_dpi", giltenv = "gilt_env", giltlook = "gilt_look", backdrop = "backdrop",
+  pattern = "pattern", edge = "pattern_edge", outer = "pattern_outer", scale = "pattern_scale",
+}
+M.OWN = { layout = true, header = true, seed = true, cache = true, density = true, visitors = true, colourway = true }
+
+-- Copy settings `set` onto `spec` (M.SPEC); returns spec.
+function M.to_spec(set, spec)
+  for k, f in pairs(M.SPEC) do spec[f] = set[k] end
+  return spec
+end
+
+-- The settings a spec was made from (the inverse of M.to_spec), for
+-- `keys` (default: all of M.SPEC).
+function M.from_spec(spec, keys)
+  local set = {}
+  for k, f in pairs(M.SPEC) do
+    if not keys or keys[k] then set[k] = spec[f] end
+  end
+  return set
+end
+
 -- Keys a later setting replaces whole rather than merging into: a new
 -- pattern={...} names the pattern(s) wanted now, not weights to add.
 local REPLACED = { pattern = true }
