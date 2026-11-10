@@ -571,11 +571,12 @@ for _, name in ipairs({ "rosette", "phyllotaxis", "rose", "guilloche" }) do
 end
 
 -- No cell enters the hero's disc, and the disc keeps the gap from the
--- text, for every hero on several patterns, layouts and edges; a hero
--- sits on the top corner of the field's side.
+-- text, for every hero on every pattern (opt-in ones by name), layout and
+-- edge; a hero sits on the top corner of the field's side.
 do
   local bad, placed = 0, 0
-  for _, pname in ipairs({ "stars_8_4", "rosette_lattice", "overlapping_circles", "penrose_rhombs" }) do
+  for _, entry in ipairs(Patterns.list) do
+    local pname = entry.name
     for _, name in ipairs({ "rosette", "phyllotaxis", "rose", "guilloche" }) do
       for _, layout in ipairs({ "left", "right", "surround", "split" }) do
         for _, edge in ipairs({ "dissolve", "cell", "guilloche" }) do
@@ -606,7 +607,7 @@ do
       end
     end
   end
-  H.check(bad == 0 and placed == 192, bad .. " hero placements or cells too near the hero or text")
+  H.check(bad == 0 and placed == 48 * #Patterns.list, bad .. " hero placements or cells too near the hero or text")
 end
 
 -- A corner with no room for a hero gets none, and the page is as without.
@@ -634,18 +635,28 @@ do
 end
 
 -- A hero grows: its rings as parts from the centre out, the last frame the
--- page; spec.grow frames grow monotonically and end at the page.
+-- page, its rings born early and done by 0.6, beside cells swept by a
+-- compass too; spec.grow
+-- frames grow monotonically and end at the page.
 for _, name in ipairs({ "rosette", "phyllotaxis", "rose", "guilloche" }) do
-  for _, edge in ipairs({ "dissolve", "guilloche" }) do
+  for _, case in ipairs({ { "stars_8_4", "dissolve" }, { "overlapping_circles", "guilloche" }, { "celtic_knot", "dissolve" } }) do
+    local pname, edge = case[1], case[2]
     local function spec()
       return { width = 360, height = 270, text = { x0 = 120, y0 = 40, x1 = 330, y1 = 230 }, seed = 7,
-        layout = "left", pattern = { stars_8_4 = 1 }, pattern_hero = name, pattern_edge = edge }
+        layout = "left", pattern = { [pname] = 1 }, pattern_hero = name, pattern_edge = edge }
     end
     Paint.reset_resources()
     local ordinary = Compose.page(spec())
     Paint.reset_resources()
     local plan = P.plan(spec(), { resolution = 1 })
-    H.check(plan.final:body() == ordinary:body(), name .. " " .. edge .. ": the grown hero page differs from the page")
+    H.check(plan.final:body() == ordinary:body(), name .. " " .. pname .. ": the grown hero page differs from the page")
+    -- The hero's rings are born and done inside the growth, beside cells
+    -- swept by a compass too.
+    for _, part in ipairs(plan.parts) do
+      if part.kind:find("^pattern_hero") then
+        H.check(part.birth >= 0.02 - 1e-9 and part.birth + part.duration <= 0.6, name .. " " .. pname .. ": a hero ring outside its time")
+      end
+    end
     local births, cells = {}, 0
     for _, part in ipairs(plan.parts) do
       if part.kind == "pattern_hero" then births[#births + 1] = part.birth end
