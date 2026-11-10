@@ -91,6 +91,10 @@ compile with a message naming the key.
 | `giltenv` | `studio`, `mirror` | The look of raster gilt: a studio window over dark ground (default), or the vector relief's sky and horizon |
 | `giltlook` | `{key=value, ...}` | Changes keys of that look, e.g. `giltlook={horizon=0.1, grain=0}`: light, horizon, sky, ground, highlight, grain, sparkle, shadow and more (`lua/flora/gilt_look.lua` lists every key and its range) |
 | `backdrop` | `light` (default), `dark`, or a dark `#rrggbb` | What the flora is painted over. On `dark` every ink is painted light, as if lit, and gold stays gold; set the page to match, e.g. `\pagecolor[HTML]{0A1014}` |
+| `pattern` | a pattern or group name, `{name=weight, ...}`, or `none` | Fills the page with a geometric pattern instead of flora (see Patterns) |
+| `edge` | `dissolve` (default), `cell`, `fade`, `border` | How a pattern meets the text |
+| `outer` | `bleed` (default), `margin` | How a pattern meets the paper's edge |
+| `scale` | 0.25 to 4 | The size of a pattern's cells |
 | `cache` | `true` (default), `false` | Keeps each page's flora in a folder `<jobname>-flora/` beside the PDF so a later compile reuses it (see Long documents) |
 
 Mix kinds: `bloom`, `soft`, `lily`, `ghost`, `umbel`, `cyme`
@@ -177,6 +181,46 @@ the room between the title and the nearest lines above and below it.
 The flora fills whatever margins the page has, so give it room with
 `geometry` (about 5 cm for a side margin, or 3 cm all round for
 `surround`).
+
+### Patterns
+
+`pattern` fills the page with a geometric pattern instead of flora. The
+layout says where it goes, as it does for flora: `left`, `right`,
+`centered` and `split` take the margins beside the text, the other
+layouts the whole page round the measured lines. Each pattern has its
+own name, and groups by tradition, craft and construction weigh several
+at once, so `pattern={japanese=1}` picks among the Japanese patterns and
+`pattern={japanese=1, asanoha=0}` leaves one out. One pattern is picked
+per page. Each `pattern` setting replaces the one before it, and
+`pattern=none` grows flora again, for instance on one page with
+`\florathispage{pattern=none}`.
+
+- `stars_8_4`: eight- and four-pointed stars, by Hankin's
+  polygons-in-contact method on the 4.8.8 tiling. Groups: `islamic`,
+  `hankin`, `star`, `lattice`.
+- `asanoha`: the hemp-leaf pattern of kumiko lattice, triangles split
+  at their centres. Groups: `japanese`, `kumiko`, `lattice`,
+  `triangular`.
+
+`density` sets how close to the text the field comes and how sharply it
+thins there; `edge` how it meets the text: `dissolve` (cells fall away,
+more of them the nearer the text), `cell` (whole cells to a hard edge),
+`fade` (cells pale into the paper) or `border` (a ruled frame round the
+text); `outer` whether it runs off the paper (`bleed`) or stops in whole
+cells inside it (`margin`); `scale` the cell size. The palette paints it
+as it paints flora: the bands take the `leaves` ink, the fills the
+`blooms` and `sprays` inks, one ink per page from a group, and the gold
+stays gold. A pattern grows as flora does (see `docs/progression.md`):
+each cell from the page's outer edge inwards, its construction lines
+first and then its colour.
+
+```latex
+\florasetup{layout=right, pattern=asanoha, edge=dissolve, colourway=autumn}
+```
+
+A new pattern is a Lua file that returns its description (the fields are
+explained in `lua/flora/patterns.lua`) and is listed in that file's
+`MODULES`.
 
 ### Lettering
 

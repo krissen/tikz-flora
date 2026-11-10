@@ -45,4 +45,18 @@ end)
 H.check(Serial.encode(Tune.gilt_looks.studio.gold) == original, "default ramp not restored")
 H.check(Serial.encode(outer) == Serial.encode(ramp), "restoration mutated memoized ramp")
 H.check(inner[1][2][2] == 1, "nested restoration mutated memoized ramp")
+-- Every key reaches a spec through Settings.SPEC (init.lua, garden.lua and
+-- tools/preview.lua all copy with to_spec), or is one Settings.OWN names
+-- as folded into others or set by each caller.
+for _, k in ipairs(Settings.defined()) do
+  H.check((Settings.SPEC[k] ~= nil) ~= (Settings.OWN[k] == true), "setting neither copied to the spec nor handled: " .. k)
+end
+do
+  local set = Settings.parse("pattern=asanoha, edge=fade, outer=margin, scale=2, giltdpi=300, spin=3")
+  local spec = Settings.to_spec(set, {})
+  H.check(spec.pattern.asanoha == 1 and spec.pattern_edge == "fade" and spec.pattern_outer == "margin"
+    and spec.pattern_scale == 2 and spec.gilt_dpi == 300 and spec.spin == 3, "to_spec misses a key")
+  local back = Settings.from_spec(spec)
+  H.check(back.edge == "fade" and back.scale == 2 and back.giltdpi == 300, "from_spec is not to_spec's inverse")
+end
 H.done("settings")

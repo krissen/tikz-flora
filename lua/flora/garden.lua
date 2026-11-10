@@ -40,13 +40,10 @@ function M.spec(o)
   local grow = o.grow and tonumber(o.grow)
   assert(grow == nil or (grow >= 0 and grow <= 1), "garden: grow must be from 0 to 1")
   local set = Settings.parse(o.settings or "")
-  local spec = {
+  local spec = Settings.to_spec(set, {
     seed = Init.seed(seed, 1), page = 1,
-    mix = set.mix, ornaments = set.ornaments, palette = set.palette, spin = set.spin,
-    gilt = set.gilt, gilt_dpi = set.giltdpi, gilt_env = set.giltenv, gilt_look = set.giltlook,
-    backdrop = set.backdrop, tune = set.tune,
     grow = grow and grow < 1 and grow or nil,
-  }
+  })
   if o.mode == "margins" then
     local x0, x1 = tonumber(o.x0), tonumber(o.x1)
     assert(x0 and x1 and x0 < x1, "garden: the content column needs x0 < x1")

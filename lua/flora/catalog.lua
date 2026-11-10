@@ -63,6 +63,11 @@ function M.build()
     c.ornaments[#c.ornaments + 1] = { slot = slot, label = s.label, about = s.desc, kinds = kinds }
   end
 
+  c.patterns = {}
+  for _, p in ipairs(require("flora.patterns").list) do
+    c.patterns[#c.patterns + 1] = { name = p.name, title = p.title, tags = p.tags }
+  end
+
   c.parts = {}
   for _, p in ipairs({ "hero", "blooms", "leaves", "leaflets", "stems", "sprays", "ghost", "cartouche" }) do
     c.parts[#c.parts + 1] = { key = p, default = Tune.color.palette[p] }

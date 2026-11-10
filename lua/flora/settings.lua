@@ -36,6 +36,12 @@ M.about = {
   { "giltlook", "{key=value, ...}", "Changes keys of that look, such as giltlook={horizon=0.1, grain=0} (see Gilt)." },
   { "backdrop", "light, dark, or a dark colour as #rrggbb",
     "What the flora is painted over: light, white paper (the default); dark, a near-black page; or that colour. On a dark backdrop every ink is painted light, as if lit, and gold stays gold." },
+  { "pattern", "a pattern or group name, {name=weight, ...} with weights 0 to 10, or none",
+    "Fills the page with a geometric pattern instead of flora: one picked per page by weight. A group name (such as japanese or islamic) weighs every pattern in it. Each setting replaces the last; none grows flora again." },
+  { "edge", "dissolve, cell, fade, border",
+    "How a pattern meets the text: cells falling away (the default), whole cells to a hard edge, cells paling into the paper, or a ruled frame round the text." },
+  { "outer", "bleed, margin", "How a pattern meets the paper's edge: running off the page (the default), or whole cells inside a small margin." },
+  { "scale", "0.25 to 4", "The size of a pattern's cells, as a factor of its own." },
   { "cache", "true, false",
     "true (the default) keeps each page's flora in a folder <jobname>-flora beside the PDF, so a later compile reuses it; false grows every page afresh." },
 }
@@ -120,6 +126,43 @@ M.define("ornaments", function(v)
     t[k] = w
   end
   return t
+end)
+
+M.define("pattern", function(v)
+  -- none returns the page to flora.
+  if v == "none" then return {} end
+  local P = require("flora.patterns")
+  local names, tags = P.known()
+  local ok = {}
+  for _, n in ipairs(names) do ok[n] = true end
+  for _, n in ipairs(tags) do ok[n] = true end
+  local t = {}
+  for _, kv in ipairs(M.parse_list(v)) do
+    local k, w = kv[1], kv[2] == nil and 1 or weight(kv[2])
+    if not ok[k] then
+      return nil, "no pattern or group \"" .. k .. "\" (patterns: " .. table.concat(names, ", ")
+        .. "; groups: " .. table.concat(tags, ", ") .. ")"
+    end
+    if not w then return nil, k .. " needs a weight from 0 to 10" end
+    t[k] = w
+  end
+  return t
+end)
+
+M.define("edge", function(v)
+  if require("flora.pattern").edges[v] then return v end
+  return nil, "edge must be dissolve, cell, fade or border"
+end)
+
+M.define("outer", function(v)
+  if require("flora.pattern").outers[v] then return v end
+  return nil, "outer must be bleed or margin"
+end)
+
+M.define("scale", function(v)
+  local n = tonumber(v)
+  if n and n >= 0.25 and n <= 4 then return n end
+  return nil, "scale must be a number from 0.25 to 4"
 end)
 
 M.define("cache", function(v)
@@ -400,8 +443,46 @@ local function merge_into(base, over)
   return t
 end
 
+-- The settings that pass to a page's spec as they are, by key -> spec
+-- field. Every place that builds a spec from settings (init.lua,
+-- garden.lua, tools/preview.lua) copies them with M.to_spec, so a new key
+-- reaches all of them. The others are folded into these (density,
+-- visitors, colourway) or set by each caller (layout, header, seed,
+-- cache): M.OWN lists them, and tests/test_settings.lua holds every key
+-- to one list or the other.
+M.SPEC = {
+  mix = "mix", ornaments = "ornaments", palette = "palette", spin = "spin", tune = "tune",
+  gilt = "gilt", giltdpi = "gilt_dpi", giltenv = "gilt_env", giltlook = "gilt_look", backdrop = "backdrop",
+  pattern = "pattern", edge = "pattern_edge", outer = "pattern_outer", scale = "pattern_scale",
+}
+M.OWN = { layout = true, header = true, seed = true, cache = true, density = true, visitors = true, colourway = true }
+
+-- Copy settings `set` onto `spec` (M.SPEC); returns spec.
+function M.to_spec(set, spec)
+  for k, f in pairs(M.SPEC) do spec[f] = set[k] end
+  return spec
+end
+
+-- The settings a spec was made from (the inverse of M.to_spec), for
+-- `keys` (default: all of M.SPEC).
+function M.from_spec(spec, keys)
+  local set = {}
+  for k, f in pairs(M.SPEC) do
+    if not keys or keys[k] then set[k] = spec[f] end
+  end
+  return set
+end
+
+-- Keys a later setting replaces whole rather than merging into: a new
+-- pattern={...} names the pattern(s) wanted now, not weights to add.
+local REPLACED = { pattern = true }
+
 function M.merge(base, over)
-  return merge_into(base or {}, over or {})
+  local t = merge_into(base or {}, over or {})
+  for k in pairs(REPLACED) do
+    if over and over[k] ~= nil then t[k] = over[k] end
+  end
+  return t
 end
 
 return M
