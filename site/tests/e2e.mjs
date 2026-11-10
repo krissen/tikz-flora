@@ -312,6 +312,16 @@ try {
   await settled();
   check(!/pattern|edge=|outer=|scale=/.test(await code()), `flora still has pattern keys in the line: ${await code()}`);
 
+  // A ?pattern= that names nothing is ignored: the mixer starts on flora.
+  await page.goto(MIXER + "?pattern=nonesuch");
+  await page.locator(".status", { hasText: "Grown in" }).waitFor({ timeout: 120000 });
+  check(!/pattern/.test(await code()) && await page.locator("details.pattern select").inputValue() === "", `an unknown ?pattern= is not ignored: ${await code()}`);
+  await page.goto(MIXER + "?pattern=truchet");
+  await page.locator(".status", { hasText: "Grown in" }).waitFor({ timeout: 120000 });
+  check(/pattern=truchet/.test(await code()), `?pattern=truchet is not kept: ${await code()}`);
+  await page.goto(MIXER);
+  await page.locator(".status", { hasText: "Grown in" }).waitFor({ timeout: 120000 });
+
   // An ornament weight reaches the setup line, and the page regrows.
   await page.locator(".controls details.ornaments .row", { hasText: "Crescent moon" }).locator('input[type="range"]').fill("5");
   await grown();

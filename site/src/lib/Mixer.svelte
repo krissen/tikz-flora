@@ -88,6 +88,8 @@
       const [m, man] = await Promise.all([loadMeta(), fetch("/bake/manifest.json").then((r) => r.json())]);
       meta = m;
       pages = man;
+      // ?pattern= stays only when it names a pattern or a listed group.
+      if (pattern.name && !patterns.some((p) => p.name === pattern.name) && !patternGroups.some(([t]) => t === pattern.name)) pattern.name = "";
       mix = Object.fromEntries(m.kinds.map(([k, , , d]) => [k, d]));
       ornaments = Object.fromEntries(m.ornaments.flatMap((s) => s.kinds.map(([k, , d]) => [k, d])));
       // Visitors start on here, so the mixer shows them.

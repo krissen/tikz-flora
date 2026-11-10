@@ -182,13 +182,11 @@ Some text.
     <dl class="ref">
       {#each cat.colourways as c}<dt><code>{c.name}</code></dt><dd>{Object.keys(c.inks).length ? Object.entries(c.inks).map(([p, ink]) => `${p} ${ink}`).join(", ") : "the package's own blue look"}</dd>{/each}
     </dl>
-    <h4>Patterns: <code>pattern=…</code>, <code>edge</code>, <code>outer</code>, <code>scale</code></h4>
-    <p class="list">A page can be filled with a geometric pattern instead of flora. Name a pattern
-      or a group; a group picks one of its patterns per page, and
+    <h4>Patterns: <code>pattern=…</code></h4>
+    <p class="list">A page can be filled with a geometric pattern instead of flora; the settings
+      <code>pattern</code>, <code>edge</code>, <code>outer</code> and <code>scale</code> are in the table
+      above. Name a pattern or a group; a group picks one of its patterns per page, and
       <code>pattern=&#123;name=weight, …&#125;</code> weighs them.</p>
-    <dl class="ref">
-      {#each cat.settings.filter((st) => ["pattern", "edge", "outer", "scale"].includes(st.key)) as st}<dt><code>{st.key}</code> <span class="muted">{st.values}</span></dt><dd>{st.about}</dd>{/each}
-    </dl>
     <dl class="ref">
       {#each cat.patterns as p}<dt><code>{p.name}</code> <span class="muted">{p.tags.join(", ")}</span></dt><dd>{p.title}</dd>{/each}
     </dl>
