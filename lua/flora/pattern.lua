@@ -228,11 +228,13 @@ local function weights(v)
 end
 
 -- The page's hero disc {x, y, r, name} (pattern_hero.lua), or nil when
--- spec.pattern_hero is unset or none, or its corner has no room.
+-- spec.pattern_hero is unset or none, or its corner has no room. Under
+-- outer=margin it lies wholly inside the page's margin, as the cells do.
 function M.hero(spec, side, top, keep, gap)
   local name = spec.pattern_hero
   if not name or name == "none" then return nil end
-  return require("flora.pattern_hero").place(name, spec, side, top, keep, gap)
+  local margin = spec.pattern_outer == "margin" and OUTER_MARGIN or nil
+  return require("flora.pattern_hero").place(name, spec, side, top, keep, gap, margin)
 end
 
 -- Paint hero disc d's rings, from the centre outward, as the cells are

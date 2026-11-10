@@ -610,6 +610,53 @@ do
   H.check(bad == 0 and placed == 48 * #Patterns.list, bad .. " hero placements or cells too near the hero or text")
 end
 
+-- Under outer=margin the hero lies wholly on the page, inside the margin,
+-- in the top corner of the field's side, still clear of the text, and no
+-- cell enters it. Its paint lies within its disc (above), so the disc is
+-- its reach.
+do
+  local bad, placed = 0, 0
+  for _, pname in ipairs({ "stars_8_4", "rosette_lattice", "overlapping_circles", "celtic_knot" }) do
+    for _, name in ipairs({ "rosette", "phyllotaxis", "rose", "guilloche" }) do
+      for _, layout in ipairs({ "left", "right", "surround", "split" }) do
+        for _, edge in ipairs({ "dissolve", "guilloche" }) do
+          local right = layout == "right" or layout == "split"
+          local pt = page({ pattern = { [pname] = 1 }, pattern_hero = name, layout = layout, pattern_edge = edge,
+            pattern_outer = "margin", page = 1, mix = { density = 3 }, lines = layout == "surround" and lines or nil,
+            text = right and { x0 = 30, y0 = 40, x1 = 240, y1 = 230 } or { x0 = 120, y0 = 40, x1 = 330, y1 = 230 } })
+          local info, d = pt.pattern, pt.pattern.hero
+          local where = string.format("margin %s %s %s %s", pname, name, layout, edge)
+          -- The surround page's top corner, above its lines, is too
+          -- shallow for a whole disc: it gets none.
+          if not d then if layout ~= "surround" then bad = bad + 1; io.stderr:write("no hero: " .. where .. "\n") end else
+            placed = placed + 1
+            local x, y, R = d[1], d[2], d[3]
+            if x - R < 4 - 1e-6 or x + R > 360 - 4 + 1e-6 or y - R < 4 - 1e-6 or y + R > 270 - 4 + 1e-6 then
+              bad = bad + 1; io.stderr:write("hero past the margin: " .. where .. "\n")
+            end
+            local side_x = layout == "left" and x - R or 360 - (x + R)
+            H.check(math.abs(side_x - 4) < 1e-6 and math.abs(270 - (y + R) - 4) < 1e-6, where .. ": hero off its corner")
+            for _, r in ipairs(info.avoid) do
+              if rdist(x, y, r) - R < info.gap - 1e-6 then bad = bad + 1; io.stderr:write("hero near text: " .. where .. "\n") end
+            end
+            for _, k in ipairs(info.kept) do
+              local c = k.cell
+              local reach = info.reach + (c.pad or 0)
+              if covers(c, x, y) then bad = bad + 1 end
+              for _, q in ipairs(samples(c)) do
+                if math.sqrt((q[1] - x) ^ 2 + (q[2] - y) ^ 2) - R - reach < 6 - 1e-6 then bad = bad + 1 end
+              end
+            end
+          end
+        end
+      end
+    end
+  end
+  H.check(bad == 0 and placed >= 96, bad .. " margin heroes past the margin, near the text or under cells")
+  -- Under bleed the same page keeps its hero on the corner.
+  H.check(page({ pattern_hero = "rose" }).pattern.hero[1] == 0, "a bleed hero left its corner")
+end
+
 -- A corner with no room for a hero gets none, and the page is as without.
 do
   local cramped = { pattern_hero = "rose", text = { x0 = 20, y0 = 40, x1 = 330, y1 = 260 } }

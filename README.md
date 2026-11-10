@@ -250,7 +250,7 @@ more of them the nearer the text), `cell` (whole cells to a hard edge),
 `fade` (cells pale into the paper), `border` (a ruled frame round the
 text) or `guilloche` (a guilloche band round it: two strands crossing over
 and under, a dot in each eye, between fine rules); `outer` whether it runs off the paper (`bleed`) or stops in whole
-cells inside it (`margin`); `scale` the cell size. The palette paints it
+cells, and a whole hero, inside it (`margin`); `scale` the cell size. The palette paints it
 as it paints flora: the bands take the `leaves` ink, the fills the
 `blooms` and `sprays` inks, one ink per page from a group, and the gold
 stays gold. A pattern grows as flora does (see `docs/progression.md`):
@@ -262,12 +262,14 @@ its hero bloom: `rosette` (rings of petals round a gold centre),
 `phyllotaxis` (seeds set as a sunflower sets them, golden angle by golden
 angle), `rose` (a rose window of glass roundels and tracery) or
 `guilloche` (rings of fine hypotrochoids, as a rose engine cuts them). It
-is centred on the top corner of the pattern's side, the top right for
-`right` and the top left for `left` (`split` takes the outer one), and
-the top right for layouts with both sides or the whole page. It is as
-large as half the page's smaller side, or smaller where it would come
-nearer the text than the field may; a corner with too little room gets
-none. The cells give way to it, keeping clear of its disc as they keep
+sits in the top corner of the pattern's side, the top right for `right`
+and the top left for `left` (`split` takes the outer one), and the top
+right for layouts with both sides or the whole page. With `outer=bleed`
+it is centred on the paper's corner and runs off it; with `outer=margin`
+it is a whole disc inside the margin, touching it at the top and the
+side. It is as large as half the page's smaller side, or smaller where
+it would come nearer the text than the field may; a corner with too
+little room gets none (a whole disc needs about twice the room). The cells give way to it, keeping clear of its disc as they keep
 clear of the text, and it grows ring by ring from its centre. `hero=none`
 (the default) leaves the page as it was.
 

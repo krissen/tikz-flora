@@ -250,23 +250,53 @@ function M.names()
   return out
 end
 
--- Where the hero goes, as a disc {x, y, r, name}, or nil. It is centred on
--- the top corner of the field's side (`side`, as pattern.lua's sides
--- gives it: the top right for right, the top left for left), or the top
--- right where the field takes both sides or the whole page; `top` is the
--- page's painted top. Its radius is half the page's smaller side, or less
--- where it would come nearer than `gap` to any of the rectangles `keep`.
-function M.place(name, spec, side, top, keep, gap)
+-- Where the hero goes, as a disc {x, y, r, name}, or nil. It sits on the
+-- top corner of the field's side (`side`, as pattern.lua's sides gives
+-- it: the top right for right, the top left for left), or the top right
+-- where the field takes both sides or the whole page; `top` is the page's
+-- painted top. With `margin` (outer=margin) it lies wholly on the page,
+-- `margin` in from its edges; else it is centred on the corner and runs
+-- off it. Its radius is half the page's smaller side, or less where it
+-- would come nearer than `gap` to any of the rectangles `keep`.
+function M.place(name, spec, side, top, keep, gap, margin)
   if not M.motifs[name] then return nil end
-  local x = (side and side.left and not side.right) and 0 or spec.width
-  local y = top
+  local left = side and side.left and not side.right
+  local function centre(R)
+    if not margin then return left and 0 or spec.width, top end
+    return left and margin + R or spec.width - margin - R, top - margin - R
+  end
+  local function fits(R)
+    local x, y = centre(R)
+    for _, r in ipairs(keep) do
+      local dx = math.max(r[1] - x, 0, x - r[3])
+      local dy = math.max(r[2] - y, 0, y - r[4])
+      if sqrt(dx * dx + dy * dy) - R < gap then return false end
+    end
+    return true
+  end
   local R = MAX_FRAC * math.min(spec.width, spec.height)
-  for _, r in ipairs(keep) do
-    local dx = math.max(r[1] - x, 0, x - r[3])
-    local dy = math.max(r[2] - y, 0, y - r[4])
-    R = math.min(R, sqrt(dx * dx + dy * dy) - gap)
+  if margin then R = math.min(R, (math.min(spec.width, top) - 2 * margin) / 2) end
+  if not margin then
+    -- On the corner the centre stays put: the radius is the nearest
+    -- rectangle's distance less the gap.
+    local x, y = centre(R)
+    for _, r in ipairs(keep) do
+      local dx = math.max(r[1] - x, 0, x - r[3])
+      local dy = math.max(r[2] - y, 0, y - r[4])
+      R = math.min(R, sqrt(dx * dx + dy * dy) - gap)
+    end
+  elseif not fits(R) then
+    -- Inside the margin the centre moves in as the disc grows, and its
+    -- clearance falls, so the largest radius that fits is found by halving.
+    local lo, hi = 0, R
+    for _ = 1, 40 do
+      local mid = (lo + hi) / 2
+      if fits(mid) then lo = mid else hi = mid end
+    end
+    R = lo
   end
   if R < MIN_R then return nil end
+  local x, y = centre(R)
   return { x, y, R, name = name }
 end
 
