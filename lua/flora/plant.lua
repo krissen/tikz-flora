@@ -97,14 +97,24 @@ local function avoiding(follow, box)
   end
 end
 
+-- The foot run's place without growing anything: the main stem's guide runs
+-- from the root at x1 left to x0, at height y, swaying up to `sway` pt
+-- either side; `xr` is the gesture's edge (layout.gesture). Compose reads it
+-- to know where another plant's stem runs on the page.
+function P.foot_run(m, W, xr)
+  local mw = m.x1 - m.x0
+  local R = mw * 0.32
+  xr = xr or m.x0 + mw * Tune.gesture.edge
+  return { x0 = xr + R + 12, x1 = W * Tune.plant.root, y = m.y0 + 6, sway = 4, R = R, xr = xr }
+end
+
 -- The main stem's guide: the foot run from the root, the corner arc, then
 -- the line of action up to the hero bloom's cap. The stem is steered along
 -- it rather than through it, so the guide's corners never show.
 local function guide(rng, m, hero, W, gest, cfg, avoid)
   local mw = m.x1 - m.x0
-  local R = mw * 0.32
-  local footy = m.y0 + 6
-  local xr = gest.edge
+  local run = P.foot_run(m, W, gest.edge)
+  local R, footy, xr = run.R, run.y, run.xr
   local rise_y = footy + R
   local pts = {}
   local period = rng:range(120, 170)
@@ -115,9 +125,9 @@ local function guide(rng, m, hero, W, gest, cfg, avoid)
     pts[1] = { m.gather and 0 or xr, footy }
   else
     local x = W * cfg.root
-    while x > xr + R + 12 do
+    while x > run.x0 do
       local ramp = G.smoothstep(xr + R, xr + R + 60, x)
-      pts[#pts + 1] = { x, footy + 4 * ramp * math.sin(1 + 2 * pi * x / period) }
+      pts[#pts + 1] = { x, footy + run.sway * ramp * math.sin(1 + 2 * pi * x / period) }
       x = x - 20
     end
     for i = 0, 10 do
