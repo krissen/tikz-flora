@@ -93,6 +93,7 @@ compile with a message naming the key.
 | `backdrop` | `light` (default), `dark`, or a dark `#rrggbb` | What the flora is painted over. On `dark` every ink is painted light, as if lit, and gold stays gold; set the page to match, e.g. `\pagecolor[HTML]{0A1014}` |
 | `pattern` | a pattern or group name, `{name=weight, ...}`, or `none` | Fills the page with a geometric pattern instead of flora (see Patterns) |
 | `edge` | `dissolve` (default), `cell`, `fade`, `border` | How a pattern meets the text |
+| `hero` | `rosette`, `phyllotaxis`, `rose`, `guilloche`, `none` (default) | One large radial motif at a top corner of a pattern page |
 | `outer` | `bleed` (default), `margin` | How a pattern meets the paper's edge |
 | `scale` | 0.25 to 4 | The size of a pattern's cells |
 | `cache` | `true` (default), `false` | Keeps each page's flora in a folder `<jobname>-flora/` beside the PDF so a later compile reuses it (see Long documents) |
@@ -238,6 +239,10 @@ Each `pattern` setting replaces the one before it, and
   winding bands. Groups: `truchet`, `tiles`, `square`.
 - `penrose_rhombs`: Penrose's thick and thin rhombs (P3), a tiling that
   never repeats. Groups: `aperiodic`, `rhombs`.
+- `rosette_lattice`: rosettes on a quincunx, small eight-petalled ones at
+  the points of a square grid and larger twelve-petalled ones in its
+  squares, joined by a strap grid. Groups: `rosette`, `quincunx`,
+  `lattice`, `square`.
 
 `density` sets how close to the text the field comes and how sharply it
 thins there; `edge` how it meets the text: `dissolve` (cells fall away,
@@ -251,8 +256,23 @@ stays gold. A pattern grows as flora does (see `docs/progression.md`):
 each cell from the page's outer edge inwards, its construction lines
 first and then its colour.
 
+`hero` adds one large radial motif to a pattern page, as a flora page has
+its hero bloom: `rosette` (rings of petals round a gold centre),
+`phyllotaxis` (seeds set as a sunflower sets them, golden angle by golden
+angle), `rose` (a rose window of glass roundels and tracery) or
+`guilloche` (rings of fine hypotrochoids, as a rose engine cuts them). It
+is centred on the top corner of the pattern's side, the top right for
+`right` and the top left for `left` (`split` takes the outer one), and
+the top right for layouts with both sides or the whole page. It is as
+large as half the page's smaller side, or smaller where it would come
+nearer the text than the field may; a corner with too little room gets
+none. The cells give way to it, keeping clear of its disc as they keep
+clear of the text, and it grows ring by ring from its centre. `hero=none`
+(the default) leaves the page as it was.
+
 ```latex
 \florasetup{layout=right, pattern=asanoha, edge=dissolve, colourway=autumn}
+\florathispage{pattern=stars_8_4, hero=rose}
 ```
 
 A new pattern is a Lua file that returns its description (the fields are

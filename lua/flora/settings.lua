@@ -40,6 +40,8 @@ M.about = {
     "Fills the page with a geometric pattern instead of flora: one picked per page by weight. A group name (such as japanese or girih) weighs every pattern in it, except the emblem patterns (hexagram_lattice, khatam, greek_crosses), which only their own name or the group symbol picks. Each setting replaces the last; none grows flora again." },
   { "edge", "dissolve, cell, fade, border",
     "How a pattern meets the text: cells falling away (the default), whole cells to a hard edge, cells paling into the paper, or a ruled frame round the text." },
+  { "hero", "rosette, phyllotaxis, rose, guilloche, none",
+    "One large radial motif at a top corner of a pattern page, which the cells give way to: rings of petals, seeds set as a sunflower sets them, a rose window, or guilloche rings. It sits on the top corner of the pattern's side (top right for right, top left for left; top right for layouts with both sides or the whole page) and grows ring by ring from its centre. none (the default) paints none." },
   { "outer", "bleed, margin", "How a pattern meets the paper's edge: running off the page (the default), or whole cells inside a small margin." },
   { "scale", "0.25 to 4", "The size of a pattern's cells, as a factor of its own." },
   { "cache", "true, false",
@@ -152,6 +154,12 @@ end)
 M.define("edge", function(v)
   if require("flora.pattern").edges[v] then return v end
   return nil, "edge must be dissolve, cell, fade or border"
+end)
+
+M.define("hero", function(v)
+  local names = require("flora.pattern_hero").names()
+  for _, n in ipairs(names) do if v == n then return v end end
+  return nil, "hero must be " .. table.concat(names, ", ")
 end)
 
 M.define("outer", function(v)
@@ -454,6 +462,7 @@ M.SPEC = {
   mix = "mix", ornaments = "ornaments", palette = "palette", spin = "spin", tune = "tune",
   gilt = "gilt", giltdpi = "gilt_dpi", giltenv = "gilt_env", giltlook = "gilt_look", backdrop = "backdrop",
   pattern = "pattern", edge = "pattern_edge", outer = "pattern_outer", scale = "pattern_scale",
+  hero = "pattern_hero",
 }
 M.OWN = { layout = true, header = true, seed = true, cache = true, density = true, visitors = true, colourway = true }
 
