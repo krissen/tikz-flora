@@ -1,7 +1,8 @@
 -- Seigaiha, "blue sea waves": rows of fans of concentric rings, each row
 -- set half a fan along and laid over the row above, so only the fans'
 -- upper halves show. Cells are given top row first, so later rows cover
--- earlier ones as the field paints them in order.
+-- earlier ones as the field paints them in order. A fan's compass starts
+-- at its left and turns clockwise, over the crest that shows first.
 
 local K = require("flora.pat_kit")
 
@@ -32,7 +33,8 @@ return {
     for j = math.ceil(env.y1 / dy) + 2, math.floor(env.y0 / dy) - 2, -1 do
       for i = math.floor(env.x0 / dx) - 1, math.ceil(env.x1 / dx) + 1 do
         local x, y = i * dx + (j % 2) * r, j * dy
-        out[#out + 1] = { x = x, y = y, r = r, verts = K.ring(x, y, r), circle = { x, y, r }, paint = paint, construct = construct }
+        out[#out + 1] = { x = x, y = y, r = r, verts = K.ring(x, y, r), circle = { x, y, r },
+          sweep = { x, y, math.pi, -1 }, paint = paint, construct = construct }
       end
     end
     return out

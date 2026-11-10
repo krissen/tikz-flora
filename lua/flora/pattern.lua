@@ -17,8 +17,10 @@
 -- translucent, so no cell needs a transparency group of its own.
 -- While a page grows (progression.lua) each cell appears by its distance
 -- from the page's outer edge: its construction lines first, then the
--- cell painted over them. The lines are painted on a page that does not
--- grow too, under the bands, so its last frame and the page are the same.
+-- cell painted over them. A cell with a compass point draws its lines as
+-- a compass turns about it, and is painted once the turn is done. The
+-- lines are painted on a page that does not grow too, under the bands,
+-- so its last frame and the page are the same.
 
 local Rng = require("flora.rng")
 local Paint = require("flora.paint")
@@ -112,6 +114,20 @@ local function within(c, r, m)
     if q[1] - m < r[1] or q[1] + m > r[3] or q[2] - m < r[2] or q[2] + m > r[4] then return false end
   end
   return true
+end
+
+-- How long a cell's construction lines take to draw, as growth time.
+local LINES = 0.07
+
+-- A wedge about compass point w that covers all of cell c's lines: its
+-- outline, half a band and its pad beyond.
+local function sweep_reach(c, w, width)
+  local r = 0
+  for _, q in ipairs(c.verts) do r = math.max(r, math.sqrt((q[1] - w[1]) ^ 2 + (q[2] - w[2]) ^ 2)) end
+  if c.circle then
+    r = math.max(r, math.sqrt((c.circle[1] - w[1]) ^ 2 + (c.circle[2] - w[2]) ^ 2) + c.circle[3])
+  end
+  return r + width + (c.pad or 0) + 2
 end
 
 local function smooth(t)
@@ -257,16 +273,28 @@ function M.paint(spec, pt)
     -- The construction lines lie under the finished cell's bands, so a
     -- page painted at once and the last frame of its growth are the same.
     local birth = 0.78 * root(c) / far + 0.1 * k.jitter
+    -- A cell with a compass point (c.sweep) draws its lines as the
+    -- compass turns, and is painted once the turn is done.
+    local painted = birth + (c.sweep and LINES or 0.05)
     if grow then
       -- A "watch it grow" frame (spec.grow, tools/grow-frame.sh) shows a
-      -- cell's lines once it is born and the cell halfway through its
-      -- painting, on the times the progression parts below use.
-      if grow >= birth then c.construct(pt, c, ink) end
-      if grow >= birth + 0.09 then c.paint(pt, c, ink) end
+      -- cell's lines once it is born, swept as far as they have grown, and
+      -- the cell halfway through its painting, on the times the
+      -- progression parts below use.
+      local f = (grow - birth) / LINES
+      if c.sweep and f > 0 and f < 1 then
+        local w = c.sweep
+        pt:clip_begin(Progression.wedge(w[1], w[2], sweep_reach(c, w, width), w[3] or 0, f, w[4]))
+        c.construct(pt, c, ink)
+        pt:clip_end()
+      elseif grow >= birth and (f >= 1 or not c.sweep) then
+        c.construct(pt, c, ink)
+      end
+      if grow >= painted + 0.04 then c.paint(pt, c, ink) end
     else
-      Progression.part(pt, "pattern_line", { c.x, c.y }, birth, 0.07,
-        function() c.construct(pt, c, ink) end, nil, { no_area = true })
-      Progression.part(pt, "pattern", { c.x, c.y }, birth + 0.05, 0.08,
+      Progression.part(pt, "pattern_line", { c.x, c.y }, birth, LINES,
+        function() c.construct(pt, c, ink) end, nil, { no_area = true, sweep = c.sweep })
+      Progression.part(pt, "pattern", { c.x, c.y }, painted, 0.08,
         function() c.paint(pt, c, ink) end)
     end
   end

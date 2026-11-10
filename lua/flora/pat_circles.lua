@@ -28,7 +28,7 @@ return {
       for i = math.floor(env.x0 / r) - 1, math.ceil(env.x1 / r) + 1 do
         local x, y = r * (i + (j % 2) / 2), h * j
         out[#out + 1] = { x = x, y = y, verts = K.ring(x, y, r), circle = { x, y, r }, path = { { "o", x, y, r } },
-          paint = paint, construct = construct }
+          sweep = { x, y, math.pi / 2 }, paint = paint, construct = construct }
       end
     end
     return out

@@ -400,4 +400,111 @@ do
   end
 end
 
+-- Compass growth: a circle pattern's construction lines are drawn as a
+-- compass turns about each circle's centre, then the cell is painted.
+-- `wedges` finds the wedge clips in a frame's body: the compass point,
+-- how far it has turned (a fraction of a turn) and the line that follows.
+local function wedges(body)
+  local out, lines = {}, {}
+  for l in (body .. "\n"):gmatch("(.-)\n") do lines[#lines + 1] = l end
+  for i, l in ipairs(lines) do
+    local path = l:match("^q (.-) h W n$")
+    if path and path:find(" l ", 1, true) and path:find(" c", 1, true) then
+      local nums = {}
+      for v in path:gmatch("%-?[%d%.]+") do nums[#nums + 1] = tonumber(v) end
+      local cx, cy = nums[1], nums[2]
+      local turn, prev = 0, math.atan(nums[4] - cy, nums[3] - cx)
+      for j = 5, #nums, 6 do
+        local a = math.atan(nums[j + 5] - cy, nums[j + 4] - cx)
+        local d = (a - prev + math.pi) % (2 * math.pi) - math.pi
+        turn, prev = turn + math.abs(d), a
+      end
+      out[#out + 1] = { x = cx, y = cy, f = turn / (2 * math.pi), next = lines[i + 1] }
+    end
+  end
+  return out
+end
+
+-- The wedge opens through the fraction of a turn it is given, either way.
+do
+  local s = {}
+  for _, c in ipairs(P.wedge(10, 20, 5, 0.3, 0.6, -1)) do
+    for k = 2, #c do s[#s + 1] = string.format("%.4f", c[k]) end
+    if c[1] ~= "z" then s[#s + 1] = c[1] end
+  end
+  local w = wedges("q " .. table.concat(s, " ") .. " h W n")
+  H.check(#w == 1 and math.abs(w[1].f - 0.6) < 1e-3 and w[1].x == 10 and w[1].y == 20, "wedge opens the wrong angle")
+end
+
+for _, name in ipairs({ "overlapping_circles", "shippo", "seigaiha" }) do
+  local function spec(extra)
+    local s = { width = 360, height = 270, text = { x0 = 120, y0 = 40, x1 = 330, y1 = 230 }, seed = 7,
+      layout = "left", pattern = { [name] = 1 } }
+    for k, v in pairs(extra or {}) do s[k] = v end
+    return s
+  end
+  for _, c in ipairs(Patterns.by_name[name].cells({ x0 = 0, y0 = 0, x1 = 60, y1 = 60, size = 16, rng = Rng.new(1) })) do
+    H.check(c.sweep and c.sweep[1] == c.circle[1] and c.sweep[2] == c.circle[2], name .. ": a circle without its compass point")
+  end
+
+  -- Progression: every cell's lines are swept, the cell painted after.
+  Paint.reset_resources()
+  local plan = P.plan(spec(), { resolution = 1 })
+  local line_of, forms, swept = {}, {}, 0
+  for i, part in ipairs(plan.parts) do
+    if part.kind == "pattern_line" then
+      swept = swept + (part.sweep and 1 or 0)
+      local cell = plan.parts[i + 1]
+      H.check(cell.kind == "pattern" and cell.birth >= part.birth + part.duration - 1e-12,
+        name .. ": a cell is painted before its compass turn is done")
+      if part.form then line_of[#line_of + 1] = part; forms[part.form] = part end
+    end
+  end
+  H.check(swept > 20 and swept == plan.final.pattern.cells, name .. ": lines not swept")
+
+  -- How far each cell's lines are drawn in a frame: 0 before, the wedge's
+  -- turn while it opens, 1 after.
+  local function drawn(body)
+    local out = {}
+    for _, part in ipairs(line_of) do
+      out[part] = body:find("/" .. part.form .. " Do", 1, true) and 1 or 0
+    end
+    for _, w in ipairs(wedges(body)) do
+      local form = w.next and w.next:match("^/(%S+) Do$")
+      if forms[form] then out[forms[form]] = w.f end
+    end
+    return out
+  end
+  local before, partial = {}, false
+  for _, t in ipairs({ 0.05, 0.15, 0.25, 0.35, 0.5, 0.65, 0.75, 0.9, 0.97 }) do
+    local now = drawn(P.render(plan, t):body())
+    for part, f in pairs(now) do
+      H.check(f + 1e-3 >= (before[part] or 0), string.format("%s: a compass turned back at t = %.2f", name, t))
+      if t == 0.5 and f > 0.02 and f < 0.98 then partial = true end
+    end
+    before = now
+  end
+  H.check(partial, name .. ": a half-grown frame holds no partial arc")
+
+  -- spec.grow frames: partial arcs while growing, turning only forward,
+  -- and the page grows.
+  local last, sizes, seen = {}, {}, false
+  for _, g in ipairs({ 0.2, 0.4, 0.5, 0.6, 0.8 }) do
+    Paint.reset_resources()
+    local body = Compose.page(spec({ grow = g })):body()
+    sizes[#sizes + 1] = #body
+    local now = {}
+    for _, w in ipairs(wedges(body)) do
+      local key = string.format("%.2f,%.2f", w.x, w.y)
+      now[key] = w.f
+      H.check(w.f > 0 and w.f < 1, name .. ": a spec.grow wedge outside the turn")
+      H.check(not last[key] or w.f + 1e-3 >= last[key], name .. ": a spec.grow compass turned back")
+      seen = true
+    end
+    last = now
+  end
+  H.check(seen, name .. ": spec.grow drew no partial arc")
+  for i = 2, #sizes do H.check(sizes[i] > sizes[i - 1], name .. ": spec.grow frames do not grow") end
+end
+
 H.done("pattern")
