@@ -210,6 +210,15 @@ per page. Each `pattern` setting replaces the one before it, and
 - `sikku_kolam`: the Tamil threshold drawing of lines looped round a grid
   of dots, drawn as mirror curves. Groups: `kolam`, `tamil`, `south_indian`,
   `dot_grid`.
+- `celtic_knot`: Celtic interlace, mirror curves with every crossing
+  woven over and under in turn; this form is the endless weave, a plait
+  over the whole field. The halo cutting each under strand is the page's
+  own colour (the ground itself on a dark backdrop), so it is not meant
+  for a page with a picture or a tint behind it. Groups: `celtic`,
+  `insular`, `interlace`, `knot`.
+- `celtic_panels`: the same interlace in knot panels, walls of mirrors
+  every six grid units and symmetric inner mirrors in each panel. Groups
+  as `celtic_knot`, and `panel`.
 - `overlapping_circles`: circles on a triangular grid, each through its
   six neighbours' centres, the lattice a Flower of Life is cut from.
   Groups: `circle_lattice`, `circles`, `triangular`, `lattice`.
