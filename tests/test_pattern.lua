@@ -101,6 +101,87 @@ end
 H.check(off_page(select(2, page())), "bleed stays on the page")
 H.check(not off_page(select(2, page({ pattern_outer = "margin" }))), "margin runs off the page")
 
+-- No cell's paint comes near the text, measured along its whole outline,
+-- for every pattern, scale, layout, edge and outer mode. Outlines are
+-- sampled every half point, so an edge across a line of text is caught
+-- even when all its corners clear it.
+local function samples(c)
+  local out = {}
+  if c.circle then
+    for k = 0, 127 do
+      local a = 2 * math.pi * k / 128
+      out[#out + 1] = { c.circle[1] + c.circle[3] * math.cos(a), c.circle[2] + c.circle[3] * math.sin(a) }
+    end
+    return out
+  end
+  local P = c.verts
+  for i = 1, #P do
+    local a, b = P[i], P[i % #P + 1]
+    local n = math.max(1, math.ceil(math.sqrt((b[1] - a[1]) ^ 2 + (b[2] - a[2]) ^ 2) / 0.5))
+    for k = 0, n - 1 do out[#out + 1] = { a[1] + (b[1] - a[1]) * k / n, a[2] + (b[2] - a[2]) * k / n } end
+  end
+  return out
+end
+local function covers(c, x, y)
+  if c.circle then return (x - c.circle[1]) ^ 2 + (y - c.circle[2]) ^ 2 <= c.circle[3] ^ 2 end
+  local inside, P, j = false, c.verts, #c.verts
+  for i = 1, #P do
+    local a, b = P[i], P[j]
+    if (a[2] > y) ~= (b[2] > y) and x < (b[1] - a[1]) * (y - a[2]) / (b[2] - a[2]) + a[1] then inside = not inside end
+    j = i
+  end
+  return inside
+end
+local function rdist(x, y, r)
+  local dx, dy = math.max(r[1] - x, 0, x - r[3]), math.max(r[2] - y, 0, y - r[4])
+  return math.sqrt(dx * dx + dy * dy)
+end
+local lines = {}
+for k = 0, 9 do lines[#lines + 1] = { x0 = 120, x1 = 330 - (k % 3) * 40, y0 = 210 - k * 17, y1 = 220 - k * 17 } end
+local bad = 0
+for _, p in ipairs(Patterns.list) do
+  for _, scale in ipairs({ 1, 2.5, 4 }) do
+    for _, layout in ipairs({ "right", "surround" }) do
+      for _, edge in ipairs({ "cell", "dissolve", "fade", "border" }) do
+        for _, outer in ipairs({ "bleed", "margin" }) do
+          local pt = page({ pattern = { [p.name] = 1 }, pattern_scale = scale, layout = layout, pattern_edge = edge,
+            pattern_outer = outer, mix = { density = 2 }, lines = layout == "surround" and lines or nil,
+            text = layout == "right" and { x0 = 30, y0 = 40, x1 = 240, y1 = 230 } or { x0 = 120, y0 = 40, x1 = 330, y1 = 230 } })
+          local info = pt.pattern
+          local where = string.format("%s scale %s %s %s %s", p.name, scale, layout, edge, outer)
+          for _, k in ipairs(info.kept) do
+            local c = k.cell
+            local reach = info.reach + (c.pad or 0)
+            for _, q in ipairs(samples(c)) do
+              for _, r in ipairs(info.avoid) do
+                if rdist(q[1], q[2], r) - reach < info.gap - 1e-6 then bad = bad + 1; if bad < 4 then
+                  io.stderr:write("near text: " .. where .. "\n") end end
+              end
+              if outer == "margin" and (q[1] - reach < 4 - 1e-6 or q[2] - reach < 4 - 1e-6
+                  or q[1] + reach > 360 - 4 + 1e-6 or q[2] + reach > 270 - 4 + 1e-6) then
+                bad = bad + 1; if bad < 4 then io.stderr:write("past the margin: " .. where .. "\n") end
+              end
+            end
+            for _, r in ipairs(info.avoid) do
+              for _, q in ipairs({ { r[1], r[2] }, { r[3], r[2] }, { r[3], r[4] }, { r[1], r[4] } }) do
+                if covers(c, q[1], q[2]) then bad = bad + 1 end
+              end
+            end
+          end
+        end
+      end
+    end
+  end
+end
+H.check(bad == 0, bad .. " cell outline samples too near the text or past the margin")
+
+-- The reported case: a large asanoha triangle whose corners clear a line
+-- of text while two of its edges cross it.
+do
+  local c = { verts = { { 156, 90 }, { 260, 90 }, { 208, 180 } } }
+  H.check(require("flora.pattern").clearance(c, { 120, 130, 330, 140 }) == 0, "an edge across the text has clearance")
+end
+
 -- Layout: a right margin pattern stays right of the text.
 local _, right = page({ layout = "right", text = { x0 = 30, y0 = 40, x1 = 240, y1 = 230 } })
 local ok = true

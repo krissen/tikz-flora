@@ -15,10 +15,14 @@
 --   cells(env) -> list of cells covering env's box {x0, y0, x1, y1} at
 --          cell size env.size, drawing from env.rng. A cell is
 --          { x, y, verts, paint = fn(pt, cell, ink), construct = fn(pt,
---          cell, ink) }: its centre, the outline it stays inside (for the
---          page's edges and the text) and how it is painted, finished or
---          as its construction lines while it grows. `ink` holds the
---          colours, already faded for the cell (pattern.lua).
+--          cell, ink) }: its centre, the outline its paint stays inside
+--          (a polygon `verts`, or `circle = {x, y, r}` for a round cell),
+--          and how it is painted, finished or as its construction lines
+--          while it grows. Strokes may reach half a band beyond the
+--          outline, and `pad` further where paint sticks out more. The
+--          field measures the whole outline against the page's edges
+--          and the text (pattern.lua). `ink` holds the colours, already
+--          faded for the cell.
 
 local M = { list = {}, by_name = {}, tags = {} }
 

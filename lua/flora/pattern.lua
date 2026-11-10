@@ -41,6 +41,79 @@ local function rect_dist(x, y, r)
   return math.sqrt(dx * dx + dy * dy)
 end
 
+local function seg_point(px, py, a, b)
+  local dx, dy = b[1] - a[1], b[2] - a[2]
+  local l2 = dx * dx + dy * dy
+  local t = l2 > 0 and math.max(0, math.min(1, ((px - a[1]) * dx + (py - a[2]) * dy) / l2)) or 0
+  local x, y = a[1] + dx * t - px, a[2] + dy * t - py
+  return math.sqrt(x * x + y * y)
+end
+
+-- Whether segment a-b meets rectangle r (Liang-Barsky).
+local function seg_hits_rect(a, b, r)
+  local t0, t1 = 0, 1
+  local dx, dy = b[1] - a[1], b[2] - a[2]
+  for _, e in ipairs({ { -dx, a[1] - r[1] }, { dx, r[3] - a[1] }, { -dy, a[2] - r[2] }, { dy, r[4] - a[2] } }) do
+    local p, q = e[1], e[2]
+    if p == 0 then
+      if q < 0 then return false end
+    else
+      local t = q / p
+      if p < 0 then t0 = math.max(t0, t) else t1 = math.min(t1, t) end
+      if t0 > t1 then return false end
+    end
+  end
+  return true
+end
+
+local function in_poly(x, y, P)
+  local inside, j = false, #P
+  for i = 1, #P do
+    local a, b = P[i], P[j]
+    if (a[2] > y) ~= (b[2] > y) and x < (b[1] - a[1]) * (y - a[2]) / (b[2] - a[2]) + a[1] then
+      inside = not inside
+    end
+    j = i
+  end
+  return inside
+end
+
+-- How far cell `c`'s outline (its polygon `verts`, or its `circle`) lies
+-- from rectangle r: 0 when they meet or one holds the other. Every edge
+-- is measured, not just the corners, so a large cell whose corners clear
+-- a line of text cannot have an edge across it.
+function M.clearance(c, r)
+  if c.circle then
+    return math.max(0, rect_dist(c.circle[1], c.circle[2], r) - c.circle[3])
+  end
+  local P = c.verts
+  for _, q in ipairs({ { r[1], r[2] }, { r[3], r[2] }, { r[3], r[4] }, { r[1], r[4] } }) do
+    if in_poly(q[1], q[2], P) then return 0 end
+  end
+  local d, j = math.huge, #P
+  for i = 1, #P do
+    local a, b = P[j], P[i]
+    if seg_hits_rect(a, b, r) then return 0 end
+    d = math.min(d, rect_dist(a[1], a[2], r), rect_dist(b[1], b[2], r),
+      seg_point(r[1], r[2], a, b), seg_point(r[3], r[2], a, b),
+      seg_point(r[3], r[4], a, b), seg_point(r[1], r[4], a, b))
+    j = i
+  end
+  return d
+end
+
+-- Whether cell `c` lies wholly inside rectangle r, shrunk by m.
+local function within(c, r, m)
+  if c.circle then
+    local x, y, R = c.circle[1], c.circle[2], c.circle[3] + m
+    return x - R >= r[1] and x + R <= r[3] and y - R >= r[2] and y + R <= r[4]
+  end
+  for _, q in ipairs(c.verts) do
+    if q[1] - m < r[1] or q[1] + m > r[3] or q[2] - m < r[2] or q[2] + m > r[4] then return false end
+  end
+  return true
+end
+
 local function smooth(t)
   t = math.max(0, math.min(1, t))
   return t * t * (3 - 2 * t)
@@ -134,21 +207,19 @@ function M.paint(spec, pt)
   for _, c in ipairs(cells) do
     local r, jitter = fall:next(), stagger:next()
     local in_side = not side or (side.left and c.x < text.x0) or (side.right and c.x > text.x1)
-    local on_page, inside = false, true
-    for _, q in ipairs(c.verts) do
-      if q[1] >= 0 and q[1] <= W and q[2] >= 0 and q[2] <= H then on_page = true end
-      if q[1] < OUTER_MARGIN or q[2] < OUTER_MARGIN or q[1] > W - OUTER_MARGIN or q[2] > H - OUTER_MARGIN then
-        inside = false
-      end
-    end
+    -- Paint reaches half a band and the cell's own pad beyond its outline.
+    local reach = width / 2 + (c.pad or 0)
+    local page = { 0, 0, W, H }
     local placed = in_side
-    if outer == "margin" then placed = placed and inside else placed = placed and on_page end
+    if outer == "margin" then
+      placed = placed and within(c, page, OUTER_MARGIN + reach)
+    else
+      placed = placed and M.clearance(c, page) <= reach
+    end
     if placed then
       offered = offered + 1
       local d = math.huge
-      for _, q in ipairs(c.verts) do
-        for _, rc in ipairs(keep_rects) do d = math.min(d, rect_dist(q[1], q[2], rc)) end
-      end
+      for _, rc in ipairs(keep_rects) do d = math.min(d, M.clearance(c, rc) - reach) end
       local a = 0
       if dens > 0 and d >= gap then
         local t = (d - gap) / ramp
@@ -196,7 +267,7 @@ function M.paint(spec, pt)
   end
   pt:end_group()
   pt.coverage = offered > 0 and #kept / offered or 0
-  pt.pattern = { name = p.name, cells = #kept, offered = offered }
+  pt.pattern = { name = p.name, cells = #kept, offered = offered, kept = kept, avoid = keep_rects, reach = width / 2, gap = gap }
   return true
 end
 
