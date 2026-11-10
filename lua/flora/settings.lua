@@ -466,6 +466,18 @@ M.SPEC = {
 }
 M.OWN = { layout = true, header = true, seed = true, cache = true, density = true, visitors = true, colourway = true }
 
+-- What a "fresh" restyle (tools/preview.lua, the site's mixer) drops of a
+-- page's own settings: its growth mix, inks and tuning. Every other
+-- M.SPEC key is kept, so a new key is kept without being listed.
+M.FRESH_DROPS = { mix = true, palette = true, spin = true, tune = true }
+
+-- The M.SPEC keys a fresh restyle keeps, for M.from_spec.
+function M.fresh_keys()
+  local keys = {}
+  for k in pairs(M.SPEC) do if not M.FRESH_DROPS[k] then keys[k] = true end end
+  return keys
+end
+
 -- Copy settings `set` onto `spec` (M.SPEC); returns spec.
 function M.to_spec(set, spec)
   for k, f in pairs(M.SPEC) do spec[f] = set[k] end

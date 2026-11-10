@@ -38,11 +38,9 @@ if extra then
   for _, word in ipairs({ "noheader", "fresh" }) do
     extra = extra:gsub("%f[%w]" .. word .. "%f[%W],?%s*", function() flags[word] = true return "" end)
   end
-  -- "fresh" drops the page's own mix, palette, spin and tune, keeping its
-  -- gilt, backdrop, ornaments and pattern.
-  local own = Settings.from_spec(spec, flags.fresh
-    and { gilt = true, giltdpi = true, giltenv = true, giltlook = true, backdrop = true, ornaments = true,
-      pattern = true, edge = true, outer = true, scale = true } or nil)
+  -- "fresh" drops the page's own mix, palette, spin and tune
+  -- (Settings.FRESH_DROPS) and keeps every other setting.
+  local own = Settings.from_spec(spec, flags.fresh and Settings.fresh_keys() or nil)
   own.layout, own.header = spec.layout, spec.header
   local set = Settings.merge(own, Settings.parse(extra))
   local noheader = flags.noheader
