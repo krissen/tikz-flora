@@ -11,6 +11,10 @@
 --          pattern={japanese=1} weighs every pattern tagged japanese, so
 --          related patterns (or every symbol-like one, tagged symbol) can
 --          be chosen together
+--   opt_in  true for a pattern whose cell is a recognisable emblem. An
+--          opt-in pattern is never picked through an ordinary group
+--          (square, star, triangular, ...): its weight is its own
+--          name's, else the weight given to the group `symbol`, else 0.
 --   scale  its cell size in pt at scale=1
 --   width  its band width in pt at scale=1 (default: a sixth of scale)
 --   cells(env) -> list of cells covering env's box {x0, y0, x1, y1} at
@@ -30,6 +34,7 @@ local M = { list = {}, by_name = {}, tags = {} }
 
 local MODULES = {
   "flora.pat_stars", "flora.pat_asanoha", "flora.pat_kikko", "flora.pat_shippo", "flora.pat_seigaiha", "flora.pat_kolam", "flora.pat_circles", "flora.pat_truchet", "flora.pat_penrose", "flora.pat_celtic", "flora.pat_celtic_panels",
+  "flora.pat_hexagram", "flora.pat_khatam", "flora.pat_crosses",
 }
 
 function M.register(p)
@@ -56,9 +61,11 @@ function M.known()
 end
 
 -- A pattern's weight under `weights` (name or tag -> weight): its own
--- weight when named, else the largest weight of its tags, else 0.
+-- weight when named, else the largest weight of its tags, else 0. An
+-- opt-in pattern has only its own name's weight, else that of `symbol`.
 function M.weight(weights, p)
   if weights[p.name] ~= nil then return weights[p.name] end
+  if p.opt_in then return weights.symbol or 0 end
   local w = 0
   for _, t in ipairs(p.tags) do
     if weights[t] and weights[t] > w then w = weights[t] end
