@@ -24,7 +24,14 @@ parts, reset Paint resources while it is live, or reuse it in another PDF.
 
 Stems extend along their original curved paths. Complete forms scale from
 their attachment points; ornaments without an attachment grow about their
-painted centroid. Provisional birth times follow the plant's stem-distance field, normalized
+painted centroid. A part recorded with `support.sweep = {x, y, a0, turn}`
+is instead revealed like a compass stroke: while it grows, its Form is clipped
+to a wedge about (x, y) that opens from angle a0 (radians) through the part's
+progress of a full turn, counter-clockwise, or clockwise for `turn = -1`
+(`Growth.wedge`). A circle about that point is so drawn as a growing arc. The
+circle cells of pattern pages use it for their construction lines (`sweep` in
+`flora.patterns`); the Form, its clips and the final stream are unchanged.
+Provisional birth times follow the plant's stem-distance field, normalized
 across plants so growth occurs around the whole page. Actual dependencies come
 from the construction graph: a shoot, stalk, spray ray or leaflet records its
 supporting stem and attachment arc fraction; florets and buds record their own
