@@ -18,6 +18,17 @@ for _, bad in ipairs({ "pattern=paisley", "pattern={asanoha=11}", "edge=soft", "
   H.check(not pcall(Settings.parse, bad), bad .. " was accepted")
 end
 
+-- A later pattern setting replaces the earlier one; none returns to flora.
+do
+  local a = Settings.parse("pattern=asanoha")
+  local b = Settings.merge(a, Settings.parse("pattern=stars_8_4"))
+  H.check(b.pattern.stars_8_4 == 1 and b.pattern.asanoha == nil, "pattern settings merged instead of replacing")
+  local c = Settings.merge(a, Settings.parse("pattern=none"))
+  H.check(next(c.pattern) == nil, "pattern=none kept a pattern")
+  local m = Settings.merge(Settings.parse("mix={gyps=2}"), Settings.parse("mix={cyme=0}"))
+  H.check(m.mix.gyps == 2 and m.mix.cyme == 0, "mix stopped merging")
+end
+
 -- Every pattern describes itself and covers a box with cells.
 for _, p in ipairs(Patterns.list) do
   H.check(p.name:match("^[%l%d_]+$") and #p.title > 10 and #p.tags > 0, p.name .. ": name, title or tags")
@@ -203,6 +214,36 @@ H.check(bad == 0, bad .. " cell outline samples too near the text or past the ma
 do
   local c = { verts = { { 156, 90 }, { 260, 90 }, { 208, 180 } } }
   H.check(require("flora.pattern").clearance(c, { 120, 130, 330, 140 }) == 0, "an edge across the text has clearance")
+end
+
+-- A border on a whole-page layout keeps the field off the whole framed
+-- text block, even where a short page leaves it without lines.
+do
+  local short = { { x0 = 120, x1 = 330, y0 = 210, y1 = 220 }, { x0 = 120, x1 = 300, y0 = 193, y1 = 203 } }
+  local pt = page({ layout = "surround", lines = short, pattern_edge = "border", mix = { density = 3 } })
+  local Pat = require("flora.pattern")
+  local frame = { 120 - 6, 40 - 6, 330 + 6, 230 + 6 }
+  local inside = 0
+  for _, k in ipairs(pt.pattern.kept) do if Pat.clearance(k.cell, frame) == 0 then inside = inside + 1 end end
+  H.check(inside == 0, inside .. " cells inside or across the border frame")
+end
+
+-- Margin cells stay whole below the header clip (header=body) and a top
+-- inset. Paint inside a clip is not probed, so the kept cells are measured.
+do
+  local function highest(pt)
+    local y = -math.huge
+    for _, k in ipairs(pt.pattern.kept) do
+      local c, reach = k.cell, pt.pattern.reach + (k.cell.pad or 0)
+      if c.circle then y = math.max(y, c.circle[2] + c.circle[3] + reach)
+      else for _, q in ipairs(c.verts) do y = math.max(y, q[2] + reach) end end
+    end
+    return y
+  end
+  local pt = page({ pattern_outer = "margin", header = "body", body_top = 200 })
+  H.check(#pt.pattern.kept > 0 and highest(pt) <= 200 + 1e-6, "margin-mode cells reach above the header clip")
+  pt = page({ pattern_outer = "margin", tune = { gesture = { top_inset = 40 } } })
+  H.check(#pt.pattern.kept > 0 and highest(pt) <= 270 - 40 + 1e-6, "margin-mode cells reach into the top inset")
 end
 
 -- Layout: a right margin pattern stays right of the text.

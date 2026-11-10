@@ -133,12 +133,14 @@ local function sides(spec)
   return nil
 end
 
--- What the field keeps clear of: the text block for a margin layout,
--- the measured lines for a whole-page one, and every reservation.
-local function avoid(spec, side)
+-- What the field keeps clear of: the text block for a margin layout or
+-- a border, the measured lines for a whole-page one, and every
+-- reservation.
+local function avoid(spec, side, edge)
   local out = {}
   local t = spec.text
-  if side or not spec.lines or #spec.lines == 0 then out[#out + 1] = { t.x0, t.y0, t.x1, t.y1 } end
+  -- A border frames the text block, so the field keeps clear of all of it.
+  if side or edge == "border" or not spec.lines or #spec.lines == 0 then out[#out + 1] = { t.x0, t.y0, t.x1, t.y1 } end
   for _, l in ipairs(spec.lines or {}) do out[#out + 1] = { l.x0, l.y0, l.x1, l.y1 } end
   for _, r in ipairs(spec.reserve or {}) do out[#out + 1] = { r[1], r[2], r[3], r[4] } end
   return out
@@ -197,7 +199,11 @@ function M.paint(spec, pt)
   -- The room the field has beside the text sets how far it takes to thin.
   local room = side and math.max(side.left and text.x0 or 0, side.right and W - text.x1 or 0) or 120
   local ramp = math.max(size, 0.6 * math.min(room, 120)) / math.max(dens, 1e-6)
-  local keep_rects = avoid(spec, side)
+  local keep_rects = avoid(spec, side, edge)
+  -- The page's top as painted: below a top inset, and below the header
+  -- clip compose.lua set (header=body), so margin cells stay whole.
+  local inset = spec.top_inset or require("flora.tune").gesture.top_inset or 0
+  local top = math.min(H, inset > 0 and H - inset or H, pt.header_clip or H)
   local base = base_inks(rng:fork("pattern inks"))
 
   local cells = p.cells({ x0 = 0, y0 = 0, x1 = W, y1 = H, size = size, rng = rng:fork("cells") })
@@ -209,7 +215,7 @@ function M.paint(spec, pt)
     local in_side = not side or (side.left and c.x < text.x0) or (side.right and c.x > text.x1)
     -- Paint reaches half a band and the cell's own pad beyond its outline.
     local reach = width / 2 + (c.pad or 0)
-    local page = { 0, 0, W, H }
+    local page = { 0, 0, W, top }
     local placed = in_side
     if outer == "margin" then
       placed = placed and within(c, page, OUTER_MARGIN + reach)
