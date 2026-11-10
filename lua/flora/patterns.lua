@@ -29,7 +29,7 @@
 local M = { list = {}, by_name = {}, tags = {} }
 
 local MODULES = {
-  "flora.pat_stars", "flora.pat_asanoha", "flora.pat_kikko", "flora.pat_shippo", "flora.pat_seigaiha", "flora.pat_kolam", "flora.pat_circles", "flora.pat_truchet", "flora.pat_penrose",
+  "flora.pat_stars", "flora.pat_asanoha", "flora.pat_kikko", "flora.pat_shippo", "flora.pat_seigaiha", "flora.pat_kolam", "flora.pat_circles", "flora.pat_truchet", "flora.pat_penrose", "flora.pat_celtic", "flora.pat_celtic_panels",
 }
 
 function M.register(p)
