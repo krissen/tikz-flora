@@ -9,10 +9,12 @@
 -- own pages. SEED "doc" takes the seed the document itself set. With T
 -- (0-1) the flora is drawn as grown at that time (clock.lua), for "watch it
 -- grow" frames; "-" or 1 draws the finished page. SETTINGS is a
--- \florasetup key list (mix, palette, spin, density, visitors, layout,
--- gilt, giltdpi, giltenv, giltlook, backdrop),
+-- \florasetup key list (any key that reaches a page: mix, palette, spin,
+-- density, visitors, layout, header, ornaments, gilt, giltdpi, giltenv,
+-- giltlook, backdrop, pattern, edge, outer, scale; see Settings.SPEC),
 -- applied over the page's own. Two words in it are not settings: "fresh"
--- drops the page's own mix and palette first, as the site's mixer does, and
+-- drops the page's own mix, palette, spin and tune first, as the site's
+-- mixer does, and
 -- "noheader" drops the running-head rule, for a picture of the flora alone. FLORA_TUNE applies as usual. Run
 -- from the repository root.
 
