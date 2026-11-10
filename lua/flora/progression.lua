@@ -11,6 +11,22 @@ end
 local function finite(x) return type(x)=='number' and x==x and math.abs(x)<math.huge end
 local function checkplan(p) assert(type(p)=='table' and p.api_version==1, 'unsupported progression plan version') end
 
+-- The pie wedge of radius r about (x, y) that a compass sweeps from angle
+-- a0 (radians) through the fraction f of a turn, counter-clockwise, or
+-- clockwise for turn = -1. Clipping a part to it draws the part's strokes
+-- about that centre as arcs from a0 (pattern.lua's circle cells).
+function M.wedge(x,y,r,a0,f,turn)
+  local span=2*math.pi*math.max(0,math.min(1,f))*(turn or 1)
+  local n=math.max(1,math.ceil(math.abs(span)/(math.pi/2)-1e-9)); local d=span/n
+  local k=4/3*math.tan(d/4)*r; local cos,sin=math.cos,math.sin
+  local out={{'m',x,y},{'l',x+r*cos(a0),y+r*sin(a0)}}
+  for i=0,n-1 do local s,e=a0+d*i,a0+d*(i+1)
+    out[#out+1]={'c',x+r*cos(s)-k*sin(s),y+r*sin(s)+k*cos(s),x+r*cos(e)+k*sin(e),y+r*sin(e)-k*cos(e),x+r*cos(e),y+r*sin(e)}
+  end
+  out[#out+1]={'z'}
+  return out
+end
+
 -- Flatten in page coordinates, including the hero's perspective and frame
 -- rotation. The fixed sampling grid measures silhouettes, never wash passes.
 local function contours(cmds, pj)
@@ -130,6 +146,12 @@ function Rec:part(pt,kind,anchor,birth,duration,fn,stem,support)
     end
   end
   if stem then p.stem={}; for _,q in ipairs(stem) do p.stem[#p.stem+1]=page(q) end end
+  -- A swept part is revealed by a growing wedge about its centre (M.wedge)
+  -- instead of scaling from its anchor.
+  if support and support.sweep then
+    local w=support.sweep
+    p.sweep={centre=page(w),a0=w[3] or 0,turn=w[4] or 1}
+  end
   self.parts[#self.parts+1]=p; self.events[#self.events+1]=p
   -- Keep the final source silhouette before applying growth transforms.
   -- Otherwise paint hidden by a fixed header/frame clip can be scaled back
@@ -159,6 +181,11 @@ function Rec:part(pt,kind,anchor,birth,duration,fn,stem,support)
   -- A later pass over a part's own footprint adds no new ink to pace by.
   p.area=(support and support.no_area) and 0 or n*self.resolution^2; p.cells=nil
   if not p.anchor then p.anchor=n>0 and {sx/n,sy/n} or {0,0} end
+  if p.sweep then
+    local c,r=p.sweep.centre,0
+    if b then for _,q in ipairs({{b[1],b[2]},{b[3],b[2]},{b[3],b[4]},{b[1],b[4]}}) do r=math.max(r,G.dist(c,q)) end end
+    p.sweep.r=r
+  end
 end
 -- Alternate part streams for batched pen work, retaining the original final
 -- stream byte for byte. The alternate consumes no composition randomness.
@@ -387,6 +414,11 @@ function M.render(plan,t)
           if #prefix>=2 then pt:clip_begin(G.smooth(G.ribbon(prefix,function() return 12 end),true)) end
           paint(e)
           if #prefix>=2 then pt:clip_end() end
+        elseif e.sweep and k<1 then
+          local w=e.sweep
+          pt:clip_begin(M.wedge(w.centre[1],w.centre[2],w.r,w.a0,k,w.turn))
+          paint(e)
+          pt:clip_end()
         else
           local scale=math.sqrt(k); local a=e.anchor
           pt:emit(string.format('%.8f 0 0 %.8f %.8f %.8f cm',scale,scale,a[1]*(1-scale)*BP,a[2]*(1-scale)*BP))

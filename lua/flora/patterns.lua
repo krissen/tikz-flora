@@ -29,6 +29,15 @@
 --          and the text (pattern.lua). `ink` holds the colours, already
 --          faded for the cell. A cell built on a tiling keeps its tile
 --          as `tile`; tiles meet edge to edge (tests/test_pattern.lua).
+--          A cell drawn with a compass may give `sweep = {x, y, a0,
+--          turn}`: the compass point and the angle (radians) it starts
+--          at, turning counter-clockwise, or clockwise for turn = -1.
+--          While the cell grows its construction lines show only inside
+--          a wedge about that point that opens through a full turn
+--          (progression.lua's wedge), so a circle about it is drawn as an
+--          arc from a0; once that turn is done its paint is drawn the
+--          same way in a second turn. A page that does not grow never
+--          reads it.
 
 local M = { list = {}, by_name = {}, tags = {} }
 
