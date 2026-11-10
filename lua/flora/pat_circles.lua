@@ -17,7 +17,7 @@ end
 return {
   name = "overlapping_circles",
   title = "Overlapping circles, each through its six neighbours' centres (the Flower of Life lattice)",
-  tags = { "sacred_geometry", "circles", "triangular", "lattice" },
+  tags = { "circle_lattice", "circles", "triangular", "lattice" },
   scale = 16,
   width = 1.1,
   cells = function(env)

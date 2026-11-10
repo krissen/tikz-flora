@@ -27,7 +27,7 @@ local function key(x, y) return string.format("%.1f,%.1f", x, y) end
 return {
   name = "sikku_kolam",
   title = "Sikku kolam, lines looped round a grid of dots, as mirror curves",
-  tags = { "kolam", "tamil", "hindu", "dot_grid" },
+  tags = { "kolam", "tamil", "south_indian", "dot_grid" },
   scale = 14,
   width = 1.6,
   cells = function(env)

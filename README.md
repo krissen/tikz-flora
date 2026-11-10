@@ -188,7 +188,7 @@ The flora fills whatever margins the page has, so give it room with
 layout says where it goes, as it does for flora: `left`, `right`,
 `centered` and `split` take the margins beside the text, the other
 layouts the whole page round the measured lines. Each pattern has its
-own name, and groups by tradition, craft and construction weigh several
+own name, and groups by region or period, craft and construction weigh several
 at once, so `pattern={japanese=1}` picks among the Japanese patterns and
 `pattern={japanese=1, asanoha=0}` leaves one out. One pattern is picked
 per page. Each `pattern` setting replaces the one before it, and
@@ -196,7 +196,7 @@ per page. Each `pattern` setting replaces the one before it, and
 `\florathispage{pattern=none}`.
 
 - `stars_8_4`: eight- and four-pointed stars, by Hankin's
-  polygons-in-contact method on the 4.8.8 tiling. Groups: `islamic`,
+  polygons-in-contact method on the 4.8.8 tiling. Groups: `girih`,
   `hankin`, `star`, `lattice`.
 - `asanoha`: the hemp-leaf pattern of kumiko lattice, triangles split
   at their centres. Groups: `japanese`, `kumiko`, `lattice`,
@@ -208,11 +208,11 @@ per page. Each `pattern` setting replaces the one before it, and
 - `seigaiha`: blue sea waves, overlapping fans of concentric rings.
   Groups: `japanese`, `circles`, `wave`.
 - `sikku_kolam`: the Tamil threshold drawing of lines looped round a grid
-  of dots, drawn as mirror curves. Groups: `kolam`, `tamil`, `hindu`,
+  of dots, drawn as mirror curves. Groups: `kolam`, `tamil`, `south_indian`,
   `dot_grid`.
 - `overlapping_circles`: circles on a triangular grid, each through its
   six neighbours' centres, the lattice a Flower of Life is cut from.
-  Groups: `sacred_geometry`, `circles`, `triangular`, `lattice`.
+  Groups: `circle_lattice`, `circles`, `triangular`, `lattice`.
 - `truchet`: Truchet tiles of quarter circles, turned at random into
   winding bands. Groups: `truchet`, `tiles`, `square`.
 - `penrose_rhombs`: Penrose's thick and thin rhombs (P3), a tiling that
