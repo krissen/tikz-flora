@@ -280,6 +280,50 @@ try {
   await grown();
   check(!/backdrop/.test(await code()), `the light backdrop is still in the line: ${await code()}`);
 
+  // A pattern fills the page instead of flora: it reaches the line with
+  // only the settings that differ, and the picture changes; Flora again
+  // clears it.
+  // A pattern grows so fast the "Growing" status may pass unseen: wait out
+  // the debounce, then for the finished status.
+  const settled = async () => { await page.waitForTimeout(800); await page.locator(".status", { hasText: "Grown in" }).waitFor({ timeout: 120000 }); };
+  const sheetSum = () => page.evaluate(() => {
+    const c = document.querySelector(".sheet canvas");
+    const d = c.getContext("2d").getImageData(0, 0, c.width, c.height).data;
+    let h = 0;
+    for (let i = 0; i < d.length; i += 4 * 5) h = (h * 31 + d[i] + d[i + 1] * 3 + d[i + 3]) | 0;
+    return h;
+  });
+  const floraSum = await sheetSum();
+  const pat = page.locator("details.pattern");
+  await pat.evaluate((d) => { d.open = true; });
+  await pat.locator("select").selectOption("asanoha");
+  await settled();
+  check(/pattern=asanoha/.test(await code()) && !/edge=|outer=|scale=/.test(await code()), `the pattern is not alone in the line: ${await code()}`);
+  check(await sheetSum() !== floraSum, "the pattern does not change the page");
+  await pat.getByRole("button", { name: "cell", exact: true }).click();
+  await pat.getByRole("button", { name: "margin", exact: true }).click();
+  await pat.locator('input[type="range"]').fill("1.5");
+  await settled();
+  check(/pattern=asanoha, edge=cell, outer=margin, scale=1.5/.test(await code()), `pattern keys not in the line: ${await code()}`);
+  await pat.locator("select").selectOption("japanese");
+  await settled();
+  check(/pattern=japanese, edge=cell/.test(await code()), `a group is not in the line: ${await code()}`);
+  await pat.locator("select").selectOption("");
+  await settled();
+  check(!/pattern|edge=|outer=|scale=/.test(await code()), `flora still has pattern keys in the line: ${await code()}`);
+
+  // A ?pattern= that names nothing is ignored: the mixer starts on flora.
+  // (A page of its own, so the state above stays.)
+  const fresh = await browser.newPage();
+  const freshCode = () => fresh.locator(".controls pre code").textContent();
+  await fresh.goto(MIXER + "?pattern=nonesuch");
+  await fresh.locator(".status", { hasText: "Grown in" }).waitFor({ timeout: 120000 });
+  check(!/pattern/.test(await freshCode()) && await fresh.locator("details.pattern select").inputValue() === "", `an unknown ?pattern= is not ignored: ${await freshCode()}`);
+  await fresh.goto(MIXER + "?pattern=truchet");
+  await fresh.locator(".status", { hasText: "Grown in" }).waitFor({ timeout: 120000 });
+  check(/pattern=truchet/.test(await freshCode()), `?pattern=truchet is not kept: ${await freshCode()}`);
+  await fresh.close();
+
   // An ornament weight reaches the setup line, and the page regrows.
   await page.locator(".controls details.ornaments .row", { hasText: "Crescent moon" }).locator('input[type="range"]').fill("5");
   await grown();
@@ -428,7 +472,7 @@ try {
   // letters the title so.
   await page.getByRole("button", { name: "outline", exact: true }).click();
   await page.getByRole("button", { name: "Strong arch" }).click();
-  await page.locator(".controls select").selectOption("kon-peki");
+  await page.locator(".controls .row:has(.chip) select").selectOption("kon-peki");
   await grown();
   check((await page.locator(".sheet img").getAttribute("src")).endsWith("/bake/text-12-outline-40.png"), "the outline, strong-arch page is not shown");
   const fill = await page.locator(".sheet .letters").evaluate((el) => [getComputedStyle(el).backgroundColor, getComputedStyle(el).maskImage]);
@@ -498,7 +542,7 @@ try {
   await page.goto(URL + PAGES.guide);
   await page.locator("#g-reference ~ dl.ref").first().waitFor();
   const guide = await page.locator("main").textContent();
-  for (const word of ["giltlook", "cache", "feather", "acanthus", "horizon", "window_top", "engraved", "scrollwork", "kon-peki", "cul_de_lampe"]) {
+  for (const word of ["giltlook", "cache", "feather", "acanthus", "horizon", "window_top", "engraved", "scrollwork", "kon-peki", "cul_de_lampe", "asanoha", "penrose_rhombs", "dissolve"]) {
     check(guide.includes(word), `the guide does not list ${word}`);
   }
 

@@ -1,7 +1,7 @@
 <script>
   import { onMount } from "svelte";
   import { meta as loadMeta, render, show, px, drawnBy } from "./render.js";
-  import { setupLine, documentFor, TITLE_PAGES, ARCHES } from "./setup.js";
+  import { setupLine, documentFor, patternDefaults, patternParts, TITLE_PAGES, ARCHES } from "./setup.js";
   import InkPicker from "./InkPicker.svelte";
   import COLOURWAYS from "./colourways.json";
   import { face } from "./ink.js";
@@ -30,6 +30,10 @@
   // What the page is painted over, as \florasetup's backdrop; ?backdrop=dark
   // opens on a dark page.
   let backdrop = $state(query.get("backdrop") === "dark" ? "dark" : "light");
+  // What fills the page, as \florasetup's pattern, edge, outer and scale:
+  // no name is flora, else a pattern or group name (?pattern=asanoha opens
+  // on one).
+  let pattern = $state({ name: query.get("pattern") ?? "", edge: "dissolve", outer: "bleed", scale: 1 });
   // The title lettering of the four title-page layouts (\floraletters).
   let letters = $state({ style: "engraved", arch: 20, ink: "black" });
   let status = $state("Loading the generator…");
@@ -50,13 +54,23 @@
     .map((g) => ({ title: g.group, keys: g.kinds.map((k) => k.key) })) : []);
   // The gilt look's keys for the look in use, with their defaults there.
   let lookKeys = $derived(meta ? meta.catalog.gilt.keys.filter((k) => !k.look || k.look === giltenv) : []);
+  let pat = $derived(patternDefaults(meta));
+  let patterns = $derived(meta?.catalog.patterns ?? []);
+  // The groups (tags shared by two or more patterns), with their members.
+  let patternGroups = $derived.by(() => {
+    const by = {};
+    for (const p of patterns) for (const t of p.tags) (by[t] ??= []).push(p.name);
+    return Object.entries(by).filter(([t, m]) => m.length > 1 && !patterns.some((p) => p.name === t)).sort(([a], [b]) => a.localeCompare(b));
+  });
+  // The pattern's name as a line of the catalog's title, without its description.
+  const shortTitle = (p) => p.title.split(", ")[0];
   let lettered = $derived(pages.length > 0 && TITLE_PAGES.has(pages[layout].layout));
   // A title page's baked text and layout depend on its lettering's style
   // and arch: one bake of each (just site-bake).
   let variant = $derived(pages.length ? (lettered ? `${pages[layout].page}-${letters.style}-${letters.arch}` : `${pages[layout].page}`) : "");
   let letterInk = $derived(meta?.catalog.letters.inks[letters.ink] ?? "#000");
   let lookLine = $derived(Object.entries(giltlook).map(([k, v]) => `${k}=${v}`).join(", "));
-  let line = $derived(meta && pages.length ? setupLine({ layout: pages[layout].layout, seed, mix, ornaments, palette, spin, gilt, giltenv, giltlook, backdrop }, meta) : "");
+  let line = $derived(meta && pages.length ? setupLine({ layout: pages[layout].layout, seed, mix, ornaments, palette, spin, gilt, giltenv, giltlook, backdrop, pattern }, meta) : "");
   let anyRandom = $derived(Object.values(palette).includes("random"));
   // The colourway the inks and seed match now, if any (-1 for the
   // package's own look).
@@ -74,6 +88,8 @@
       const [m, man] = await Promise.all([loadMeta(), fetch("/bake/manifest.json").then((r) => r.json())]);
       meta = m;
       pages = man;
+      // ?pattern= stays only when it names a pattern or a listed group.
+      if (pattern.name && !patterns.some((p) => p.name === pattern.name) && !patternGroups.some(([t]) => t === pattern.name)) pattern.name = "";
       mix = Object.fromEntries(m.kinds.map(([k, , , d]) => [k, d]));
       ornaments = Object.fromEntries(m.ornaments.flatMap((s) => s.kinds.map(([k, , d]) => [k, d])));
       // Visitors start on here, so the mixer shows them.
@@ -111,7 +127,7 @@
     status = "Growing…";
     progress = 0;
     try {
-      const job = { spec: await spec(variant), layout: pg.layout, seed, page: pg.page, mix: $state.snapshot(mix), ornaments: $state.snapshot(ornaments), palette: $state.snapshot(palette), spin, px: px(frame.clientWidth), gilt, giltenv, giltlook: lookLine, backdrop };
+      const job = { spec: await spec(variant), layout: pg.layout, seed, page: pg.page, mix: $state.snapshot(mix), ornaments: $state.snapshot(ornaments), palette: $state.snapshot(palette), spin, px: px(frame.clientWidth), gilt, giltenv, giltlook: lookLine, backdrop, pattern: patternParts(pattern, meta).join(", ") };
       const out = await render(job, (f) => { progress = Math.max(progress, f); });
       await show(out, canvas, frame.clientWidth);
       progress = 1;
@@ -297,6 +313,39 @@
           {/each}
         {/each}
         <p class="hint"><a href="/ornaments/">See every kind on the ornaments page.</a></p>
+      </details>
+      <details class="pattern" open={!!pattern.name}>
+        <summary>Pattern</summary>
+        <label class="row">
+          <span>Fill</span>
+          <select bind:value={pattern.name} onchange={changed}>
+            <option value="">Flora</option>
+            <optgroup label="Groups">
+              {#each patternGroups as [t, m]}<option value={t}>{t.replaceAll("_", " ")} ({m.length})</option>{/each}
+            </optgroup>
+            <optgroup label="Patterns">
+              {#each patterns as p}<option value={p.name} title={p.title}>{shortTitle(p)}</option>{/each}
+            </optgroup>
+          </select>
+        </label>
+        <p class="hint">Flora grows the page; a pattern fills it instead. A group picks one of its patterns per page.</p>
+        <div class="choices" role="group" aria-label="How the pattern meets the text">
+          {#each pat.edges as e}
+            <button type="button" aria-pressed={pattern.edge === e} disabled={!pattern.name}
+              title={meta.catalog.settings.find((x) => x.key === "edge")?.about} onclick={() => { pattern.edge = e; changed(); }}>{e}</button>
+          {/each}
+        </div>
+        <div class="choices" role="group" aria-label="How the pattern meets the paper's edge">
+          {#each pat.outers as o}
+            <button type="button" aria-pressed={pattern.outer === o} disabled={!pattern.name}
+              title={meta.catalog.settings.find((x) => x.key === "outer")?.about} onclick={() => { pattern.outer = o; changed(); }}>{o}</button>
+          {/each}
+        </div>
+        <label class="row" title={meta.catalog.settings.find((x) => x.key === "scale")?.about}>
+          <span>Scale</span>
+          <input type="range" min={pat.min} max={pat.max} step="0.05" disabled={!pattern.name} bind:value={pattern.scale} oninput={changed}>
+          <output>{pattern.scale}</output>
+        </label>
       </details>
       <details class="backdrop">
         <summary>Backdrop</summary>

@@ -1,6 +1,6 @@
 // The \florasetup line for a mixer state: only what differs from the
 // defaults, so it reads like something a person would write.
-export function setupLine({ layout, seed, mix, ornaments = {}, palette, spin, gilt, giltenv, giltlook = {}, backdrop }, meta) {
+export function setupLine({ layout, seed, mix, ornaments = {}, palette, spin, gilt, giltenv, giltlook = {}, backdrop, pattern = {} }, meta) {
   const parts = [`layout=${layout}`, `seed=${seed}`];
   const defaults = Object.fromEntries(meta.kinds.map(([k, , , d]) => [k, d]));
   const changed = Object.entries(mix).filter(([k, v]) => k !== "density" && v !== defaults[k]);
@@ -28,8 +28,33 @@ export function setupLine({ layout, seed, mix, ornaments = {}, palette, spin, gi
     const look = Object.entries(giltlook);
     if (look.length) parts.push(`giltlook={${look.map(([k, v]) => `${k}=${v}`).join(", ")}}`);
   }
+  parts.push(...patternParts(pattern, meta));
   if (backdrop && backdrop !== "light") parts.push(`backdrop=${backdrop}`);
   return `\\florasetup{${parts.join(", ")}}`;
+}
+
+// The pattern keys of a mixer state, `{ name, edge, outer, scale }`: a
+// pattern (or group) name, and only the settings that differ from their
+// defaults (the first value the catalog lists). Flora, with no name, has none.
+export function patternParts({ name, edge, outer, scale } = {}, meta) {
+  if (!name) return [];
+  const s = patternDefaults(meta);
+  const parts = [`pattern=${name}`];
+  if (edge && edge !== s.edge) parts.push(`edge=${edge}`);
+  if (outer && outer !== s.outer) parts.push(`outer=${outer}`);
+  if (scale && scale !== s.scale) parts.push(`scale=${scale}`);
+  return parts;
+}
+
+// The values of the pattern settings the catalog describes (settings
+// `edge`, `outer` and `scale`): the edges and outers it lists, the first of
+// each as the default, and scale's range, 1 being a pattern's own size.
+export function patternDefaults(meta) {
+  const row = (k) => meta?.catalog?.settings?.find((x) => x.key === k)?.values ?? "";
+  const list = (k) => row(k).split(",").map((v) => v.trim()).filter(Boolean);
+  const edges = list("edge"), outers = list("outer");
+  const [min, max] = (row("scale").match(/[\d.]+/g) ?? [0.25, 4]).map(Number);
+  return { edges, outers, edge: edges[0], outer: outers[0], scale: 1, min, max };
 }
 
 // Page margins that leave the flora room, by layout.
