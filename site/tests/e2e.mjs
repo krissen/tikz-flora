@@ -313,14 +313,16 @@ try {
   check(!/pattern|edge=|outer=|scale=/.test(await code()), `flora still has pattern keys in the line: ${await code()}`);
 
   // A ?pattern= that names nothing is ignored: the mixer starts on flora.
-  await page.goto(MIXER + "?pattern=nonesuch");
-  await page.locator(".status", { hasText: "Grown in" }).waitFor({ timeout: 120000 });
-  check(!/pattern/.test(await code()) && await page.locator("details.pattern select").inputValue() === "", `an unknown ?pattern= is not ignored: ${await code()}`);
-  await page.goto(MIXER + "?pattern=truchet");
-  await page.locator(".status", { hasText: "Grown in" }).waitFor({ timeout: 120000 });
-  check(/pattern=truchet/.test(await code()), `?pattern=truchet is not kept: ${await code()}`);
-  await page.goto(MIXER);
-  await page.locator(".status", { hasText: "Grown in" }).waitFor({ timeout: 120000 });
+  // (A page of its own, so the state above stays.)
+  const fresh = await browser.newPage();
+  const freshCode = () => fresh.locator(".controls pre code").textContent();
+  await fresh.goto(MIXER + "?pattern=nonesuch");
+  await fresh.locator(".status", { hasText: "Grown in" }).waitFor({ timeout: 120000 });
+  check(!/pattern/.test(await freshCode()) && await fresh.locator("details.pattern select").inputValue() === "", `an unknown ?pattern= is not ignored: ${await freshCode()}`);
+  await fresh.goto(MIXER + "?pattern=truchet");
+  await fresh.locator(".status", { hasText: "Grown in" }).waitFor({ timeout: 120000 });
+  check(/pattern=truchet/.test(await freshCode()), `?pattern=truchet is not kept: ${await freshCode()}`);
+  await fresh.close();
 
   // An ornament weight reaches the setup line, and the page regrows.
   await page.locator(".controls details.ornaments .row", { hasText: "Crescent moon" }).locator('input[type="range"]').fill("5");
