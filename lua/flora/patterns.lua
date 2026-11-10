@@ -22,7 +22,8 @@
 --          outline, and `pad` further where paint sticks out more. The
 --          field measures the whole outline against the page's edges
 --          and the text (pattern.lua). `ink` holds the colours, already
---          faded for the cell.
+--          faded for the cell. A cell built on a tiling keeps its tile
+--          as `tile`; tiles meet edge to edge (tests/test_pattern.lua).
 
 local M = { list = {}, by_name = {}, tags = {} }
 

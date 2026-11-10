@@ -77,10 +77,12 @@ return {
     local out = {}
     for i = math.floor(env.x0 / a) - 1, math.ceil(env.x1 / a) + 1 do
       for j = math.floor(env.y0 / a) - 1, math.ceil(env.y1 / a) + 1 do
-        for _, t in ipairs({ { i * a, j * a, 8, 22.5 }, { (i + .5) * a, (j + .5) * a, 4, 45 } }) do
+        -- Octagons turned to face the axes; each square, a diamond, fills
+        -- the hole between four of them, edge to edge.
+        for _, t in ipairs({ { i * a, j * a, 8, 22.5 }, { (i + .5) * a, (j + .5) * a, 4, 0 } }) do
           local P = regular(t[1], t[2], t[3], s, t[4])
           local S = star(P, CONTACT)
-          out[#out + 1] = { x = t[1], y = t[2], kind = t[3], verts = S, path = path(S),
+          out[#out + 1] = { x = t[1], y = t[2], kind = t[3], verts = S, tile = P, path = path(S),
             paint = paint, construct = construct }
         end
       end

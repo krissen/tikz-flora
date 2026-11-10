@@ -33,6 +33,29 @@ local listed = {}
 for _, e in ipairs(require("flora.catalog").build().patterns) do listed[e.name] = #e.tags > 0 end
 for _, p in ipairs(Patterns.list) do H.check(listed[p.name], p.name .. ": missing from the catalog") end
 
+-- Patterns built on a tiling meet edge to edge: inside the box, every
+-- tile edge's midpoint is the midpoint of exactly one other tile's edge,
+-- so stars drawn from those midpoints join up.
+for _, p in ipairs(Patterns.list) do
+  local cells = p.cells({ x0 = 0, y0 = 0, x1 = 200, y1 = 200, size = p.scale, rng = Rng.new(1) })
+  if cells[1].tile then
+    local count, keys = {}, {}
+    for _, c in ipairs(cells) do
+      local T = c.tile
+      for i = 1, #T do
+        local a, b = T[i], T[i % #T + 1]
+        local mx, my = (a[1] + b[1]) / 2, (a[2] + b[2]) / 2
+        local k = string.format("%.1f,%.1f", mx, my)
+        count[k] = (count[k] or 0) + 1
+        if mx > 40 and mx < 160 and my > 40 and my < 160 then keys[#keys + 1] = k end
+      end
+    end
+    local odd = 0
+    for _, k in ipairs(keys) do if count[k] ~= 2 then odd = odd + 1 end end
+    H.check(#keys > 20 and odd == 0, p.name .. ": " .. odd .. " tile edges inside the box are not shared by two tiles")
+  end
+end
+
 -- Weights: a name overrides its groups; a group weighs its members.
 local stars, asa = Patterns.by_name.stars_8_4, Patterns.by_name.asanoha
 H.check(Patterns.weight({ japanese = 2 }, asa) == 2 and Patterns.weight({ japanese = 2 }, stars) == 0, "group weight")
