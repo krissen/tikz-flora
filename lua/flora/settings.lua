@@ -37,7 +37,7 @@ M.about = {
   { "backdrop", "light, dark, or a dark colour as #rrggbb",
     "What the flora is painted over: light, white paper (the default); dark, a near-black page; or that colour. On a dark backdrop every ink is painted light, as if lit, and gold stays gold." },
   { "pattern", "a pattern or group name, {name=weight, ...} with weights 0 to 10, or none",
-    "Fills the page with a geometric pattern instead of flora: one picked per page by weight. A group name (such as japanese or girih) weighs every pattern in it. Each setting replaces the last; none grows flora again." },
+    "Fills the page with a geometric pattern instead of flora: one picked per page by weight. A group name (such as japanese or girih) weighs every pattern in it, except the emblem patterns (hexagram_lattice, khatam, greek_crosses), which only their own name or the group symbol picks. Each setting replaces the last; none grows flora again." },
   { "edge", "dissolve, cell, fade, border",
     "How a pattern meets the text: cells falling away (the default), whole cells to a hard edge, cells paling into the paper, or a ruled frame round the text." },
   { "outer", "bleed, margin", "How a pattern meets the paper's edge: running off the page (the default), or whole cells inside a small margin." },

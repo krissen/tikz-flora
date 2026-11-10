@@ -65,7 +65,7 @@ function M.build()
 
   c.patterns = {}
   for _, p in ipairs(require("flora.patterns").list) do
-    c.patterns[#c.patterns + 1] = { name = p.name, title = p.title, tags = p.tags }
+    c.patterns[#c.patterns + 1] = { name = p.name, title = p.title, tags = p.tags, opt_in = p.opt_in or false }
   end
 
   c.parts = {}
