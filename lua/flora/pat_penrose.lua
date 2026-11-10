@@ -26,12 +26,17 @@ return {
   width = 1.1,
   cells = function(env)
     local cx, cy = (env.x0 + env.x1) / 2, (env.y0 + env.y1) / 2
-    local R = sqrt((env.x1 - env.x0) ^ 2 + (env.y1 - env.y0) ^ 2) / 2 * 1.15
-    local depth = math.max(1, math.ceil(math.log(R / env.size) / math.log(PHI)))
+    -- Each deflation divides the edge by PHI, so a wheel of radius
+    -- size * PHI^depth, large enough to cover the box, deflates to rhombs
+    -- whose edges are the cell size. It is turned at random, so pages differ.
+    local cover = sqrt((env.x1 - env.x0) ^ 2 + (env.y1 - env.y0) ^ 2) / 2 * 1.15
+    local depth = math.max(1, math.ceil(math.log(cover / env.size) / math.log(PHI)))
+    local R = env.size * PHI ^ depth
+    local turn = env.rng:next() * pi / 5
     local tris = {}
     for i = 0, 9 do
-      local b = { cx + R * cos((2 * i - 1) * pi / 10), cy + R * sin((2 * i - 1) * pi / 10) }
-      local c = { cx + R * cos((2 * i + 1) * pi / 10), cy + R * sin((2 * i + 1) * pi / 10) }
+      local b = { cx + R * cos((2 * i - 1) * pi / 10 + turn), cy + R * sin((2 * i - 1) * pi / 10 + turn) }
+      local c = { cx + R * cos((2 * i + 1) * pi / 10 + turn), cy + R * sin((2 * i + 1) * pi / 10 + turn) }
       if i % 2 == 0 then b, c = c, b end
       tris[#tris + 1] = { 0, { cx, cy }, b, c }
     end

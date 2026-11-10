@@ -67,6 +67,17 @@ for _, p in ipairs(Patterns.list) do
   end
 end
 
+-- Penrose rhombs have the cell size for their edge, at every size.
+do
+  local pen = Patterns.by_name.penrose_rhombs
+  for _, size in ipairs({ 16, 20, 22, 24 }) do
+    local cells = pen.cells({ x0 = 0, y0 = 0, x1 = 360, y1 = 270, size = size, rng = Rng.new(2) })
+    local a, b = cells[1].tile[1], cells[1].tile[2]
+    local edge = math.sqrt((b[1] - a[1]) ^ 2 + (b[2] - a[2]) ^ 2)
+    H.check(math.abs(edge - size) < 1e-6, string.format("penrose edge %.2f for size %d", edge, size))
+  end
+end
+
 -- Weights: a name overrides its groups; a group weighs its members.
 local stars, asa = Patterns.by_name.stars_8_4, Patterns.by_name.asanoha
 H.check(Patterns.weight({ japanese = 2 }, asa) == 2 and Patterns.weight({ japanese = 2 }, stars) == 0, "group weight")
