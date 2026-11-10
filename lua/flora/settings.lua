@@ -36,8 +36,8 @@ M.about = {
   { "giltlook", "{key=value, ...}", "Changes keys of that look, such as giltlook={horizon=0.1, grain=0} (see Gilt)." },
   { "backdrop", "light, dark, or a dark colour as #rrggbb",
     "What the flora is painted over: light, white paper (the default); dark, a near-black page; or that colour. On a dark backdrop every ink is painted light, as if lit, and gold stays gold." },
-  { "pattern", "a pattern or group name, or {name=weight, ...}, weights 0 to 10",
-    "Fills the page with a geometric pattern instead of flora: one picked per page by weight. A group name (such as japanese or islamic) weighs every pattern in it." },
+  { "pattern", "a pattern or group name, {name=weight, ...} with weights 0 to 10, or none",
+    "Fills the page with a geometric pattern instead of flora: one picked per page by weight. A group name (such as japanese or islamic) weighs every pattern in it. Each setting replaces the last; none grows flora again." },
   { "edge", "dissolve, cell, fade, border",
     "How a pattern meets the text: cells falling away (the default), whole cells to a hard edge, cells paling into the paper, or a ruled frame round the text." },
   { "outer", "bleed, margin", "How a pattern meets the paper's edge: running off the page (the default), or whole cells inside a small margin." },
@@ -129,6 +129,8 @@ M.define("ornaments", function(v)
 end)
 
 M.define("pattern", function(v)
+  -- none returns the page to flora.
+  if v == "none" then return {} end
   local P = require("flora.patterns")
   local names, tags = P.known()
   local ok = {}
@@ -441,8 +443,16 @@ local function merge_into(base, over)
   return t
 end
 
+-- Keys a later setting replaces whole rather than merging into: a new
+-- pattern={...} names the pattern(s) wanted now, not weights to add.
+local REPLACED = { pattern = true }
+
 function M.merge(base, over)
-  return merge_into(base or {}, over or {})
+  local t = merge_into(base or {}, over or {})
+  for k in pairs(REPLACED) do
+    if over and over[k] ~= nil then t[k] = over[k] end
+  end
+  return t
 end
 
 return M

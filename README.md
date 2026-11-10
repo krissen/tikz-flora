@@ -91,7 +91,7 @@ compile with a message naming the key.
 | `giltenv` | `studio`, `mirror` | The look of raster gilt: a studio window over dark ground (default), or the vector relief's sky and horizon |
 | `giltlook` | `{key=value, ...}` | Changes keys of that look, e.g. `giltlook={horizon=0.1, grain=0}`: light, horizon, sky, ground, highlight, grain, sparkle, shadow and more (`lua/flora/gilt_look.lua` lists every key and its range) |
 | `backdrop` | `light` (default), `dark`, or a dark `#rrggbb` | What the flora is painted over. On `dark` every ink is painted light, as if lit, and gold stays gold; set the page to match, e.g. `\pagecolor[HTML]{0A1014}` |
-| `pattern` | a pattern or group name, or `{name=weight, ...}` | Fills the page with a geometric pattern instead of flora (see Patterns) |
+| `pattern` | a pattern or group name, `{name=weight, ...}`, or `none` | Fills the page with a geometric pattern instead of flora (see Patterns) |
 | `edge` | `dissolve` (default), `cell`, `fade`, `border` | How a pattern meets the text |
 | `outer` | `bleed` (default), `margin` | How a pattern meets the paper's edge |
 | `scale` | 0.25 to 4 | The size of a pattern's cells |
@@ -191,7 +191,9 @@ layouts the whole page round the measured lines. Each pattern has its
 own name, and groups by tradition, craft and construction weigh several
 at once, so `pattern={japanese=1}` picks among the Japanese patterns and
 `pattern={japanese=1, asanoha=0}` leaves one out. One pattern is picked
-per page.
+per page. Each `pattern` setting replaces the one before it, and
+`pattern=none` grows flora again, for instance on one page with
+`\florathispage{pattern=none}`.
 
 - `stars_8_4`: eight- and four-pointed stars, by Hankin's
   polygons-in-contact method on the 4.8.8 tiling. Groups: `islamic`,
