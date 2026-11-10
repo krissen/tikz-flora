@@ -6,7 +6,8 @@
 --          name where it has one (asanoha), else a plain description of
 --          its geometry (stars_8_4)
 --   title  a line for the guide
---   tags   groups it belongs to: its tradition, craft and construction.
+--   tags   groups it belongs to: its region or period, craft and
+--          construction, never a religious tradition.
 --          pattern={japanese=1} weighs every pattern tagged japanese, so
 --          related patterns (or every symbol-like one, tagged symbol) can
 --          be chosen together

@@ -82,7 +82,7 @@ end
 local stars, asa = Patterns.by_name.stars_8_4, Patterns.by_name.asanoha
 H.check(Patterns.weight({ japanese = 2 }, asa) == 2 and Patterns.weight({ japanese = 2 }, stars) == 0, "group weight")
 H.check(Patterns.weight({ japanese = 2, asanoha = 0 }, asa) == 0, "a name overrides its group")
-H.check(Patterns.pick(Rng.new(3), { islamic = 1 }) == stars, "group pick")
+H.check(Patterns.pick(Rng.new(3), { girih = 1 }) == stars, "group pick")
 H.check(Patterns.pick(Rng.new(3), { asanoha = 0 }) == nil, "all-zero weights pick nothing")
 
 -- A page.
