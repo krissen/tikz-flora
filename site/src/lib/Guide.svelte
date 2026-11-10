@@ -182,6 +182,16 @@ Some text.
     <dl class="ref">
       {#each cat.colourways as c}<dt><code>{c.name}</code></dt><dd>{Object.keys(c.inks).length ? Object.entries(c.inks).map(([p, ink]) => `${p} ${ink}`).join(", ") : "the package's own blue look"}</dd>{/each}
     </dl>
+    <h4>Patterns: <code>pattern=…</code>, <code>edge</code>, <code>outer</code>, <code>scale</code></h4>
+    <p class="list">A page can be filled with a geometric pattern instead of flora. Name a pattern
+      or a group; a group picks one of its patterns per page, and
+      <code>pattern=&#123;name=weight, …&#125;</code> weighs them.</p>
+    <dl class="ref">
+      {#each cat.settings.filter((st) => ["pattern", "edge", "outer", "scale"].includes(st.key)) as st}<dt><code>{st.key}</code> <span class="muted">{st.values}</span></dt><dd>{st.about}</dd>{/each}
+    </dl>
+    <dl class="ref">
+      {#each cat.patterns as p}<dt><code>{p.name}</code> <span class="muted">{p.tags.join(", ")}</span></dt><dd>{p.title}</dd>{/each}
+    </dl>
     <h4>Gilt: <code>gilt</code>, <code>giltdpi</code>, <code>giltenv</code>, <code>giltlook=&#123;key=value, …&#125;</code></h4>
     <p class="list"><code>gilt</code>: {cat.gilt.modes.join(" or ")} (default {cat.gilt.default}). <code>giltdpi</code>: {cat.gilt.dpi[0]} to {cat.gilt.dpi[1]} (default {cat.gilt.dpi[2]}). <code>giltenv</code>:
       {#each cat.gilt.looks as lk, i}<code>{lk.name}</code> ({lk.about}){i < cat.gilt.looks.length - 1 ? "; " : "."} {/each}</p>

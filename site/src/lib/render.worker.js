@@ -4,7 +4,7 @@
 //   { id, kind: "meta" }            -> { id, meta }  settings to offer, with
 //                                      each ink's ramp, each group's inks and
 //                                      each colourway's palette
-//   { id, kind: "render", spec, layout, seed, page, mix, ornaments, palette, spin, px, gilt, giltenv, giltlook, backdrop, draw }
+//   { id, kind: "render", spec, layout, seed, page, mix, ornaments, palette, spin, px, gilt, giltenv, giltlook, backdrop, pattern, draw }
 //                                   -> { id, progress } as it goes (0 to 1,
 //                                      rising: PROGRESS below), then
 //                                      { id, bitmap | pdf, ms }
@@ -34,6 +34,8 @@
 // "mirror") which look raster gold takes, and `giltlook` ("key=value, ...",
 // as \florasetup's giltlook) changes keys of that look; raster gold is
 // computed at the picture's own resolution (150 dpi for pdf.js).
+// `pattern` ("pattern=asanoha, edge=cell, ...", the keys as \\florasetup writes
+// them, or empty for flora) fills the page with a pattern instead,
 // `backdrop` ("light", "dark" or "#rrggbb", as \\florasetup's backdrop)
 // is what the picture will be shown over; on a dark one the picture is
 // light ink on a transparent ground.
@@ -251,7 +253,7 @@ onmessage = async (e) => {
       postMessage({ id, ...picture(pdf, px, null, mode), cells, slots, w, h }, transfers);
       return;
     }
-    const { spec, layout, seed, page, mix, ornaments, palette, spin, px, gilt, giltenv, giltlook, backdrop, draw: mode } = e.data;
+    const { spec, layout, seed, page, mix, ornaments, palette, spin, px, gilt, giltenv, giltlook, backdrop, pattern, draw: mode } = e.data;
     const t0 = performance.now();
     // The page's own progress (compose.lua's spec.progress) is the grow's
     // share of the whole; the PDF scene and the drawing follow.
@@ -260,6 +262,7 @@ onmessage = async (e) => {
     l.global.set("GILTLOOK", giltlook ?? "");
     l.global.set("SEED", String(seed));
     l.global.set("BACKDROP", backdrop ?? "light");
+    l.global.set("PATTERN", pattern ?? "");
     // `layout`, when given, replaces the baked page's own (frames.lua).
     l.global.set("LAYOUT", layout ?? "");
     await l.doString(`
@@ -279,6 +282,11 @@ onmessage = async (e) => {
       spec.gilt_env = ${JSON.stringify(giltenv ?? "studio")}
       spec.gilt_look = require("flora.settings").parse("giltlook={" .. GILTLOOK .. "}").giltlook
       spec.backdrop = require("flora.settings").parse("backdrop=" .. BACKDROP).backdrop
+      -- pattern, edge, outer and scale as \\florasetup writes them ("" is flora).
+      if PATTERN ~= "" then
+        local ps = require("flora.settings").parse(PATTERN)
+        spec.pattern, spec.pattern_edge, spec.pattern_outer, spec.pattern_scale = ps.pattern, ps.edge, ps.outer, ps.scale
+      end
       spec.gilt_dpi = ${px ? `math.max(50, math.min(600, ${Number(px)} / spec.width * 72.27))` : 150}
       spec.progress = PROGRESS
       Paint.reset_resources()
