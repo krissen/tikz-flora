@@ -201,6 +201,22 @@ per page. Each `pattern` setting replaces the one before it, and
 - `asanoha`: the hemp-leaf pattern of kumiko lattice, triangles split
   at their centres. Groups: `japanese`, `kumiko`, `lattice`,
   `triangular`.
+- `kikko`: tortoiseshell, a honeycomb of hexagons with a hexagon inside
+  each. Groups: `japanese`, `hexagonal`, `lattice`.
+- `shippo`: seven treasures, circles on a square grid overlapping their
+  neighbours by a quarter. Groups: `japanese`, `circles`, `lattice`.
+- `seigaiha`: blue sea waves, overlapping fans of concentric rings.
+  Groups: `japanese`, `circles`, `wave`.
+- `sikku_kolam`: the Tamil threshold drawing of lines looped round a grid
+  of dots, drawn as mirror curves. Groups: `kolam`, `tamil`, `hindu`,
+  `dot_grid`.
+- `overlapping_circles`: circles on a triangular grid, each through its
+  six neighbours' centres, the lattice a Flower of Life is cut from.
+  Groups: `sacred_geometry`, `circles`, `triangular`, `lattice`.
+- `truchet`: Truchet tiles of quarter circles, turned at random into
+  winding bands. Groups: `truchet`, `tiles`, `square`.
+- `penrose_rhombs`: Penrose's thick and thin rhombs (P3), a tiling that
+  never repeats. Groups: `aperiodic`, `rhombs`.
 
 `density` sets how close to the text the field comes and how sharply it
 thins there; `edge` how it meets the text: `dissolve` (cells fall away,
