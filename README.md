@@ -191,7 +191,11 @@ layouts the whole page round the measured lines. Each pattern has its
 own name, and groups by region or period, craft and construction weigh several
 at once, so `pattern={japanese=1}` picks among the Japanese patterns and
 `pattern={japanese=1, asanoha=0}` leaves one out. One pattern is picked
-per page. Each `pattern` setting replaces the one before it, and
+per page. The emblem patterns (`hexagram_lattice`, `khatam`,
+`greek_crosses`), whose cell is a recognisable symbol, are opt-in: no
+ordinary group picks them, only their own name or the group `symbol`
+(`pattern={symbol=1}`), and `pattern={square=1}` never lands on one.
+Each `pattern` setting replaces the one before it, and
 `pattern=none` grows flora again, for instance on one page with
 `\florathispage{pattern=none}`.
 
@@ -219,6 +223,14 @@ per page. Each `pattern` setting replaces the one before it, and
 - `celtic_panels`: the same interlace in knot panels, walls of mirrors
   every six grid units and symmetric inner mirrors in each panel. Groups
   as `celtic_knot`, and `panel`.
+- `hexagram_lattice`: hexagrams of two triangles on a triangular lattice,
+  tips touching. Opt-in. Groups: `symbol`, `hexagram`, `triangular`,
+  `star`.
+- `khatam`: eight-pointed stars of two squares turned 45 degrees on a
+  square lattice, a small dot in each gap. Opt-in. Groups: `symbol`,
+  `khatam`, `star`, `square`.
+- `greek_crosses`: Greek crosses that tile the plane by themselves, in
+  four colours. Opt-in. Groups: `symbol`, `cross`, `square`, `tiling`.
 - `overlapping_circles`: circles on a triangular grid, each through its
   six neighbours' centres, the lattice a Flower of Life is cut from.
   Groups: `circle_lattice`, `circles`, `triangular`, `lattice`.
