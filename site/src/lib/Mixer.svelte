@@ -59,7 +59,9 @@
   // The groups (tags shared by two or more patterns), with their members.
   let patternGroups = $derived.by(() => {
     const by = {};
-    for (const p of patterns) for (const t of p.tags) (by[t] ??= []).push(p.name);
+    // An opt-in pattern is picked by its own name or the symbol group only
+    // (patterns.lua), so other groups neither list nor count it.
+    for (const p of patterns) for (const t of p.tags) if (!p.opt_in || t === "symbol") (by[t] ??= []).push(p.name);
     return Object.entries(by).filter(([t, m]) => m.length > 1 && !patterns.some((p) => p.name === t)).sort(([a], [b]) => a.localeCompare(b));
   });
   // The pattern's name as a line of the catalog's title, without its description.
