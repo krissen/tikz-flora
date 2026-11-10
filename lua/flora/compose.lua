@@ -31,20 +31,29 @@ local pi = math.pi
 local HERO_TOP = 8
 -- The running-head mark: its full size, the smallest size worth drawing, and
 -- its clearances from the paper's edge, from the running head or a clip, and
--- from ink.
+-- from ink. A plant's foot run less than MARK_STEM pt above or below the
+-- rule runs beside it: there the stem underlines the head, so the rule stops
+-- MARK_STEM_GAP pt short of it, and is left out when less than MARK_RULE_MIN
+-- pt of it would remain.
 local MARK_SIZE, MARK_MIN, MARK_EDGE, MARK_HEAD, MARK_INK = 26, 16, 6, 2, 2
-C.MARK = { size = MARK_SIZE, min = MARK_MIN, edge = MARK_EDGE, head = MARK_HEAD, ink = MARK_INK }
+local MARK_STEM, MARK_STEM_GAP, MARK_RULE_MIN = 26, 6, 52
+C.MARK = { size = MARK_SIZE, min = MARK_MIN, edge = MARK_EDGE, head = MARK_HEAD,
+  ink = MARK_INK, stem = MARK_STEM, stem_gap = MARK_STEM_GAP, rule_min = MARK_RULE_MIN }
 
 -- Where the running-head mark and its rule go: at the top of the free band
 -- between the lowest ceiling (paper edge, running head, page inset, header
 -- clip, body top) and the highest measured ink under it across the rule's
 -- span. Returns nil when the band cannot hold the mark whole, else
--- { y = centre, size = edge length, rule = { x0, x1 } }.
+-- { y = centre, size = edge length, rule = { x0, x1 } or nil when it is left
+--   out, stem = vertical distance to the nearest foot run over the rule's
+--   span, or nil when none overlaps it }.
 -- An adapter that knows whether the page shows its running head sets
 -- spec.running_head (true: keep below header_y; false: no head on this
 -- page). Unset, the mark may reach as high as it always did (centre 3 pt
 -- below header_y, kept on the paper), so callers that do not know keep
 -- their placement.
+-- spec.stem_runs ({x0, y0, x1, y1} boxes in this frame's coordinates) are
+-- where the page's plants run their main stems along a foot (C.frames).
 function C.header_mark(spec, inset, clip_y)
   local H = spec.height
   local hx = spec.text.x0 - 6
@@ -71,7 +80,52 @@ function C.header_mark(spec, inset, clip_y)
   if band < MARK_MIN then return nil end
   local size = math.min(MARK_SIZE, band)
   local y = ceil - size / 2
-  return { y = y, size = size, rule = { hx + 4 * size / MARK_SIZE, x1 } }
+  -- The rule runs right from the mark until a foot run beside it begins.
+  local rx0, rx1 = hx + 4 * size / MARK_SIZE, x1
+  local stem
+  for _, r in ipairs(spec.stem_runs or {}) do
+    if r[3] > rx0 and r[1] < x1 then
+      local d = math.max(r[2] - y, y - r[4], 0)
+      if not stem or d < stem then stem = d end
+      if d < MARK_STEM then rx1 = math.min(rx1, r[1] - MARK_STEM_GAP) end
+    end
+  end
+  local rule = rx1 - rx0 >= MARK_RULE_MIN and { rx0, rx1 } or nil
+  return { y = y, size = size, rule = rule, stem = stem }
+end
+
+-- The page's foot runs (plant.foot_run), as boxes in each frame's own
+-- coordinates: the band the main stem's guide sways in, widened by half
+-- the root's width. A frame without a matrix (a curved band) has no foot.
+function C.stem_runs(frames, spec)
+  local page = {}
+  for _, f in ipairs(frames) do
+    local s = f.spec
+    if not s.bare and (f.map or s == spec) then
+      local run = Tune._with(s ~= spec and s.tune or nil, function()
+        local r = Plant.foot_run(Layout.margins(s), s.width)
+        r.w = (Tune.plant.root_width or 0) / 2
+        return r
+      end)
+      local w = run.sway + run.w
+      local m = f.map or { 1, 0, 0, 1, 0, 0 }
+      local xs, ys = {}, {}
+      for _, q in ipairs({ { run.x0, run.y - w }, { run.x1, run.y + w } }) do
+        local x, y = Frames.apply(m, q[1], q[2]); xs[#xs + 1], ys[#ys + 1] = x, y
+      end
+      page[#page + 1] = { math.min(xs[1], xs[2]), math.min(ys[1], ys[2]), math.max(xs[1], xs[2]), math.max(ys[1], ys[2]) }
+    end
+  end
+  for _, f in ipairs(frames) do
+    local inv = f.map and Frames.invert(f.map) or { 1, 0, 0, 1, 0, 0 }
+    local own = {}
+    for _, r in ipairs(page) do
+      local ax, ay = Frames.apply(inv, r[1], r[2])
+      local bx, by = Frames.apply(inv, r[3], r[4])
+      own[#own + 1] = { math.min(ax, bx), math.min(ay, by), math.max(ax, bx), math.max(ay, by) }
+    end
+    f.spec.stem_runs = own
+  end
 end
 
 -- Progress through a page (C.page's spec.progress): a span [lo, hi] of the
@@ -269,12 +323,15 @@ local function plant(spec, pt, prog)
 
   -- Gilt ornaments claim their space before the sprays fill in.
   -- The mark and its rule are drawn whole inside the free band, or not at all.
+  -- Beside a foot run the stem is the head's underline; the rule gives way to it.
   local place = spec.header_y and C.header_mark(spec, inset, clip_y)
   if place then
     local hx, hy, r = spec.text.x0 - 6, place.y, place.size / 2
     local mark = Orn.pick(rng:fork("choose header"), "header", spec.ornaments)
     orn[#orn + 1] = function(pt)
-      pt:stroke(G.polyline({ { place.rule[1], hy }, { place.rule[2], hy } }), pal.ink, 0.4, 0.9)
+      if place.rule then
+        pt:stroke(G.polyline({ { place.rule[1], hy }, { place.rule[2], hy } }), pal.ink, 0.4, 0.9)
+      end
       if mark then Orn.draw(mark, pt, rng:fork("header"), { hx - r, hy - r, hx + r, hy + r }) end
     end
   end
@@ -535,6 +592,7 @@ function C.frames(spec)
     spec.text.y1 = math.min(spec.text.y1, spec.height - inset)
   end
   local frames = Frames.of(spec)
+  C.stem_runs(frames, spec)
   local prog = progress(spec.progress)
   local pt = Paint.new({ backend = spec.backend or os.getenv("FLORA_BACKEND"), gilt = spec.gilt, backdrop = Color.backdrop(spec.backdrop) })
   pt.probe = spec.probe

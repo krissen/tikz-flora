@@ -1,8 +1,10 @@
 -- The running-head mark (compose.header_mark): drawn whole inside the free
--- band between its ceiling and the ink under it, or not at all, and smaller
--- between MARK.min and MARK.size.
+-- band between its ceiling and the ink under it, or not at all; smaller
+-- between MARK.min and MARK.size; and its rule giving way to a plant's foot
+-- run beside it.
 local H = dofile("tests/helper.lua")
 local Compose = require("flora.compose")
+local Frames = require("flora.frames")
 local Orn = require("flora.ornaments")
 
 local K = Compose.MARK
@@ -15,7 +17,7 @@ local function slide(o)
     width = W, height = PH, header_y = o.header_y or 240.09,
     text = { x0 = 71.13, y0 = 20, x1 = 425.2, y1 = 240.09 },
     lines = o.lines or {}, running_head = o.running_head, header = o.header,
-    body_top = o.body_top,
+    body_top = o.body_top, stem_runs = o.runs,
   }
 end
 local function near(a, b) return math.abs(a - b) < 1e-6 end
@@ -67,6 +69,55 @@ end
 do
   local r = Compose.header_mark(slide({}))
   H.check(r and near(r.y, 240.09 - 3) and near(r.size, K.size), "legacy placement must stay 3 pt under header_y")
+end
+
+-- The rule: full length with no foot run beside it; stopped short of one
+-- that runs beside it; left out when too little would remain; unaffected
+-- by a run that is far away or outside its span.
+do
+  local hx = 71.13 - 6
+  local rx0 = hx + 4
+  local y = PH - K.edge - K.size / 2
+  local function rule(runs)
+    local r = Compose.header_mark(slide({ running_head = false, runs = runs }))
+    return r and r.rule, r
+  end
+  local free = rule({})
+  H.check(free and near(free[1], rx0) and near(free[2], 425.2), "an unaccompanied rule must run to the text's right edge")
+  local short = rule({ { 300, y - 10, 425, y - 3 } })
+  H.check(short and near(short[2], 300 - K.stem_gap), "a rule must stop short of a foot run beside it")
+  local gone, r = rule({ { 100, y - 10, 425, y - 3 } })
+  H.check(gone == nil and r ~= nil, "too short a rule must be left out while the mark stays")
+  local edge = rx0 + K.rule_min + K.stem_gap
+  H.check(rule({ { edge, y - 10, 425, y - 3 } }) ~= nil, "a rule of exactly the minimum length must stay")
+  H.check(rule({ { edge - 0.01, y - 10, 425, y - 3 } }) == nil, "a rule just under the minimum must go")
+  H.check(rule({ { 100, y - K.stem - 10, 425, y - K.stem } }) ~= nil, "a run MARK.stem away is not beside the rule")
+  H.check(rule({ { 100, y - K.stem - 9.99, 425, y - K.stem + 0.01 } }) == nil, "a run just inside MARK.stem is beside it")
+  H.check(rule({ { 430, y - 10, 450, y - 3 } }) ~= nil, "a run right of the span must not shorten the rule")
+end
+
+-- The page's foot runs, from the frames: on a surround slide the second
+-- plant's foot runs along the top, beside the rule; on a one-plant page the
+-- only foot is at the bottom.
+do
+  local function runs(layout, inset)
+    local s = slide({ running_head = false })
+    s.layout, s.header, s.top_inset = layout, "margin", inset
+    local frames = Frames.of(s)
+    Compose.stem_runs(frames, s)
+    return frames[1].spec
+  end
+  local sur = runs("surround", 0)
+  local top
+  for _, r in ipairs(sur.stem_runs) do if r[4] > PH / 2 then top = r end end
+  H.check(top ~= nil, "surround: the upper plant's foot run must be found at the top")
+  local r = Compose.header_mark(sur)
+  H.check(r and r.stem < K.stem, "surround: the top stem runs beside the mark")
+  H.check(r and (r.rule == nil or r.rule[2] <= top[1] - K.stem_gap), "surround: no rule beside the top stem")
+  local left = runs("left", 0)
+  H.check(#left.stem_runs == 1 and left.stem_runs[1][4] < PH / 2, "left: one foot run, at the bottom")
+  local l = Compose.header_mark(left)
+  H.check(l and l.rule ~= nil, "left: the rule is drawn")
 end
 
 -- Through the whole page: every mark painted lies inside the page inset.
