@@ -326,6 +326,9 @@ local function time(plan,t)
   if t==0 then return 0 end
   if t==1 then return plan.finish end
   local target=plan.area*t; local timeline=plan.timeline
+  -- A plan with no parts (a page that paints nothing that grows) has no
+  -- timeline: every stage shows what it shows at 0.
+  if #timeline==0 then return 0 end
   local lo,hi=1,#timeline
   while lo<hi do local mid=(lo+hi+1)//2
     if timeline[mid].area<=target then lo=mid else hi=mid-1 end
