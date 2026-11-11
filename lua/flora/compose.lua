@@ -61,14 +61,20 @@ local function mark_bounds(spec, inset, clip_y)
   return ceil, x0, x1, hx
 end
 
--- How far any header kind may paint past its box, as a share of its size
--- (ornaments.lua: reach). Placement keeps this much clear of obstacles
--- whatever the kind, so a mark's place does not depend on its kind: an
--- adapter that draws another kind over a shared drawing places it alike.
+-- How far a mark may paint past its box, as a share of its size, that
+-- placement keeps clear of obstacles whatever the kind, so a mark's place
+-- does not depend on its kind: an adapter that draws another kind over a
+-- shared drawing places it alike. MARK_CLEAR is at least every header
+-- kind's reach (ornaments.lua); the widest is now the sunburst's 0.20,
+-- sideways. It stays at 0.26, the compass's reach before the compass was
+-- drawn inside its box, so marks beside obstacles keep their places.
+local MARK_CLEAR = 0.26
+C.MARK.clear = MARK_CLEAR
 local function mark_reach()
-  local r = 0
-  for _, k in ipairs(Orn.of("header")) do r = math.max(r, k.reach or 0) end
-  return r
+  for _, k in ipairs(Orn.of("header")) do
+    assert((k.reach or 0) <= MARK_CLEAR, "header ornament " .. k.name .. " reaches past MARK_CLEAR")
+  end
+  return MARK_CLEAR
 end
 
 -- What a plant spec's mark must keep clear of besides its band: the
