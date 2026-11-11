@@ -195,8 +195,8 @@ class Handler(SimpleHTTPRequestHandler):
     def __init__(self, *a, **k):
         super().__init__(*a, directory=ROOT, **k)
 
-    def log_message(self, fmt, *args):
-        sys.stderr.write("tuner: " + fmt % args + "\n")
+    def log_message(self, format, *args):
+        sys.stderr.write("tuner: " + format % args + "\n")
 
     def send_json(self, code, obj):
         body = json.dumps(obj).encode()
