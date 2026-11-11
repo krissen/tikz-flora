@@ -318,6 +318,10 @@ local GROWN = { laid = 0.02, nodes = 0.06, holes = 0.16, details = 0.25 }
 -- A title page's share of its progress taken by its title furniture.
 local TITLE_SHARE = 0.08
 local BLOOM, BATCH = 3, { stems = 4, sprays = 8, leaflets = 3, hero = 4, finish = 2 }
+-- Under a progression (progression.lua), when an element with no anchor
+-- (the running-head mark among them) is born, as a share of the page's
+-- growth; and how long an ornament takes to grow.
+local UNANCHORED_BIRTH, ORNAMENT_GROWTH = 0.82, 0.15
 
 -- Plan and paint one plant in its frame's left margin (frames.lua), onto
 -- `pt` when given, else onto a new painter, telling `prog` (Progress, when
@@ -595,7 +599,7 @@ local function plant(spec, pt, prog)
   local growth = spec._progression and Clock.new(g, stems, 1)
   pt.growth_clock = growth
   local function birth(at)
-    return at and growth:birth(at[1], at[2]) / growth.reach * 0.7 or 0.82
+    return at and growth:birth(at[1], at[2]) / growth.reach * 0.7 or UNANCHORED_BIRTH
   end
   local function draw(f, dur, delay)
     if clock then clock:draw(pt, f, ctx.pos[f], dur, delay)
@@ -677,10 +681,10 @@ local function plant(spec, pt, prog)
         local fn, tune = pt.frame_fn, spec.tune
         held[#held + 1] = function()
           pt:frame(fn)
-          Tune._with(tune, function() draw(f, 0.15) end)
+          Tune._with(tune, function() draw(f, ORNAMENT_GROWTH) end)
         end
       else
-        draw(f, 0.15)
+        draw(f, ORNAMENT_GROWTH)
       end
       paid(1)
     end
@@ -885,8 +889,14 @@ end
 
 -- Paints the marks of spec.marks_only (C.header_marks) where the page's
 -- plants would: after a margin-mode header clip ends, or inside a body-mode
--- clip and the frame's own clip, each in its frame's map and tune.
+-- clip and the frame's own clip, each in its frame's map and tune. Each
+-- mark grows as the page's own does: under a progression it is one
+-- ornaments part with no anchor (plant's draw), and on a "watch it grow"
+-- frame (spec.grow below 1) it is born last on the growth clock. The
+-- clock's birth for an unanchored element is its reach, so a clock of any
+-- reach shows the mark alike: reach 1 stands in for the plant's.
 local function paint_marks(pt, spec, frames, clip)
+  local clock = spec.grow and spec.grow < 1 and setmetatable({ reach = 1, span = 1 / 0.75, u = spec.grow / 0.75 }, Clock) or nil
   local held = clip and not clip.through
   if held then
     pt:clip_end()
@@ -908,7 +918,16 @@ local function paint_marks(pt, spec, frames, clip)
       })
     end
     local paint = mark_painter(fs, Rng.new(fs.seed or 1), m)
-    if fs.tune then Tune._with(fs.tune, function() paint(pt) end) else paint(pt) end
+    local function mark(p)
+      if fs.tune then Tune._with(fs.tune, function() paint(p) end) else paint(p) end
+    end
+    if clock then
+      clock:draw(pt, mark, nil, ORNAMENT_GROWTH)
+    elseif spec._progression then
+      Progression.part(pt, "ornaments", nil, UNANCHORED_BIRTH, ORNAMENT_GROWTH, function() mark(pt) end)
+    else
+      mark(pt)
+    end
     if pt.gilt_pending then require("flora.orn_raster").flush(pt) end
     if cl then pt:clip_end() end
   end

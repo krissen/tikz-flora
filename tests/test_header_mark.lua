@@ -788,4 +788,112 @@ do
   H.check(Serial.encode(a:place(sets[2])) == Serial.encode(b:place(sets[2])), "surround: one layout serves any lines")
 end
 
+-- Marks painted alone under the progression API (Progression.plan, render)
+-- and on a "watch it grow" frame (spec.grow): each mark is recorded as the
+-- full page records it, one ornaments part born with the unanchored
+-- ornaments, and shows as the full page's mark does at every grow value.
+-- An empty marks list plans and renders too.
+do
+  local Progression = require("flora.progression")
+  local Paint = require("flora.paint")
+  local function spec(mode, titled)
+    local s = slide({ running_head = true, header = mode, lines = { ink(titled and 195 or 150) } })
+    s.layout, s.seed, s.page, s.frametitle = "left", 3, 1, titled or nil
+    if mode == "body" then s.body_top = titled and 211 or s.text.y1 end
+    s.mix = { density = 0.1 }
+    s.tune = { gesture = { top_inset = 20, header_clip = 1, header_gap = 12 } }
+    return s
+  end
+  local function alone(mode, titled, marks)
+    local s = spec(mode, titled)
+    s.marks_only = marks or Compose.header_marks(spec(mode, titled))
+    return s
+  end
+  -- The part a plan records around each header mark it paints.
+  local function mark_parts(s)
+    local active = {}
+    local draw = Orn.draw
+    Orn.draw = function(kind, pt, rng, box, o)
+      local k = type(kind) == "string" and Orn.kinds[kind] or kind
+      if k.slot == "header" and pt.progression then active[#active + 1] = pt.progression.active or false end
+      return draw(kind, pt, rng, box, o)
+    end
+    local ok, plan = pcall(Progression.plan, s)
+    Orn.draw = draw
+    assert(ok, plan)
+    return active, plan
+  end
+  local function shape(p)
+    if not p then return "no part" end
+    local b = p.bounds or { 0, 0, 0, 0 }
+    return string.format("%s birth %.6f duration %.6f anchor %.4f %.4f bounds %.4f %.4f %.4f %.4f area %.4f chunks %d",
+      tostring(p.kind), p.birth, p.duration, p.anchor[1], p.anchor[2], b[1], b[2], b[3], b[4], p.area, #p.chunks)
+  end
+  for _, mode in ipairs({ "margin", "body" }) do
+    for _, titled in ipairs({ true, false }) do
+      local tag = string.format("progression, %s, %s", mode, titled and "titled" or "untitled")
+      local full = mark_parts(spec(mode, titled))
+      local own, plan = mark_parts(alone(mode, titled))
+      H.check(#full == 1 and #own == 1, string.format("%s: one mark each (%d, %d)", tag, #full, #own))
+      H.check(shape(own[1]) == shape(full[1]), tag .. ": the mark alone must be recorded as the page's mark is\n  "
+        .. shape(full[1]) .. "\n  " .. shape(own[1]))
+      H.check(#plan.parts == #own and #plan.timeline > 0,
+        string.format("%s: the plan holds the marks as parts (%d parts, %d timeline nodes)", tag, #plan.parts, #plan.timeline))
+      local empty = Progression.plan(alone(mode, titled, {}))
+      H.check(#empty.parts == 0, tag .. ": an empty marks list records no part")
+      for _, t in ipairs({ 0, 0.5, 1 }) do
+        local ok, pt = pcall(Progression.render, plan, t)
+        H.check(ok, string.format("%s: rendering the marks at %.1f must not fail: %s", tag, t, tostring(pt)))
+        local ok_empty, e = pcall(Progression.render, empty, t)
+        H.check(ok_empty, string.format("%s: rendering no marks at %.1f must not fail: %s", tag, t, tostring(e)))
+        if ok and ok_empty then
+          if t == 0 then
+            H.check(pt:body() == e:body(), tag .. ": at 0 the marks are not shown yet")
+          elseif t == 0.5 then
+            H.check(pt.count == #own, string.format("%s: at 0.5 the marks are growing (%d shown)", tag, pt.count))
+          else
+            H.check(pt:body() == plan.final:body(), tag .. ": at 1 the marks are the finished drawing")
+          end
+        end
+      end
+      Paint.reset_resources()
+    end
+  end
+  -- spec.grow: the mark paints at the same box and scale, and is left out
+  -- alike, alone as on the growing page (a probe on both: a mark the page
+  -- withdraws paints with no probe).
+  local function seen(s)
+    local out = {}
+    local draw = Orn.draw
+    Orn.draw = function(kind, pt, rng, box, o)
+      local k = type(kind) == "string" and Orn.kinds[kind] or kind
+      if k.slot == "header" and pt.probe then
+        local pj = pt:_pj()
+        local x0, y0, x1, y1 = box[1], box[2], box[3], box[4]
+        if pj then x0, y0 = pj(x0, y0); x1, y1 = pj(x1, y1) end
+        out[#out + 1] = string.format("%s %.4f %.4f %.4f %.4f", k.name,
+          math.min(x0, x1), math.min(y0, y1), math.max(x0, x1), math.max(y0, y1))
+      end
+      return draw(kind, pt, rng, box, o)
+    end
+    local ok, err = pcall(Compose.page, s)
+    Orn.draw = draw
+    assert(ok, err)
+    return table.concat(out, "; ")
+  end
+  for _, grow in ipairs({ 0.5, 0.8, 0.85, 0.95 }) do
+    for _, mode in ipairs({ "margin", "body" }) do
+      local s, a = spec(mode, true), alone(mode, true)
+      s.grow, a.grow = grow, grow
+      s.probe, a.probe = function() end, function() end
+      local f, o = seen(s), seen(a)
+      H.check(f == o, string.format("grow %.2f, %s: the mark alone must grow as the page's\n  %s\n  %s", grow, mode, f, o))
+      if grow == 0.5 then H.check(f == "", string.format("grow 0.50, %s: the page's mark is not born yet", mode)) end
+    end
+  end
+  -- An empty list paints nothing on a plain page either.
+  local ok, pt = pcall(Compose.page, alone("margin", true, {}))
+  H.check(ok and pt.count == 0, "an empty marks list paints nothing")
+end
+
 H.done("test_header_mark")
