@@ -461,6 +461,18 @@ do
     { name = "reserve under the mark", set = function(s) s.reserve = { { 40, 150, 120, 222 } } end },
     { name = "notch", set = function(s) s.layout = "right"; s.clip_x1, s.clip_y1 = 30, 230 end, frame = true },
     { name = "paper edge", set = function(s) s.text.x0 = 22 end },
+    -- A reserve beside the mark that only a mark under the full size
+    -- clears sideways (the painted half width 0.76 s + 2 must end by 80).
+    { name = "reserve that only a smaller mark clears", set = function(s) s.reserve = { { 80, 0, 90, PH } } end },
+    -- A reserve over the band forces the mark down; one ending at the
+    -- band's floor (152, the ink's top plus MARK.ink), or 1 pt under it,
+    -- still bounds what the mark paints below its box.
+    { name = "reserve ending at the floor", set = function(s) s.reserve = { { 40, 180, 90, PH }, { 40, 0, 90, 152 } } end },
+    { name = "reserve ending under the floor", set = function(s) s.reserve = { { 40, 180, 90, PH }, { 40, 0, 90, 151 } } end },
+    -- The ceiling is PH - 20 - MARK.head: a reserve from there up.
+    { name = "reserve starting at the ceiling", set = function(s) s.reserve = { { 40, PH - 22, 90, PH } } end },
+    { name = "two reserves leaving a narrow stretch", set = function(s) s.reserve = { { 40, 206, 90, PH }, { 40, 0, 90, 184 } } end },
+    { name = "two reserves leaving too narrow a stretch", set = function(s) s.reserve = { { 40, 200, 90, PH }, { 40, 0, 90, 184 } } end },
     { name = "page inset", ceiling = true, set = function() end },
     { name = "body clip", ceiling = true, set = function(s) if s.header == "body" then s.body_top = 228 end end },
     { name = "header clip", ceiling = true, set = function(s) s.frametitle = true; s.header_right = 200 end },
@@ -575,6 +587,120 @@ do
       end
     end
   end
+end
+
+-- The placement is exact in both dimensions. A mark of size s whose box top
+-- is t paints, with the largest reach of any header kind, over its box
+-- widened by reach * s + MARK.head on every side; that must meet no
+-- obstacle, wherever the obstacle lies (beside the mark, under the band's
+-- floor, over its ceiling), and stay MARK.head inside the paper's left edge.
+local REACH = 0
+for _, k in ipairs(Orn.of("header")) do REACH = math.max(REACH, k.reach or 0) end
+local function whole(s, t, hx, ceil, lo, obstacles, tol)
+  tol = tol or 1e-6
+  if s < K.min - tol or s > K.size + tol or t > ceil + tol or t - s < lo - tol then return false end
+  if hx - (0.5 + REACH) * s < K.head - tol then return false end
+  local e = REACH * s + K.head
+  local x0, x1, y0, y1 = hx - s / 2 - e, hx + s / 2 + e, t - s - e, t + e
+  for _, o in ipairs(obstacles) do
+    if o[3] > x0 + tol and o[1] < x1 - tol and o[4] > y0 + tol and o[2] < y1 - tol then return false end
+  end
+  return true
+end
+
+-- The two cases from review, with text.x0 = 71 (the mark's centre at 65)
+-- and a free band from 152 to 238.
+do
+  local function place(reserve)
+    local s = slide({ running_head = true, header_y = 240, lines = { { x0 = 71, x1 = 200, y0 = 140, y1 = 150 } } })
+    s.text.x0, s.text.y1, s.reserve = 71, 240, reserve
+    return Compose.header_mark(s)
+  end
+  -- A reserve beside the mark, across the whole band: the full size meets
+  -- it, but a mark up to (80 - 2 - 65) / 0.76 = 17.11 pt clears it.
+  local side = { { 80, 0, 90, 256 } }
+  local r = place(side)
+  H.check(r ~= nil, "a reserve beside the mark that a smaller mark clears must not leave the mark out")
+  if r then
+    H.check(math.abs(r.size - (80 - K.head - 65) / (0.5 + REACH)) < 1e-6 and r.size >= 16,
+      string.format("beside the reserve the mark is as large as clears it (%.3f)", r.size))
+    H.check(whole(r.size, r.y + r.size / 2, 65, 238, 152, side), "the mark beside the reserve is whole")
+  end
+  -- A reserve over the band and one ending 1 pt under its floor: what the
+  -- mark paints under its box must clear the lower one too, so the mark is
+  -- (180 - 151 - 2 * 2) / 1.52 = 16.45 pt, not 20.63.
+  local both = { { 40, 180, 90, 256 }, { 40, 0, 90, 151 } }
+  r = place(both)
+  H.check(r ~= nil, "a stretch between two reserves that holds a mark must hold it")
+  if r then
+    H.check(math.abs(r.size - (180 - 151 - 2 * K.head) / (1 + 2 * REACH)) < 1e-6,
+      string.format("between the reserves the mark is as large as clears both (%.3f)", r.size))
+    H.check(r.y - r.size / 2 - REACH * r.size - K.head >= 151 - 1e-6, string.format(
+      "the mark paints down to %.2f, into the reserve ending at 151", r.y - r.size / 2 - REACH * r.size))
+    H.check(whole(r.size, r.y + r.size / 2, 65, 238, 152, both), "the mark between the reserves is whole")
+  end
+end
+
+-- Cross-check against an exhaustive search: for random obstacle sets, a
+-- grid over sizes and box tops (0.25 pt) finds a whole placement only if
+-- header_mark returns one; the one it returns is whole, at least as large
+-- as any the grid finds, and the highest of its size.
+do
+  local seed = 20261111
+  local function rnd(a, b)
+    seed = (seed * 1103515245 + 12345) % 2147483648
+    return a + (b - a) * seed / 2147483648
+  end
+  local SETS, STEP = 500, 0.25
+  local found, returned, witnessed, failures = 0, 0, 0, 0
+  for n = 1, SETS do
+    local x0 = rnd(24, 90)
+    local ink_top = rnd(150, 226)
+    local obstacles = {}
+    for _ = 1, math.floor(rnd(1, 4)) do
+      local ox, oy = rnd(0, 120), rnd(100, PH)
+      obstacles[#obstacles + 1] = { ox, oy, ox + rnd(4, 60), math.min(PH, oy + rnd(4, 80)) }
+    end
+    local s = slide({ running_head = true, lines = { { x0 = x0, x1 = 200, y0 = ink_top - 10, y1 = ink_top } } })
+    s.text.x0, s.reserve = x0, obstacles
+    local r = Compose.header_mark(s)
+    local hx, ceil, lo = x0 - 6, 240.09 - K.head, ink_top + K.ink
+    local best
+    if ceil - lo >= K.min then
+      local sizes = {}
+      for z = K.min, math.min(K.size, ceil - lo), STEP do sizes[#sizes + 1] = z end
+      sizes[#sizes + 1] = math.min(K.size, ceil - lo)
+      for i = #sizes, 1, -1 do
+        local z = sizes[i]
+        local t = ceil
+        while t - z >= lo - 1e-9 do
+          if whole(z, t, hx, ceil, lo, obstacles) then best = z; break end
+          t = t - STEP
+        end
+        if best then break end
+      end
+    end
+    local tag = string.format("random set %d (x0 %.2f, ink %.2f, %d obstacles)", n, x0, ink_top, #obstacles)
+    local function bad(msg) failures = failures + 1; H.check(false, tag .. ": " .. msg) end
+    if best then found = found + 1 end
+    if r then
+      returned = returned + 1
+      local top = r.y + r.size / 2
+      if not whole(r.size, top, hx, ceil, lo, obstacles) then bad(string.format("the mark %.3f at %.3f is not whole", r.size, top)) end
+      if best and r.size < best - 1e-6 then bad(string.format("a %.3f pt mark, though %.3f pt fits", r.size, best)) end
+      local t = ceil
+      while t > top + 1e-6 do
+        if whole(r.size, t, hx, ceil, lo, obstacles) then bad(string.format("a box top at %.3f is free, above %.3f", t, top)); break end
+        t = t - STEP
+      end
+      if not best then witnessed = witnessed + 1 end
+    elseif best then
+      bad(string.format("no mark, though a %.3f pt one fits", best))
+    end
+  end
+  H.check(found > SETS / 4 and found < SETS, string.format("the random sets must hold marks and leave some out (%d of %d)", found, SETS))
+  print(string.format("brute-force cross-check: %d sets, grid finds %d, header_mark returns %d (%d finer than the grid), %d failures",
+    SETS, found, returned, witnessed, failures))
 end
 
 H.done("test_header_mark")

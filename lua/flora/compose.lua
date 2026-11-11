@@ -85,47 +85,75 @@ local function mark_obstacles(spec)
 end
 
 -- The mark's size and box top inside its band [lo, ceil], clear of the
--- obstacles: the painted mark (its box widened by `reach` times its size
--- on every side, and MARK_HEAD more) touches none of them, nor the paper's
--- left edge. Each free stretch of the band, top first, holds the largest
--- mark it can, up to MARK_SIZE; the first that holds one of at least `min`
--- is taken. nil when none does. With no obstacle beside the mark this is
--- the band itself: min(MARK_SIZE, ceil - lo), at ceil.
+-- obstacles. A mark of size s whose box top is t paints over its box
+-- widened by e = reach * s + MARK_HEAD on every side, centred on hx:
+--   x in [hx - s/2 - e, hx + s/2 + e], y in [t - s - e, t + e].
+-- That must touch no obstacle, wherever the obstacle lies (beside the mark,
+-- under the band's floor, over its ceiling), and stay MARK_HEAD inside the
+-- paper's left edge; the box itself stays inside the band. The largest such
+-- mark, up to MARK_SIZE, is taken, at the highest box top it fits at; nil
+-- when none of at least `min` fits. With no obstacle in the way this is the
+-- band itself: min(MARK_SIZE, ceil - lo), at ceil.
+--
+-- A smaller mark fits wherever a larger one does (the same centre, its
+-- painted extent inside the larger one's), so the sizes that fit run from
+-- `min` up to a largest one. At that size some limit is just met: the band
+-- (s = ceil - lo), the paper's edge, an obstacle's side (beyond that size
+-- it starts to overlap the mark sideways), or a stretch between two
+-- vertical limits (the band's floor or an obstacle's top below, the
+-- ceiling or an obstacle's bottom above) closing to one box top. Those
+-- sizes are tried from the largest down; the first that fits is it.
+local EXACT = 1e-9
+
 local function clear_place(ceil, lo, hx, min, reach, obstacles)
   local g = MARK_HEAD
   local cap = math.min(MARK_SIZE, ceil - lo)
   -- The paper's left edge.
   if hx - (0.5 + reach) * cap < g then cap = (hx - g) / (0.5 + reach) end
   if cap < min then return nil end
-  local half = (0.5 + reach) * cap + g
-  local blocked = {}
+  -- The obstacles a mark of size s may meet: those that overlap it sideways.
+  local function across(o, s)
+    local half = (0.5 + reach) * s + g
+    return o[3] > hx - half + EXACT and o[1] < hx + half - EXACT
+  end
+  -- The highest box top for size s, or nil: the ceiling, or just under an
+  -- obstacle, whichever is highest and clear.
+  local function top_for(s)
+    local e = reach * s + g
+    local tops = { ceil }
+    for _, o in ipairs(obstacles) do
+      if across(o, s) and o[2] - e < ceil then tops[#tops + 1] = o[2] - e end
+    end
+    table.sort(tops, function(a, b) return a > b end)
+    for _, t in ipairs(tops) do
+      if t - s < lo - EXACT then return nil end
+      local clear = true
+      for _, o in ipairs(obstacles) do
+        if across(o, s) and o[4] > t - s - e + EXACT and o[2] < t + e - EXACT then clear = false; break end
+      end
+      if clear then return t end
+    end
+  end
+  local t = top_for(cap)
+  if t then return cap, t end
+  -- The sizes at which a limit is just met (see above).
+  local r1, r2 = 1 + reach, 1 + 2 * reach
+  local sizes = {}
+  local function try(s) if s >= min and s < cap then sizes[#sizes + 1] = s end end
   for _, o in ipairs(obstacles) do
-    if o[3] > hx - half and o[1] < hx + half and o[4] > lo - reach * cap - g and o[2] < ceil + reach * cap + g then
-      blocked[#blocked + 1] = { o[2], o[4] }
-    end
+    try((hx - g - o[3]) / (0.5 + reach))
+    try((o[1] - hx - g) / (0.5 + reach))
+    try((o[2] - g - lo) / r1)
+    try((ceil - o[4] - g) / r1)
+    for _, p in ipairs(obstacles) do try((p[2] - o[4] - 2 * g) / r2) end
   end
-  if #blocked == 0 then return cap, ceil end
-  table.sort(blocked, function(a, b) return a[2] > b[2] end)
-  -- Walk down the band: `top` is the current stretch's upper limit, and
-  -- `capped` whether an obstacle sets it rather than the ceiling.
-  local top, capped = ceil, false
-  local function fit(bottom, floored)
-    local n = (capped and 1 or 0) + (floored and 1 or 0)
-    local room = top - bottom - n * g
-    if room <= 0 then return nil end
-    local size = math.min(cap, room / (1 + n * reach))
-    if size < min then return nil end
-    return size, capped and top - reach * size - g or top
+  try(min)
+  table.sort(sizes, function(a, b) return a > b end)
+  for _, s in ipairs(sizes) do
+    t = top_for(s)
+    if t then return s, t end
   end
-  for _, b in ipairs(blocked) do
-    if b[2] < top then
-      local size, at = fit(math.max(lo, b[2]), b[2] > lo)
-      if size then return size, at end
-    end
-    if b[1] < top then top, capped = b[1], true end
-    if top <= lo then return nil end
-  end
-  return fit(lo, false)
+  return nil
 end
 
 -- C.header_mark once its bounds, the smallest mark `min`, the mark's reach
