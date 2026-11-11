@@ -162,4 +162,137 @@ do
   Orn.draw = draw
 end
 
+-- A titled frame of the floral theme: header clip 12 pt under the running
+-- head, top inset 20, a two-line title whose ink tops out at 219.67. The
+-- header clip alone leaves 4.42 pt, under the minimum; the inset leaves
+-- 12.40 pt. The plant places the mark against the inset and holds it back
+-- until the clip ends.
+local TWO_LINE = 219.67
+do
+  local inset, clip = 20, 240.09 - 12
+  local o = { running_head = true, lines = { ink(TWO_LINE) } }
+  local none, band = Compose.header_mark(slide(o), inset, clip)
+  H.check(none == nil and math.abs(band - 4.42) < 0.01, "under the header clip the band is 4.42 pt")
+  local r = Compose.header_mark(slide(o), inset, nil)
+  H.check(r and math.abs(r.size - 12.40) < 0.01 and near(r.y + r.size / 2, PH - inset - K.head),
+    "outside the header clip the mark fills the 12.40 pt band under the inset")
+end
+
+-- Through Compose.page: the mark of a titled frame is painted once, after the
+-- header clip has ended (only the page inset's clip is open), whole under the
+-- inset and above the title's ink, in the page's ornaments group. The held
+-- marks belong to the painter, so the painter returned has none left and a
+-- second page, composed next, paints only its own mark. An untitled page has
+-- no header clip and paints its mark among its plant's ornaments, inside the
+-- plant's own frame as before.
+local function titled(layout, title_top, frametitle, seed)
+  local s = slide({ running_head = true, lines = { ink(title_top) } })
+  s.layout, s.header, s.seed, s.page, s.frametitle = layout, "margin", seed or 3, 1, frametitle
+  s.tune = { gesture = { top_inset = 20, header_clip = 1, header_gap = 12 } }
+  return s
+end
+local function marks(spec)
+  local drawn = {}
+  local draw = Orn.draw
+  local hero = require("flora.flower").hero
+  local hero_clips
+  require("flora.flower").hero = function(pt, ...)
+    hero_clips = hero_clips or pt.clips
+    return hero(pt, ...)
+  end
+  Orn.draw = function(kind, pt, rng, box, o)
+    local k = type(kind) == "string" and Orn.kinds[kind] or kind
+    if k.slot == "header" then
+      local pj = pt:_pj()
+      local x0, y0 = box[1], box[2]
+      local x1, y1 = box[3], box[4]
+      if pj then x0, y0 = pj(x0, y0); x1, y1 = pj(x1, y1) end
+      drawn[#drawn + 1] = { box = { math.min(x0, x1), math.min(y0, y1), math.max(x0, x1), math.max(y0, y1) },
+        clips = pt.clips, group = pt.group and pt.group.tag, held = pt.held_marks ~= nil }
+    end
+    return draw(kind, pt, rng, box, o)
+  end
+  local ok, pt = pcall(Compose.page, spec)
+  Orn.draw = draw
+  require("flora.flower").hero = hero
+  assert(ok, pt)
+  return drawn, pt, hero_clips
+end
+for _, layout in ipairs({ "surround", "left" }) do
+  for _, form in ipairs({ { "one-line", 210.60 }, { "subtitle", 217.88 }, { "two-line", TWO_LINE } }) do
+    local tag = layout .. ", " .. form[1]
+    local drawn, pt, hero_clips = marks(titled(layout, form[2], true))
+    H.check(#drawn == 1, tag .. ": one mark expected, got " .. #drawn)
+    local d = drawn[1]
+    if d then
+      local size = d.box[4] - d.box[2]
+      local band = PH - 20 - K.head - (form[2] + K.ink)
+      H.check(math.abs(size - math.min(K.size, band)) < 1e-6, string.format("%s: mark %.2f for a band of %.2f", tag, size, band))
+      H.check(d.box[4] <= PH - 20 - K.head + 1e-6, tag .. ": mark crosses the page inset")
+      H.check(d.box[2] >= form[2] + K.ink - 1e-6, tag .. ": mark reaches the title's ink")
+      H.check(d.box[4] > 240.09 - 12, tag .. ": the mark should rise above the header clip")
+      H.check(d.clips == 1 and hero_clips and hero_clips > d.clips, string.format(
+        "%s: the mark must paint outside the header clip (%s clips, the hero %s)", tag, d.clips, hero_clips))
+      H.check(d.group == "ornaments" and not d.held, tag .. ": painted in the ornaments group after the clip ended")
+    end
+    H.check(pt.held_marks == nil, tag .. ": the painter keeps no held marks")
+  end
+  -- Untitled: no header clip, the mark paints among the plant's ornaments.
+  local drawn, _, hero_clips = marks(titled(layout, 150, nil))
+  H.check(#drawn == 1 and drawn[1].clips == 1 and hero_clips == 1 and not drawn[1].held,
+    layout .. ", untitled: one mark painted inside the plant's clips, as before")
+end
+-- Two compositions in one run: what the first held back cannot reach the
+-- second.
+do
+  local first = marks(titled("surround", TWO_LINE, true, 3))
+  local second = marks(titled("surround", 150, nil, 7))
+  local third = marks(titled("surround", 210.60, true, 7))
+  H.check(#first == 1 and #second == 1 and #third == 1, "each page paints exactly its own mark")
+  H.check(second[1] and second[1].box[4] - second[1].box[2] == K.size, "the untitled page's mark is full size")
+  H.check(third[1] and near(third[1].box[4] - third[1].box[2], PH - 20 - K.head - 210.60 - K.ink),
+    "the third page's mark fits its own one-line title, not the first page's two-line one")
+end
+
+-- Growth (Progression.plan): the held mark becomes one ornament part, born
+-- with the other ornaments that have no anchor (0.82), and its masks are the
+-- clips open when it is painted: the page inset's, not the header clip.
+do
+  local Progression = require("flora.progression")
+  local spec = titled("surround", TWO_LINE, true)
+  local drawn
+  local draw = Orn.draw
+  Orn.draw = function(kind, pt, rng, box, o)
+    local k = type(kind) == "string" and Orn.kinds[kind] or kind
+    if k.slot == "header" and pt.progression and pt.progression.active then
+      drawn = pt.progression.active
+    end
+    return draw(kind, pt, rng, box, o)
+  end
+  local ok, plan = pcall(Progression.plan, spec)
+  Orn.draw = draw
+  assert(ok, plan)
+  H.check(drawn ~= nil, "growth: the mark is a progression part")
+  if drawn then
+    H.check(drawn.kind == "ornaments" and near(drawn.birth, 0.82), string.format(
+      "growth: the mark is an ornament part born at 0.82 (got %s at %s)", tostring(drawn.kind), tostring(drawn.birth)))
+    -- The masks lead the part's chunks: the inset's clip path, then a
+    -- reserve mask for the title line its padded bounds touch. None is the
+    -- header clip's path.
+    local BP = 72 / 72.27
+    local inset_y = string.format(" %.2f l", (PH - 20) * BP)
+    local clip_y = string.format(" %.2f l", (240.09 - 12) * BP)
+    local masks, inset_mask, header_mask = 0, false, false
+    for _, c in ipairs(drawn.chunks) do
+      if type(c) ~= "string" or not c:match("W%*? n$") then break end
+      masks = masks + 1
+      if c:find(inset_y, 1, true) then inset_mask = true end
+      if c:find(clip_y, 1, true) then header_mask = true end
+    end
+    H.check(inset_mask and not header_mask, string.format(
+      "growth: the mark's part is masked by the page inset and not the header clip (%d masks)", masks))
+    H.check(drawn.bounds and drawn.bounds[4] > 240.09 - 12, "growth: the mark's part rises above the header clip")
+  end
+end
+
 H.done("test_header_mark")
