@@ -20,11 +20,10 @@ local Tune = require("flora.tune")
 local M = {}
 local pi = math.pi
 
--- Open the growing region and block text. `spec.lines` (optional) lists
--- measured content boxes; without it the whole text block is blocked.
-function M.region(spec)
-  local W, H, t = spec.width, spec.height, spec.text
-  local g = Space.new(W, H, 3)
+-- The margin column of a frame's spec, without the growing grid: what
+-- region opens, and where the main stem's foot runs (plant.foot_run).
+function M.margins(spec)
+  local H, t = spec.height, spec.text
   local edge = spec.edge or 16
   local gutter = spec.gutter or 9
   local m = {
@@ -42,6 +41,17 @@ function M.region(spec)
   }
   local inset = spec.top_inset or Tune.gesture.top_inset or 0
   if inset > 0 then m.y1 = math.min(m.y1, H - inset) end
+  return m
+end
+
+-- Open the growing region and block text. `spec.lines` (optional) lists
+-- measured content boxes; without it the whole text block is blocked.
+function M.region(spec)
+  local W, H, t = spec.width, spec.height, spec.text
+  local g = Space.new(W, H, 3)
+  local edge = spec.edge or 16
+  local gutter = spec.gutter or 9
+  local m = M.margins(spec)
   g:open(m.x0, m.y0, m.x1, m.y1)
   g:open(m.x0, m.y0, W - edge, m.foot)
   g:open(t.x1 + 5, m.y0, W - edge * 0.6, t.y0 + (t.y1 - t.y0) * 0.22)
