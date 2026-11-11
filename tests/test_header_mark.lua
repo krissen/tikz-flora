@@ -56,6 +56,23 @@ do
   end
 end
 
+-- The minimum is gesture.mark_min, 12 pt by default; a caller that wants
+-- the earlier 16 pt sets it. A band between the two holds the mark only
+-- under the default.
+do
+  local Tune = require("flora.tune")
+  H.check(K.min == 12 and Tune.gesture.mark_min == 12, "the default minimum is 12 pt")
+  local ceil = PH - 24 - K.head
+  local o = { running_head = false, lines = { ink(ceil - 14 - K.ink) } }
+  local r = Compose.header_mark(slide(o), 24)
+  H.check(r and near(r.size, 14) and near(r.band, 14), "a 14 pt band holds a 14 pt mark under the default")
+  Tune._with({ gesture = { mark_min = 16 } }, function()
+    local none, band = Compose.header_mark(slide(o), 24)
+    H.check(none == nil and near(band, 14), "gesture.mark_min=16 leaves a 14 pt band empty and reports it")
+  end)
+  H.check(Compose.header_mark(slide(o), 24) ~= nil, "the tuned minimum is restored after the page")
+end
+
 -- Ink that crosses the ceiling leaves no band at all; ink beside the rule's
 -- span, not under it, does not count.
 do

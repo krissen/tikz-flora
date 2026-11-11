@@ -29,21 +29,23 @@ local pal = Paint.palette
 local C = {}
 local pi = math.pi
 local HERO_TOP = 8
--- The running-head mark: its full size, the smallest size worth drawing, and
--- its clearances from the paper's edge, from the running head or a clip, and
--- from ink. A plant's foot run less than MARK_STEM pt above or below the
--- rule runs beside it: there the stem underlines the head, so the rule stops
--- MARK_STEM_GAP pt short of it, and is left out when less than MARK_RULE_MIN
--- pt of it would remain.
-local MARK_SIZE, MARK_MIN, MARK_EDGE, MARK_HEAD, MARK_INK = 26, 16, 6, 2, 2
+-- The running-head mark: its full size, and its clearances from the paper's
+-- edge, from the running head or a clip, and from ink. The smallest size
+-- worth drawing is gesture.mark_min (tune.lua). A plant's foot run less than
+-- MARK_STEM pt above or below the rule runs beside it: there the stem
+-- underlines the head, so the rule stops MARK_STEM_GAP pt short of it, and is
+-- left out when less than MARK_RULE_MIN pt of it would remain.
+local MARK_SIZE, MARK_EDGE, MARK_HEAD, MARK_INK = 26, 6, 2, 2
 local MARK_STEM, MARK_STEM_GAP, MARK_RULE_MIN = 26, 6, 52
-C.MARK = { size = MARK_SIZE, min = MARK_MIN, edge = MARK_EDGE, head = MARK_HEAD,
+-- min is the default minimum; header_mark reads the tuned one.
+C.MARK = { size = MARK_SIZE, min = Tune.gesture.mark_min, edge = MARK_EDGE, head = MARK_HEAD,
   ink = MARK_INK, stem = MARK_STEM, stem_gap = MARK_STEM_GAP, rule_min = MARK_RULE_MIN }
 
 -- Where the running-head mark and its rule go: at the top of the free band
 -- between the lowest ceiling (paper edge, running head, page inset, header
 -- clip, body top) and the highest measured ink under it across the rule's
--- span. Returns nil when the band cannot hold the mark whole, else
+-- span. Returns nil and the band (nil when ink crosses the ceiling) when the
+-- band cannot hold the mark whole, else
 -- { y = centre, size = edge length, rule = { x0, x1 } or nil when it is left
 --   out, stem = vertical distance to the nearest foot run over the rule's
 --   span, or nil when none overlaps it }.
@@ -77,7 +79,7 @@ function C.header_mark(spec, inset, clip_y)
     end
   end
   local band = ceil - (floor + MARK_INK)
-  if band < MARK_MIN then return nil end
+  if band < Tune.gesture.mark_min then return nil, band end
   local size = math.min(MARK_SIZE, band)
   local y = ceil - size / 2
   -- The rule runs right from the mark until a foot run beside it begins.
@@ -91,7 +93,7 @@ function C.header_mark(spec, inset, clip_y)
     end
   end
   local rule = rx1 - rx0 >= MARK_RULE_MIN and { rx0, rx1 } or nil
-  return { y = y, size = size, rule = rule, stem = stem }
+  return { y = y, size = size, rule = rule, stem = stem, band = band }
 end
 
 -- The page's foot runs (plant.foot_run), as boxes in each frame's own
