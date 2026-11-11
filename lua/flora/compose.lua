@@ -803,9 +803,14 @@ end
 --   measured lines are `lines` (page coordinates; spec.lines is not read);
 --   and `lines` cut to those that decide the marks: each line that may
 --   bound a mark from below or crosses its ceiling, whatever its frame.
---   Lines cut to these place the same marks.
--- The spec is not changed. The layout depends on everything in the spec but
--- its lines, so pages that differ only in their lines can share one.
+--   Lines cut to these place the same marks with the same layout.
+-- The spec is not changed. In most layouts the frames depend on the text
+-- block, not on the lines, so the layout depends on everything in the spec
+-- but its lines, and pages that differ only in their lines can share one.
+-- Where the frames follow the lines (Frames.follows_lines: flank's column,
+-- the bouquet's and the crowns' title block), the layout is built from
+-- spec.lines, as the page's frames are: `lines` then set only the marks'
+-- floors, and a layout is shared only by pages whose spec.lines are alike.
 --
 -- C.page paints only the marks, and nothing else of the page, for a spec
 -- whose marks_only holds such a list: the same rule and ornament, in the
@@ -817,7 +822,7 @@ MarkLayout.__index = MarkLayout
 
 function C.mark_layout(spec)
   local s = deep_copy(spec)
-  s.lines = nil
+  if not Frames.follows_lines(s) then s.lines = nil end
   local frames = {}
   Tune._with(s.tune, function()
     local held = marks_held(s)

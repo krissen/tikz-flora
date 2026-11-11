@@ -703,4 +703,89 @@ do
     SETS, found, returned, witnessed, failures))
 end
 
+-- Frames that follow the measured lines (frames.lua: flank's column, the
+-- bouquet's height): the marks placed by C.mark_layout for a page, painted
+-- alone with marks_only, equal the full page's, kind, box and rule, in
+-- every layout, header mode and header clip, for lines that move the frames.
+do
+  local Paint = require("flora.paint")
+  local P = getmetatable(Paint.new({})).__index
+  local Serial = require("flora.serial")
+  local function spec(layout, mode, clip, lines)
+    local s = slide({ running_head = true, header = mode, lines = lines })
+    s.layout, s.seed, s.page, s.frametitle = layout, 3, 1, true
+    if mode == "body" then s.body_top = 216 end
+    s.mix = { density = 0.1 }
+    s.tune = { gesture = { top_inset = 20, header_clip = clip, header_gap = 12 } }
+    return s
+  end
+  local function painted(s)
+    local out = {}
+    local draw, stroke = Orn.draw, P.stroke
+    Orn.draw = function(kind, pt, rng, box, o)
+      local k = type(kind) == "string" and Orn.kinds[kind] or kind
+      if k.slot == "header" then
+        local pj = pt:_pj()
+        local x0, y0, x1, y1 = box[1], box[2], box[3], box[4]
+        if pj then x0, y0 = pj(x0, y0); x1, y1 = pj(x1, y1) end
+        out[#out + 1] = string.format("%s %.6f %.6f %.6f %.6f", k.name,
+          math.min(x0, x1), math.min(y0, y1), math.max(x0, x1), math.max(y0, y1))
+      end
+      return draw(kind, pt, rng, box, o)
+    end
+    P.stroke = function(pt, paths, rgb, w, a, ...)
+      if w == 0.4 and a == 0.9 and #paths == 2 and paths[1][1] == "m" and paths[2][1] == "l" then
+        local pj = pt:_pj()
+        local p, q = paths[1], paths[2]
+        local x0, y0, x1, y1 = p[2], p[3], q[2], q[3]
+        if pj then x0, y0 = pj(x0, y0); x1, y1 = pj(x1, y1) end
+        if math.abs(y0 - y1) < 1e-9 then
+          out[#out + 1] = string.format("rule %.6f..%.6f at %.6f", math.min(x0, x1), math.max(x0, x1), y0)
+        end
+      end
+      return stroke(pt, paths, rgb, w, a, ...)
+    end
+    local ok, err = pcall(Compose.page, s)
+    Orn.draw, P.stroke = draw, stroke
+    assert(ok, err)
+    return table.concat(out, "; ")
+  end
+  local sets = {
+    { { x0 = 150, x1 = 300, y0 = 180, y1 = 195 }, { x0 = 150, x1 = 300, y0 = 90, y1 = 100 } },
+    { { x0 = 100, x1 = 380, y0 = 170, y1 = 192 }, { x0 = 120, x1 = 330, y0 = 60, y1 = 120 } },
+  }
+  local cells, with_marks = 0, 0
+  for _, layout in ipairs(Frames.order) do
+    for _, mode in ipairs({ "margin", "body" }) do
+      for _, clip in ipairs({ 0, 1 }) do
+        local full_by_set = {}
+        -- The second set of lines only matters where the frames follow them.
+        for i = 1, Frames.follows_lines({ layout = layout }) and #sets or 1 do
+          local lines = sets[i]
+          local tag = string.format("%s, %s, header_clip %d, lines %d", layout, mode, clip, i)
+          local full = painted(spec(layout, mode, clip, lines))
+          local alone_spec = spec(layout, mode, clip, lines)
+          alone_spec.marks_only = Compose.header_marks(spec(layout, mode, clip, lines))
+          local alone = painted(alone_spec)
+          H.check(alone == full, tag .. ": marks painted alone must match the page's\n  " .. full .. "\n  " .. alone)
+          cells = cells + 1
+          if full ~= "" then with_marks = with_marks + 1 end
+          full_by_set[i] = full
+        end
+        if (layout == "flank" or layout == "bouquet") and clip == 1 then
+          H.check(full_by_set[1] ~= full_by_set[2], string.format("%s, %s: the lines must move the marks", layout, mode))
+        end
+      end
+    end
+  end
+  print(string.format("line-dependent frames: %d cells, %d with marks", cells, with_marks))
+  -- A layout whose frames do not follow the lines is shared by pages that
+  -- differ only in their lines; one whose frames do is not.
+  H.check(not Frames.follows_lines({ layout = "surround" }) and Frames.follows_lines({ layout = "flank" })
+    and Frames.follows_lines({ layout = "bouquet" }), "flank and bouquet follow the lines, surround does not")
+  local a = Compose.mark_layout(spec("surround", "margin", 1, sets[1]))
+  local b = Compose.mark_layout(spec("surround", "margin", 1, sets[2]))
+  H.check(Serial.encode(a:place(sets[2])) == Serial.encode(b:place(sets[2])), "surround: one layout serves any lines")
+end
+
 H.done("test_header_mark")

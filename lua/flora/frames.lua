@@ -52,6 +52,17 @@ M.about = {
   scrollwork = "A title page: an oval gilt scroll frame round the title, with a crest at its head and the flora twined over it.",
 }
 
+-- The layouts whose frames follow the page's measured lines: the title
+-- block a crown, an oval or a bouquet is laid round (top_block), the
+-- column flank's plants stand beside, and the lines a bouquet or an oval
+-- stops short of. The other layouts' frames depend on the text block only.
+M.follow_lines = { title = true, flank = true, wreath = true, bouquet = true, scrollwork = true }
+
+-- Whether spec's frames follow its measured lines (M.follow_lines).
+function M.follows_lines(spec)
+  return M.follow_lines[spec.layout or "left"] == true
+end
+
 -- Apply matrix m to (x, y).
 function M.apply(m, x, y)
   return m[1] * x + m[3] * y + m[5], m[2] * x + m[4] * y + m[6]
