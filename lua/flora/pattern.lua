@@ -257,6 +257,14 @@ function M.paint_hero(pt, d, ink, grow)
   end
 end
 
+-- Whether M.paint fills spec's page with a pattern rather than flora: its
+-- pattern weights leave one to pick. Draws on a stream of its own, so the
+-- page's randomness is not touched.
+function M.applies(spec)
+  if not spec.pattern then return false end
+  return Patterns.pick(Rng.new(spec.seed or 1):fork("choose pattern"), weights(spec.pattern)) ~= nil
+end
+
 -- Lay out and paint the page's pattern onto `pt`. Returns false when the
 -- pattern weights leave nothing to pick, so the caller grows flora.
 function M.paint(spec, pt)

@@ -52,6 +52,17 @@ M.about = {
   scrollwork = "A title page: an oval gilt scroll frame round the title, with a crest at its head and the flora twined over it.",
 }
 
+-- The layouts whose frames follow the page's measured lines: the title
+-- block a crown, an oval or a bouquet is laid round (top_block), the
+-- column flank's plants stand beside, and the lines a bouquet or an oval
+-- stops short of. The other layouts' frames depend on the text block only.
+M.follow_lines = { title = true, flank = true, wreath = true, bouquet = true, scrollwork = true }
+
+-- Whether spec's frames follow its measured lines (M.follow_lines).
+function M.follows_lines(spec)
+  return M.follow_lines[spec.layout or "left"] == true
+end
+
 -- Apply matrix m to (x, y).
 function M.apply(m, x, y)
   return m[1] * x + m[3] * y + m[5], m[2] * x + m[4] * y + m[6]
@@ -77,6 +88,17 @@ local function clip(bx, w, h)
   return c
 end
 
+-- Page lines as an affine frame of size w x h carries them: under the
+-- inverse map `inv`, cut to the frame, those outside it dropped.
+function M.carry_lines(lines, inv, w, h)
+  local out = {}
+  for _, l in ipairs(lines) do
+    local c = clip(map_box(inv, l), w, h)
+    if c then out[#out + 1] = c end
+  end
+  return out
+end
+
 local function reservations(spec, transform)
   local out = {}
   for _, r in ipairs(spec.reserve or {}) do
@@ -94,14 +116,7 @@ local function frame(spec, m, w, h, opts)
   local inv = M.invert(m)
   local text = clip(map_box(inv, opts.block or spec.text), w, h)
   assert(text, "layout: the text block lies outside its frame")
-  local lines
-  if spec.lines then
-    lines = {}
-    for _, l in ipairs(spec.lines) do
-      local c = clip(map_box(inv, l), w, h)
-      if c then lines[#lines + 1] = c end
-    end
-  end
+  local lines = spec.lines and M.carry_lines(spec.lines, inv, w, h)
   local s = {}
   for k, v in pairs(spec) do s[k] = v end
   s.width, s.height, s.text, s.lines = w, h, text, lines

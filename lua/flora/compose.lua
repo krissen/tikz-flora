@@ -41,6 +41,156 @@ local MARK_STEM, MARK_STEM_GAP, MARK_RULE_MIN = 26, 6, 52
 C.MARK = { size = MARK_SIZE, min = Tune.gesture.mark_min, edge = MARK_EDGE, head = MARK_HEAD,
   ink = MARK_INK, stem = MARK_STEM, stem_gap = MARK_STEM_GAP, rule_min = MARK_RULE_MIN }
 
+-- The mark's lowest ceiling, the span of its rule, x0 to x1, and the
+-- mark's centre x.
+local function mark_bounds(spec, inset, clip_y)
+  local H = spec.height
+  local hx = spec.text.x0 - 6
+  local x0, x1 = hx - MARK_SIZE / 2, spec.text.x1
+  local ceil
+  if spec.running_head == nil then
+    ceil = math.min(H, spec.header_y - 3 + MARK_SIZE / 2)
+  elseif spec.running_head then
+    ceil = math.min(H - MARK_EDGE, spec.header_y - MARK_HEAD)
+  else
+    ceil = H - MARK_EDGE
+  end
+  if inset and inset > 0 then ceil = math.min(ceil, H - inset - MARK_HEAD) end
+  if clip_y then ceil = math.min(ceil, clip_y - MARK_HEAD) end
+  if spec.header == "body" and spec.body_top then ceil = math.min(ceil, spec.body_top - MARK_HEAD) end
+  return ceil, x0, x1, hx
+end
+
+-- How far any header kind may paint past its box, as a share of its size
+-- (ornaments.lua: reach). Placement keeps this much clear of obstacles
+-- whatever the kind, so a mark's place does not depend on its kind: an
+-- adapter that draws another kind over a shared drawing places it alike.
+local function mark_reach()
+  local r = 0
+  for _, k in ipairs(Orn.of("header")) do r = math.max(r, k.reach or 0) end
+  return r
+end
+
+-- What a plant spec's mark must keep clear of besides its band: the
+-- reserved boxes, which clip the page (C.frames), and the forbidden corner
+-- of a frame's notch clip (clip_x1, clip_y1), as {x0, y0, x1, y1} in the
+-- frame's coordinates.
+local function mark_obstacles(spec)
+  local out = {}
+  for _, r in ipairs(spec.reserve or {}) do out[#out + 1] = { r[1], r[2], r[3], r[4] } end
+  if spec.clip_x1 then
+    out[#out + 1] = { spec.clip_x1, 0, spec.width, spec.clip_y1 or spec.height }
+  end
+  return out
+end
+
+-- The mark's size and box top inside its band [lo, ceil], clear of the
+-- obstacles. A mark of size s whose box top is t paints over its box
+-- widened by e = reach * s + MARK_HEAD on every side, centred on hx:
+--   x in [hx - s/2 - e, hx + s/2 + e], y in [t - s - e, t + e].
+-- That must touch no obstacle, wherever the obstacle lies (beside the mark,
+-- under the band's floor, over its ceiling), and stay MARK_HEAD inside the
+-- paper's left edge; the box itself stays inside the band. The largest such
+-- mark, up to MARK_SIZE, is taken, at the highest box top it fits at; nil
+-- when none of at least `min` fits. With no obstacle in the way this is the
+-- band itself: min(MARK_SIZE, ceil - lo), at ceil.
+--
+-- A smaller mark fits wherever a larger one does (the same centre, its
+-- painted extent inside the larger one's), so the sizes that fit run from
+-- `min` up to a largest one. At that size some limit is just met: the band
+-- (s = ceil - lo), the paper's edge, an obstacle's side (beyond that size
+-- it starts to overlap the mark sideways), or a stretch between two
+-- vertical limits (the band's floor or an obstacle's top below, the
+-- ceiling or an obstacle's bottom above) closing to one box top. Those
+-- sizes are tried from the largest down; the first that fits is it.
+local EXACT = 1e-9
+
+local function clear_place(ceil, lo, hx, min, reach, obstacles)
+  local g = MARK_HEAD
+  local cap = math.min(MARK_SIZE, ceil - lo)
+  -- The paper's left edge.
+  if hx - (0.5 + reach) * cap < g then cap = (hx - g) / (0.5 + reach) end
+  if cap < min then return nil end
+  -- The obstacles a mark of size s may meet: those that overlap it sideways.
+  local function across(o, s)
+    local half = (0.5 + reach) * s + g
+    return o[3] > hx - half + EXACT and o[1] < hx + half - EXACT
+  end
+  -- The highest box top for size s, or nil: the ceiling, or just under an
+  -- obstacle, whichever is highest and clear.
+  local function top_for(s)
+    local e = reach * s + g
+    local tops = { ceil }
+    for _, o in ipairs(obstacles) do
+      if across(o, s) and o[2] - e < ceil then tops[#tops + 1] = o[2] - e end
+    end
+    table.sort(tops, function(a, b) return a > b end)
+    for _, t in ipairs(tops) do
+      if t - s < lo - EXACT then return nil end
+      local clear = true
+      for _, o in ipairs(obstacles) do
+        if across(o, s) and o[4] > t - s - e + EXACT and o[2] < t + e - EXACT then clear = false; break end
+      end
+      if clear then return t end
+    end
+  end
+  local t = top_for(cap)
+  if t then return cap, t end
+  -- The sizes at which a limit is just met (see above).
+  local r1, r2 = 1 + reach, 1 + 2 * reach
+  local sizes = {}
+  local function try(s) if s >= min and s < cap then sizes[#sizes + 1] = s end end
+  for _, o in ipairs(obstacles) do
+    try((hx - g - o[3]) / (0.5 + reach))
+    try((o[1] - hx - g) / (0.5 + reach))
+    try((o[2] - g - lo) / r1)
+    try((ceil - o[4] - g) / r1)
+    for _, p in ipairs(obstacles) do try((p[2] - o[4] - 2 * g) / r2) end
+  end
+  try(min)
+  table.sort(sizes, function(a, b) return a > b end)
+  for _, s in ipairs(sizes) do
+    t = top_for(s)
+    if t then return s, t end
+  end
+  return nil
+end
+
+-- C.header_mark once its bounds, the smallest mark `min`, the mark's reach
+-- and its obstacles are known.
+local function mark_at(lines, stem_runs, ceil, x0, x1, hx, min, reach, obstacles)
+  local floor = 0
+  for _, l in ipairs(lines or {}) do
+    if l.x1 > x0 and l.x0 < x1 and l.y0 < ceil then
+      if l.y1 > ceil then return nil end
+      floor = math.max(floor, l.y1)
+    end
+  end
+  local band = ceil - (floor + MARK_INK)
+  if band < min then return nil, band end
+  local size, top = clear_place(ceil, floor + MARK_INK, hx, min, reach or 0, obstacles or {})
+  if not size then return nil, band end
+  local y = top - size / 2
+  -- The rule runs right from the mark until a foot run beside it begins,
+  -- or an obstacle across its line; one that covers its start leaves it out.
+  local rx0, rx1 = hx + 4 * size / MARK_SIZE, x1
+  local stem
+  for _, r in ipairs(stem_runs or {}) do
+    if r[3] > rx0 and r[1] < x1 then
+      local d = math.max(r[2] - y, y - r[4], 0)
+      if not stem or d < stem then stem = d end
+      if d < MARK_STEM then rx1 = math.min(rx1, r[1] - MARK_STEM_GAP) end
+    end
+  end
+  for _, o in ipairs(obstacles or {}) do
+    if o[2] < y + MARK_HEAD and o[4] > y - MARK_HEAD and o[3] > rx0 and o[1] < rx1 then
+      rx1 = o[1] <= rx0 and rx0 or math.min(rx1, o[1] - MARK_HEAD)
+    end
+  end
+  local rule = rx1 - rx0 >= MARK_RULE_MIN and { rx0, rx1 } or nil
+  return { y = y, size = size, rule = rule, stem = stem, band = band }
+end
+
 -- Where the running-head mark and its rule go: at the top of the free band
 -- between the lowest ceiling (paper edge, running head, page inset, header
 -- clip when given, body top) and the highest measured ink under it across the
@@ -58,44 +208,44 @@ C.MARK = { size = MARK_SIZE, min = Tune.gesture.mark_min, edge = MARK_EDGE, head
 -- their placement.
 -- spec.stem_runs ({x0, y0, x1, y1} boxes in this frame's coordinates) are
 -- where the page's plants run their main stems along a foot (C.frames).
+-- The mark is also kept whole clear of the page's reserved boxes and a
+-- frame's notch clip (mark_obstacles): moved down its band, made smaller,
+-- or left out; its rule stops short of them.
 function C.header_mark(spec, inset, clip_y)
-  local H = spec.height
-  local hx = spec.text.x0 - 6
-  local x0, x1 = hx - MARK_SIZE / 2, spec.text.x1
-  local ceil
-  if spec.running_head == nil then
-    ceil = math.min(H, spec.header_y - 3 + MARK_SIZE / 2)
-  elseif spec.running_head then
-    ceil = math.min(H - MARK_EDGE, spec.header_y - MARK_HEAD)
-  else
-    ceil = H - MARK_EDGE
+  local ceil, x0, x1, hx = mark_bounds(spec, inset, clip_y)
+  return mark_at(spec.lines, spec.stem_runs, ceil, x0, x1, hx, Tune.gesture.mark_min,
+    mark_reach(), mark_obstacles(spec))
+end
+
+-- The margin-mode header clip's line (gesture.header_clip) for a plant
+-- spec, or nil.
+local function header_clip_y(spec)
+  if (Tune.gesture.header_clip or 0) > 0 and spec.frametitle and spec.header_y then
+    return spec.header_y - (Tune.gesture.header_gap or 0)
   end
-  if inset and inset > 0 then ceil = math.min(ceil, H - inset - MARK_HEAD) end
-  if clip_y then ceil = math.min(ceil, clip_y - MARK_HEAD) end
-  if spec.header == "body" and spec.body_top then ceil = math.min(ceil, spec.body_top - MARK_HEAD) end
-  local floor = 0
-  for _, l in ipairs(spec.lines or {}) do
-    if l.x1 > x0 and l.x0 < x1 and l.y0 < ceil then
-      if l.y1 > ceil then return nil end
-      floor = math.max(floor, l.y1)
+end
+
+-- Where a plant spec's mark goes (C.header_mark), or nil: against the page
+-- inset and, unless the mark is `held` until a margin-mode header clip
+-- ends, against that clip.
+local function mark_place(spec, held)
+  if not spec.header_y then return nil end
+  local inset = spec.top_inset or Tune.gesture.top_inset or 0
+  return C.header_mark(spec, inset, not held and header_clip_y(spec) or nil)
+end
+
+-- The mark at `place` for a plant spec, as a function of a painter: its
+-- rule, then an ornament of the header slot, its kind and drawing taken
+-- from the plant's stream `rng`.
+local function mark_painter(spec, rng, place)
+  local hx, hy, r = spec.text.x0 - 6, place.y, place.size / 2
+  local mark = Orn.pick(rng:fork("choose header"), "header", spec.ornaments)
+  return function(pt)
+    if place.rule then
+      pt:stroke(G.polyline({ { place.rule[1], hy }, { place.rule[2], hy } }), pal.ink, 0.4, 0.9)
     end
+    if mark then Orn.draw(mark, pt, rng:fork("header"), { hx - r, hy - r, hx + r, hy + r }) end
   end
-  local band = ceil - (floor + MARK_INK)
-  if band < Tune.gesture.mark_min then return nil, band end
-  local size = math.min(MARK_SIZE, band)
-  local y = ceil - size / 2
-  -- The rule runs right from the mark until a foot run beside it begins.
-  local rx0, rx1 = hx + 4 * size / MARK_SIZE, x1
-  local stem
-  for _, r in ipairs(spec.stem_runs or {}) do
-    if r[3] > rx0 and r[1] < x1 then
-      local d = math.max(r[2] - y, y - r[4], 0)
-      if not stem or d < stem then stem = d end
-      if d < MARK_STEM then rx1 = math.min(rx1, r[1] - MARK_STEM_GAP) end
-    end
-  end
-  local rule = rx1 - rx0 >= MARK_RULE_MIN and { rx0, rx1 } or nil
-  return { y = y, size = size, rule = rule, stem = stem, band = band }
 end
 
 -- The page's foot runs (plant.foot_run), as boxes in each frame's own
@@ -168,6 +318,10 @@ local GROWN = { laid = 0.02, nodes = 0.06, holes = 0.16, details = 0.25 }
 -- A title page's share of its progress taken by its title furniture.
 local TITLE_SHARE = 0.08
 local BLOOM, BATCH = 3, { stems = 4, sprays = 8, leaflets = 3, hero = 4, finish = 2 }
+-- Under a progression (progression.lua), when an element with no anchor
+-- (the running-head mark among them) is born, as a share of the page's
+-- growth; and how long an ornament takes to grow.
+local UNANCHORED_BIRTH, ORNAMENT_GROWTH = 0.82, 0.15
 
 -- Plan and paint one plant in its frame's left margin (frames.lua), onto
 -- `pt` when given, else onto a new painter, telling `prog` (Progress, when
@@ -331,17 +485,10 @@ local function plant(spec, pt, prog)
   -- Under the margin-mode header clip the mark is held back and painted after
   -- the clip ends (C.frames), so that clip does not bound it.
   local held = pt and pt.held_marks
-  local place = spec.header_y and C.header_mark(spec, inset, not held and clip_y or nil)
+  local place = mark_place(spec, held)
   local mark_fn
   if place then
-    local hx, hy, r = spec.text.x0 - 6, place.y, place.size / 2
-    local mark = Orn.pick(rng:fork("choose header"), "header", spec.ornaments)
-    mark_fn = function(pt)
-      if place.rule then
-        pt:stroke(G.polyline({ { place.rule[1], hy }, { place.rule[2], hy } }), pal.ink, 0.4, 0.9)
-      end
-      if mark then Orn.draw(mark, pt, rng:fork("header"), { hx - r, hy - r, hx + r, hy + r }) end
-    end
+    mark_fn = mark_painter(spec, rng, place)
     orn[#orn + 1] = mark_fn
   end
   -- A pendant knot hangs in the foot's corner on a cord from the foliage
@@ -452,7 +599,7 @@ local function plant(spec, pt, prog)
   local growth = spec._progression and Clock.new(g, stems, 1)
   pt.growth_clock = growth
   local function birth(at)
-    return at and growth:birth(at[1], at[2]) / growth.reach * 0.7 or 0.82
+    return at and growth:birth(at[1], at[2]) / growth.reach * 0.7 or UNANCHORED_BIRTH
   end
   local function draw(f, dur, delay)
     if clock then clock:draw(pt, f, ctx.pos[f], dur, delay)
@@ -534,10 +681,10 @@ local function plant(spec, pt, prog)
         local fn, tune = pt.frame_fn, spec.tune
         held[#held + 1] = function()
           pt:frame(fn)
-          Tune._with(tune, function() draw(f, 0.15) end)
+          Tune._with(tune, function() draw(f, ORNAMENT_GROWTH) end)
         end
       else
-        draw(f, 0.15)
+        draw(f, ORNAMENT_GROWTH)
       end
       paid(1)
     end
@@ -619,8 +766,10 @@ local function end_header_clip(pt)
   pt:frame(fn)
 end
 
--- C.page, after the page's palette is in place.
-function C.frames(spec)
+-- The page's frames (frames.lua), after its top inset is applied to its
+-- text block, each told the page's foot runs; and that inset. C.frames and
+-- C.header_marks lay a page out alike.
+local function page_frames(spec)
   -- The wreath frames the text below the running head, not the head itself.
   if spec.header == "body" and spec.body_top then
     spec.top_inset = math.max(spec.height - spec.body_top, Tune.gesture.top_inset or 0)
@@ -632,6 +781,168 @@ function C.frames(spec)
   end
   local frames = Frames.of(spec)
   C.stem_runs(frames, spec)
+  return frames, inset
+end
+
+-- Whether a page's marks wait for its margin-mode header clip to end
+-- (header_clip): its plants place them without that clip.
+local function marks_held(spec)
+  if spec.header == "body" and spec.body_top then return false end
+  return (Tune.gesture.header_clip or 0) > 0 and spec.header_y ~= nil and spec.frametitle and true or false
+end
+
+local function deep_copy(t)
+  if type(t) ~= "table" then return t end
+  local out = {}
+  for k, v in pairs(t) do out[k] = deep_copy(v) end
+  return out
+end
+
+-- The running-head marks of a page, placed without growing it, for any
+-- measured lines: C.mark_layout(spec) lays the page out once (its frames,
+-- foot runs, ceilings and tune, as C.page would), and its :place(lines)
+-- returns
+--   a list of { frame = k, y, size, rule } (C.header_mark), one for each of
+--   the page's frames that holds a mark, in frame order, for a page whose
+--   measured lines are `lines` (page coordinates; spec.lines is not read);
+--   and `lines` cut to those that decide the marks: each line that may
+--   bound a mark from below or crosses its ceiling, whatever its frame.
+--   Lines cut to these place the same marks with the same layout.
+-- The spec is not changed. In most layouts the frames depend on the text
+-- block, not on the lines, so the layout depends on everything in the spec
+-- but its lines, and pages that differ only in their lines can share one.
+-- Where the frames follow the lines (Frames.follows_lines: flank's column,
+-- the bouquet's and the crowns' title block), the layout is built from
+-- spec.lines, as the page's frames are: `lines` then set only the marks'
+-- floors, and a layout is shared only by pages whose spec.lines are alike.
+--
+-- A page that a pattern fills (pattern.lua) has no marks.
+--
+-- C.page paints only the marks, and nothing else of the page, for a spec
+-- whose marks_only holds such a list: the same rule and ornament, in the
+-- same clips, as on the full page. An adapter that shows one drawing on
+-- several pages can so paint each page's own marks over it, placed by that
+-- page's own geometry.
+local MarkLayout = {}
+MarkLayout.__index = MarkLayout
+
+function C.mark_layout(spec)
+  local s = deep_copy(spec)
+  if not Frames.follows_lines(s) then s.lines = nil end
+  local frames = {}
+  -- A page filled with a pattern grows no plant, so it has no mark.
+  if s.pattern and require("flora.pattern").applies(s) then return setmetatable({ frames = frames }, MarkLayout) end
+  Tune._with(s.tune, function()
+    local held = marks_held(s)
+    for k, f in ipairs(page_frames(s)) do
+      local fs = f.spec
+      if fs.header_y then
+        local function bounds()
+          local inset = fs.top_inset or Tune.gesture.top_inset or 0
+          local ceil, x0, x1, hx = mark_bounds(fs, inset, not held and header_clip_y(fs) or nil)
+          frames[#frames + 1] = { frame = k, inv = f.map and Frames.invert(f.map), w = fs.width, h = fs.height,
+            ceil = ceil, x0 = x0, x1 = x1, hx = hx, runs = fs.stem_runs, min = Tune.gesture.mark_min,
+            reach = math.max(MARK_SIZE, Tune.gesture.mark_min) + MARK_INK,
+            kind_reach = mark_reach(), obstacles = mark_obstacles(fs) }
+        end
+        if fs.tune then Tune._with(fs.tune, bounds) else bounds() end
+      end
+    end
+  end)
+  return setmetatable({ frames = frames }, MarkLayout)
+end
+
+function MarkLayout:place(lines)
+  lines = lines or {}
+  local marks, keep = {}, {}
+  for _, f in ipairs(self.frames) do
+    -- The lines as the frame carries them (frames.lua), for the mark.
+    local own = f.inv and Frames.carry_lines(lines, f.inv, f.w, f.h) or lines
+    local place = mark_at(own, f.runs, f.ceil, f.x0, f.x1, f.hx, f.min, f.kind_reach, f.obstacles)
+    if place then marks[#marks + 1] = { frame = f.frame, y = place.y, size = place.size, rule = place.rule } end
+    -- Each page line in this frame's coordinates, not cut to the frame: a
+    -- line the frame keeps lies inside it, so none the mark needs is lost.
+    -- With an obstacle the mark may move down its band, so the line that
+    -- sets its floor is kept wherever it lies.
+    local top, top_i
+    for i, l in ipairs(lines) do
+      local b = l
+      if f.inv then
+        local ax, ay = Frames.apply(f.inv, l.x0, l.y0)
+        local bx, by = Frames.apply(f.inv, l.x1, l.y1)
+        b = { x0 = math.min(ax, bx), y0 = math.min(ay, by), x1 = math.max(ax, bx), y1 = math.max(ay, by) }
+      end
+      if b.x1 > f.x0 and b.x0 < f.x1 and b.y0 < f.ceil then
+        if b.y1 > f.ceil - f.reach then keep[i] = true end
+        if not top or b.y1 > top then top, top_i = b.y1, i end
+      end
+    end
+    if top_i and #f.obstacles > 0 then keep[top_i] = true end
+  end
+  local cut = {}
+  for i, l in ipairs(lines) do
+    if keep[i] then cut[#cut + 1] = deep_copy(l) end
+  end
+  return marks, cut
+end
+
+-- C.mark_layout(spec):place(spec.lines), in one call.
+function C.header_marks(spec)
+  return C.mark_layout(spec):place(spec.lines)
+end
+
+-- Paints the marks of spec.marks_only (C.header_marks) where the page's
+-- plants would: after a margin-mode header clip ends, or inside a body-mode
+-- clip and the frame's own clip, each in its frame's map and tune. Each
+-- mark grows as the page's own does: under a progression it is one
+-- ornaments part with no anchor (plant's draw), and on a "watch it grow"
+-- frame (spec.grow below 1) it is born last on the growth clock. The
+-- clock's birth for an unanchored element is its reach, so a clock of any
+-- reach shows the mark alike: reach 1 stands in for the plant's.
+local function paint_marks(pt, spec, frames, clip)
+  local clock = spec.grow and spec.grow < 1 and setmetatable({ reach = 1, span = 1 / 0.75, u = spec.grow / 0.75 }, Clock) or nil
+  local held = clip and not clip.through
+  if held then
+    pt:clip_end()
+    pt.held_marks = nil
+  end
+  pt:begin_group("ornaments")
+  for _, m in ipairs(spec.marks_only) do
+    local f = assert(frames[m.frame], "marks_only: the page has no frame " .. tostring(m.frame))
+    assert(type(m.y) == "number" and type(m.size) == "number" and m.size > 0, "marks_only: a mark needs y and size")
+    local fs = f.spec
+    pt:frame(f.fn)
+    local cl = not held and f.fn and fs.clip_x1
+    if spec.probe or spec.keep_bounds then cl = nil end
+    if cl then
+      local ch, w, h = fs.clip_y1 or fs.height, fs.width, fs.height
+      pt:clip_begin({
+        { "m", 0, 0 }, { "l", cl, 0 }, { "l", cl, ch },
+        { "l", w, ch }, { "l", w, h }, { "l", 0, h }, { "z" },
+      })
+    end
+    local paint = mark_painter(fs, Rng.new(fs.seed or 1), m)
+    local function mark(p)
+      if fs.tune then Tune._with(fs.tune, function() paint(p) end) else paint(p) end
+    end
+    if clock then
+      clock:draw(pt, mark, nil, ORNAMENT_GROWTH)
+    elseif spec._progression then
+      Progression.part(pt, "ornaments", nil, UNANCHORED_BIRTH, ORNAMENT_GROWTH, function() mark(pt) end)
+    else
+      mark(pt)
+    end
+    if pt.gilt_pending then require("flora.orn_raster").flush(pt) end
+    if cl then pt:clip_end() end
+  end
+  pt:end_group()
+  pt:frame(nil)
+  if clip and clip.through then pt:clip_end() end
+end
+
+-- C.page, after the page's palette is in place.
+function C.frames(spec)
+  local frames, inset = page_frames(spec)
   local prog = progress(spec.progress)
   local pt = Paint.new({ backend = spec.backend or os.getenv("FLORA_BACKEND"), gilt = spec.gilt, backdrop = Color.backdrop(spec.backdrop) })
   pt.probe = spec.probe
@@ -654,6 +965,13 @@ function C.frames(spec)
     })
   end
   local clip = header_clip(pt, spec)
+  if spec.marks_only then
+    paint_marks(pt, spec, frames, clip)
+    for _ in ipairs(spec.reserve or {}) do pt:clip_end() end
+    if page_clip then pt:clip_end() end
+    prog:at(1)
+    return pt
+  end
   -- A page given a pattern is filled with it instead of flora.
   if spec.pattern and require("flora.pattern").paint(spec, pt) then
     if clip and not clip.through then end_header_clip(pt) elseif clip then pt:clip_end() end
