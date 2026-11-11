@@ -29,21 +29,25 @@ local pal = Paint.palette
 local C = {}
 local pi = math.pi
 local HERO_TOP = 8
--- The running-head mark: its full size, the smallest size worth drawing, and
--- its clearances from the paper's edge, from the running head or a clip, and
--- from ink. A plant's foot run less than MARK_STEM pt above or below the
--- rule runs beside it: there the stem underlines the head, so the rule stops
--- MARK_STEM_GAP pt short of it, and is left out when less than MARK_RULE_MIN
--- pt of it would remain.
-local MARK_SIZE, MARK_MIN, MARK_EDGE, MARK_HEAD, MARK_INK = 26, 16, 6, 2, 2
+-- The running-head mark: its full size, and its clearances from the paper's
+-- edge, from the running head or a clip, and from ink. The smallest size
+-- worth drawing is gesture.mark_min (tune.lua). A plant's foot run less than
+-- MARK_STEM pt above or below the rule runs beside it: there the stem
+-- underlines the head, so the rule stops MARK_STEM_GAP pt short of it, and is
+-- left out when less than MARK_RULE_MIN pt of it would remain.
+local MARK_SIZE, MARK_EDGE, MARK_HEAD, MARK_INK = 26, 6, 2, 2
 local MARK_STEM, MARK_STEM_GAP, MARK_RULE_MIN = 26, 6, 52
-C.MARK = { size = MARK_SIZE, min = MARK_MIN, edge = MARK_EDGE, head = MARK_HEAD,
+-- min is the default minimum; header_mark reads the tuned one.
+C.MARK = { size = MARK_SIZE, min = Tune.gesture.mark_min, edge = MARK_EDGE, head = MARK_HEAD,
   ink = MARK_INK, stem = MARK_STEM, stem_gap = MARK_STEM_GAP, rule_min = MARK_RULE_MIN }
 
 -- Where the running-head mark and its rule go: at the top of the free band
 -- between the lowest ceiling (paper edge, running head, page inset, header
--- clip, body top) and the highest measured ink under it across the rule's
--- span. Returns nil when the band cannot hold the mark whole, else
+-- clip when given, body top) and the highest measured ink under it across the
+-- rule's span. A mark painted outside the header clip (C.frames holds it
+-- back until the clip ends) is placed without clip_y. Returns nil and the
+-- band (nil when ink crosses the ceiling) when the band cannot hold the mark
+-- whole, else
 -- { y = centre, size = edge length, rule = { x0, x1 } or nil when it is left
 --   out, stem = vertical distance to the nearest foot run over the rule's
 --   span, or nil when none overlaps it }.
@@ -77,7 +81,7 @@ function C.header_mark(spec, inset, clip_y)
     end
   end
   local band = ceil - (floor + MARK_INK)
-  if band < MARK_MIN then return nil end
+  if band < Tune.gesture.mark_min then return nil, band end
   local size = math.min(MARK_SIZE, band)
   local y = ceil - size / 2
   -- The rule runs right from the mark until a foot run beside it begins.
@@ -91,7 +95,7 @@ function C.header_mark(spec, inset, clip_y)
     end
   end
   local rule = rx1 - rx0 >= MARK_RULE_MIN and { rx0, rx1 } or nil
-  return { y = y, size = size, rule = rule, stem = stem }
+  return { y = y, size = size, rule = rule, stem = stem, band = band }
 end
 
 -- The page's foot runs (plant.foot_run), as boxes in each frame's own
@@ -324,16 +328,21 @@ local function plant(spec, pt, prog)
   -- Gilt ornaments claim their space before the sprays fill in.
   -- The mark and its rule are drawn whole inside the free band, or not at all.
   -- Beside a foot run the stem is the head's underline; the rule gives way to it.
-  local place = spec.header_y and C.header_mark(spec, inset, clip_y)
+  -- Under the margin-mode header clip the mark is held back and painted after
+  -- the clip ends (C.frames), so that clip does not bound it.
+  local held = pt and pt.held_marks
+  local place = spec.header_y and C.header_mark(spec, inset, not held and clip_y or nil)
+  local mark_fn
   if place then
     local hx, hy, r = spec.text.x0 - 6, place.y, place.size / 2
     local mark = Orn.pick(rng:fork("choose header"), "header", spec.ornaments)
-    orn[#orn + 1] = function(pt)
+    mark_fn = function(pt)
       if place.rule then
         pt:stroke(G.polyline({ { place.rule[1], hy }, { place.rule[2], hy } }), pal.ink, 0.4, 0.9)
       end
       if mark then Orn.draw(mark, pt, rng:fork("header"), { hx - r, hy - r, hx + r, hy + r }) end
     end
+    orn[#orn + 1] = mark_fn
   end
   -- A pendant knot hangs in the foot's corner on a cord from the foliage
   -- above, at the lowest place with room for it; its size and place vary
@@ -518,7 +527,20 @@ local function plant(spec, pt, prog)
     end)
   end
   layer("ornaments", function()
-    for _, f in ipairs(orn) do draw(f, 0.15); paid(1) end
+    for _, f in ipairs(orn) do
+      if f == mark_fn and held then
+        -- The same draw, later: in this frame's map and tune, growing as
+        -- the other ornaments do.
+        local fn, tune = pt.frame_fn, spec.tune
+        held[#held + 1] = function()
+          pt:frame(fn)
+          Tune._with(tune, function() draw(f, 0.15) end)
+        end
+      else
+        draw(f, 0.15)
+      end
+      paid(1)
+    end
     if growth then
       pt.progression:alternate(pt, function()
         for _,it in ipairs(sparkles) do
@@ -577,7 +599,24 @@ local function header_clip(pt, spec)
   local w = spec.width
   pt:clip_begin({ { "m", 0, 0 }, { "l", w, 0 }, { "l", w, y }, { "l", 0, y }, { "z" } })
   pt.header_clip = y
+  -- Running-head marks the plants hold back until this clip ends.
+  if not through then pt.held_marks = {} end
   return { through = through }
+end
+
+-- Ends the margin-mode header clip, then paints the running-head marks the
+-- plants held back under it: above every plant, still inside the page inset
+-- and the reserved boxes, in the ornaments layer of the page.
+local function end_header_clip(pt)
+  pt:clip_end()
+  local held = pt.held_marks
+  pt.held_marks = nil
+  if not held or #held == 0 then return end
+  local fn = pt.frame_fn
+  pt:begin_group("ornaments")
+  for _, paint in ipairs(held) do paint() end
+  pt:end_group()
+  pt:frame(fn)
 end
 
 -- C.page, after the page's palette is in place.
@@ -617,7 +656,7 @@ function C.frames(spec)
   local clip = header_clip(pt, spec)
   -- A page given a pattern is filled with it instead of flora.
   if spec.pattern and require("flora.pattern").paint(spec, pt) then
-    if clip then pt:clip_end() end
+    if clip and not clip.through then end_header_clip(pt) elseif clip then pt:clip_end() end
     for _ in ipairs(spec.reserve or {}) do pt:clip_end() end
     if page_clip then pt:clip_end() end
     prog:at(1)
@@ -625,7 +664,7 @@ function C.frames(spec)
   end
   if #frames == 1 and not frames[1].fn then
     plant(spec, pt, prog)
-    if clip then pt:clip_end() end
+    if clip and not clip.through then end_header_clip(pt) elseif clip then pt:clip_end() end
     for _ in ipairs(spec.reserve or {}) do pt:clip_end() end
     if page_clip then pt:clip_end() end
     prog:at(1)
@@ -665,7 +704,7 @@ function C.frames(spec)
     cover = cover + pt.coverage / #frames
   end
   pt:frame(nil)
-  if clip and not clip.through then pt:clip_end() end
+  if clip and not clip.through then end_header_clip(pt) end
   -- Title furniture paints over the finished crowns, in page coordinates;
   -- while the page grows it waits for the plants. It stays inside the body
   -- clip in body mode, so the crest cannot sit in the header.
