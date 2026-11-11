@@ -310,4 +310,106 @@ do
   end
 end
 
+-- Marks placed and painted on their own (C.mark_layout, C.header_marks and
+-- spec.marks_only), for a page that shows a drawing shared with other
+-- pages: placed as C.page would place them from the page's own lines, and
+-- painted alone in the same place, clips and kind as on the full page.
+do
+  local Serial = require("flora.serial")
+  local function page_spec(layout, header, top, frametitle, seed)
+    local s = slide({ running_head = true, header = header,
+      lines = { ink(top), { x0 = 71.13, x1 = 300, y0 = 90, y1 = 100 } } })
+    s.layout, s.seed, s.page, s.frametitle = layout, seed or 3, 1, frametitle
+    if header == "body" then s.body_top = frametitle and top + 6 or s.text.y1 end
+    s.tune = { gesture = { top_inset = 20, header_clip = 1, header_gap = 12 } }
+    return s
+  end
+  -- Each header mark C.page paints: kind, page box, clip depth.
+  local function painted(spec)
+    local out, heroes = {}, 0
+    local draw, hero = Orn.draw, require("flora.flower").hero
+    require("flora.flower").hero = function(...) heroes = heroes + 1; return hero(...) end
+    Orn.draw = function(kind, pt, rng, box, o)
+      local k = type(kind) == "string" and Orn.kinds[kind] or kind
+      if k.slot == "header" then
+        local pj = pt:_pj()
+        local x0, y0, x1, y1 = box[1], box[2], box[3], box[4]
+        if pj then x0, y0 = pj(x0, y0); x1, y1 = pj(x1, y1) end
+        out[#out + 1] = string.format("%s %.6f %.6f %.6f %.6f clips %d", k.name,
+          math.min(x0, x1), math.min(y0, y1), math.max(x0, x1), math.max(y0, y1), pt.clips or 0)
+      end
+      return draw(kind, pt, rng, box, o)
+    end
+    local ok, pt = pcall(Compose.page, spec)
+    Orn.draw, require("flora.flower").hero = draw, hero
+    assert(ok, pt)
+    return out, pt, heroes
+  end
+  local forms = { { "one-line", 210.60, true }, { "two-line", TWO_LINE, true }, { "untitled", 150, nil } }
+  for _, layout in ipairs({ "left", "surround", "right", "centered", "split" }) do
+    for _, header in ipairs({ "margin", "body" }) do
+      for _, form in ipairs(forms) do
+        local tag = string.format("%s, %s, %s", layout, header, form[1])
+        local spec = page_spec(layout, header, form[2], form[3])
+        local before = Serial.encode(spec)
+        local marks, cut = Compose.header_marks(spec)
+        H.check(Serial.encode(spec) == before, tag .. ": placing the marks must not change the spec")
+        local full = painted(page_spec(layout, header, form[2], form[3]))
+        H.check(#marks == #full, string.format("%s: %d marks placed, %d painted on the page", tag, #marks, #full))
+        -- Painted alone, the marks match the full page's: kind, box, clips.
+        local alone_spec = page_spec(layout, header, form[2], form[3])
+        alone_spec.marks_only = marks
+        local alone, pt, heroes = painted(alone_spec)
+        H.check(table.concat(alone, "; ") == table.concat(full, "; "),
+          tag .. ": marks painted alone must match the page's\n  " .. table.concat(full, "; ") .. "\n  " .. table.concat(alone, "; "))
+        H.check(heroes == 0, tag .. ": painting the marks alone grows no plant")
+        for _, b in ipairs(pt.boxes) do
+          H.check(b.tag == "ornaments", tag .. ": marks alone paint only the ornaments group, not " .. tostring(b.tag))
+        end
+        -- The cut lines place the same marks; the body line far below is cut.
+        local again = Compose.header_marks(page_spec(layout, header, form[2], form[3]))
+        local recut = page_spec(layout, header, form[2], form[3])
+        recut.lines = cut
+        H.check(Serial.encode(Compose.header_marks(recut)) == Serial.encode(marks), tag .. ": the cut lines must place the same marks")
+        H.check(Serial.encode(again) == Serial.encode(marks), tag .. ": placing is repeatable")
+        for _, l in ipairs(cut) do
+          H.check(l.y1 > 100, tag .. ": the body line far under the mark must be cut")
+        end
+      end
+    end
+  end
+  -- One layout serves every page that differs only in its lines.
+  do
+    local layout = Compose.mark_layout(page_spec("surround", "margin", 150, true))
+    for _, form in ipairs(forms) do
+      local spec = page_spec("surround", "margin", form[2], true)
+      H.check(Serial.encode((layout:place(spec.lines))) == Serial.encode((Compose.header_marks(spec))),
+        "a shared layout must place " .. form[1] .. " lines as a fresh one does")
+    end
+  end
+  -- A reused drawing keeps the whole text block clear as one line, which
+  -- crosses every ceiling: no mark of its own. The page's own lines placed
+  -- through the drawing's layout give the page its mark; a line across the
+  -- ceiling is kept by the cut and still leaves the mark out.
+  do
+    local drawing = page_spec("surround", "margin", 210.60, true)
+    local t = drawing.text
+    drawing.lines = { { x0 = t.x0, y0 = t.y0, x1 = t.x1, y1 = t.y1 } }
+    H.check(#Compose.header_marks(drawing) == 0, "a drawing kept clear of the whole text block has no mark")
+    local layout = Compose.mark_layout(drawing)
+    local marks = layout:place({ ink(210.60) })
+    H.check(#marks == 1 and near(marks[1].size, PH - 20 - K.head - 210.60 - K.ink),
+      "the page's own one-line title places its mark through the drawing's layout")
+    local across = { x0 = 71.13, x1 = 300, y0 = 230, y1 = 245 }
+    local none, cut = layout:place({ across, ink(150) })
+    H.check(#none == 0 and #cut == 1 and cut[1].y1 == 245, "ink across the ceiling is kept by the cut and leaves the mark out")
+  end
+  -- A mark for a frame the page does not have is refused.
+  do
+    local spec = page_spec("left", "margin", 150, nil)
+    spec.marks_only = { { frame = 2, y = 220, size = 20 } }
+    H.check(not pcall(Compose.page, spec), "marks_only must refuse a frame the page does not have")
+  end
+end
+
 H.done("test_header_mark")
