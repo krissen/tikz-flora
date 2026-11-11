@@ -56,12 +56,18 @@ do
   end
 end
 
--- The minimum is gesture.mark_min, 12 pt by default; a caller that wants
+-- The minimum is gesture.mark_min, 10 pt by default; a caller that wants
 -- the earlier 16 pt sets it. A band between the two holds the mark only
--- under the default.
+-- under the default. Around the default: 9.99 is left out, 10 and 10.01 hold.
 do
   local Tune = require("flora.tune")
-  H.check(K.min == 12 and Tune.gesture.mark_min == 12, "the default minimum is 12 pt")
+  H.check(K.min == 10 and Tune.gesture.mark_min == 10, "the default minimum is 10 pt")
+  for _, c in ipairs({ { 9.99, false }, { 10, true }, { 10.01, true } }) do
+    local top = PH - 24 - K.head
+    local r = Compose.header_mark(slide({ running_head = false, lines = { ink(top - c[1] - K.ink) } }), 24)
+    H.check((r ~= nil) == c[2] and (not r or near(r.size, c[1])),
+      string.format("a %.2f pt band %s the mark at the default", c[1], c[2] and "holds" or "leaves out"))
+  end
   local ceil = PH - 24 - K.head
   local o = { running_head = false, lines = { ink(ceil - 14 - K.ink) } }
   local r = Compose.header_mark(slide(o), 24)
@@ -176,6 +182,15 @@ do
   local r = Compose.header_mark(slide(o), inset, nil)
   H.check(r and math.abs(r.size - 12.40) < 0.01 and near(r.y + r.size / 2, PH - inset - K.head),
     "outside the header clip the mark fills the 12.40 pt band under the inset")
+  -- A first title line with a taller glyph (an accented capital) raises the
+  -- ink. At the default the mark stays for ink up to 2.40 pt higher than
+  -- TWO_LINE (band 10.00); at 2.50 pt higher the band is 9.90 and it goes.
+  -- In the floral theme's title an accented capital raises the ink by about
+  -- 1.25 pt, since the title block is centred on its own height.
+  local tall = Compose.header_mark(slide({ running_head = true, lines = { ink(TWO_LINE + 2.40) } }), inset, nil)
+  H.check(tall and math.abs(tall.size - 10.00) < 0.01, "a two-line title 2.40 pt taller keeps a 10.00 pt mark")
+  local taller, b = Compose.header_mark(slide({ running_head = true, lines = { ink(TWO_LINE + 2.50) } }), inset, nil)
+  H.check(taller == nil and math.abs(b - 9.90) < 0.01, "2.50 pt taller leaves a 9.90 pt band, under the default")
 end
 
 -- Through Compose.page: the mark of a titled frame is painted once, after the
