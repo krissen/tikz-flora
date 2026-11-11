@@ -412,4 +412,169 @@ do
   end
 end
 
+-- Whole or absent, against everything that can cut a painted mark: every
+-- clip compose opens around a mark (the page inset, a body-mode body clip,
+-- a margin-mode header clip, the reserved boxes, a frame's notch) and the
+-- paper's left edge. Clipper x header mode x path (the full page, and
+-- marks_only over a shared drawing): in each cell every mark painted lies,
+-- with all it paints past its box (measured here, per kind), inside what
+-- is shown, and no rule crosses a reserved box or the notch.
+--
+-- The ceiling rows (inset, body clip, header clip) hold the mark's box to
+-- the ceiling, as compose places it: the compass paints a quarter of its
+-- size past its box on every side and so reaches past those clips. That
+-- is left as it is (pages without obstacles keep their marks exactly), so
+-- those rows weigh the compass out and no row holds the compass's top to
+-- them. The obstacle rows hold every kind, the compass too, to the boxes.
+do
+  local Paint = require("flora.paint")
+  local Rng = require("flora.rng")
+  local P = getmetatable(Paint.new({})).__index
+  -- How far each header kind paints past its box, per side, as a share of
+  -- its size.
+  local over = {}
+  for _, k in ipairs(Orn.of("header")) do
+    local x0, y0, x1, y1 = math.huge, math.huge, -math.huge, -math.huge
+    local pt = Paint.new({})
+    pt.probe = function(x, y, pad)
+      x0, x1 = math.min(x0, x - pad), math.max(x1, x + pad)
+      y0, y1 = math.min(y0, y - pad), math.max(y1, y + pad)
+    end
+    Orn.draw(k, pt, Rng.new(3), { 90, 90, 110, 110 })
+    over[k.name] = { math.max(0, 90 - x0) / 20, math.max(0, 90 - y0) / 20, math.max(0, x1 - 110) / 20, math.max(0, y1 - 110) / 20 }
+  end
+  local function base(mode, seed)
+    local s = slide({ running_head = true, header = mode, lines = { ink(150) } })
+    s.layout, s.seed, s.page, s.frametitle = "left", seed, 1, nil
+    if mode == "body" then s.body_top = s.text.y1 end
+    s.mix = { density = 0.1 }
+    s.tune = { gesture = { top_inset = 20, header_clip = 1, header_gap = 12 } }
+    return s
+  end
+  -- Each row: a name, a change to the spec, and the regions to test in page
+  -- coordinates: `shown` the area a mark must stay inside, `out` boxes it
+  -- must stay out of, rule boxes its rule must not cross.
+  local rows = {
+    { name = "reserve over the band", set = function(s) s.reserve = { { 0, PH - 48, 95, PH } } end },
+    { name = "reserve beside the mark", set = function(s) s.reserve = { { 74, 214, 90, PH } } end },
+    { name = "reserve across the rule", set = function(s) s.reserve = { { 150, 200, 170, PH } } end },
+    { name = "reserve under the mark", set = function(s) s.reserve = { { 40, 150, 120, 222 } } end },
+    { name = "notch", set = function(s) s.layout = "right"; s.clip_x1, s.clip_y1 = 30, 230 end, frame = true },
+    { name = "paper edge", set = function(s) s.text.x0 = 22 end },
+    { name = "page inset", ceiling = true, set = function() end },
+    { name = "body clip", ceiling = true, set = function(s) if s.header == "body" then s.body_top = 228 end end },
+    { name = "header clip", ceiling = true, set = function(s) s.frametitle = true; s.header_right = 200 end },
+  }
+  local function shown(s)
+    local top = PH - 20
+    if s.header == "body" and s.body_top then top = math.min(top, s.body_top) end
+    return top
+  end
+  local cells, failures = 0, 0
+  local function cell(row, mode, path, seed)
+    local s = base(mode, seed)
+    row.set(s)
+    if row.ceiling then s.ornaments = { compass = 0 } end
+    local spec = s
+    if path == "marks_only" then
+      local marks = Compose.header_marks(s)
+      spec = base(mode, seed); row.set(spec)
+      if row.ceiling then spec.ornaments = { compass = 0 } end
+      spec.marks_only = marks
+    end
+    local drawn, rules = {}, {}
+    local draw, stroke = Orn.draw, P.stroke
+    Orn.draw = function(kind, pt, rng, box, o)
+      local k = type(kind) == "string" and Orn.kinds[kind] or kind
+      if k.slot == "header" then
+        local pj = pt:_pj()
+        local x0, y0, x1, y1 = box[1], box[2], box[3], box[4]
+        if pj then x0, y0 = pj(x0, y0); x1, y1 = pj(x1, y1) end
+        local size, ov = math.abs(x1 - x0), over[k.name]
+        -- A mirrored frame swaps left and right overshoot.
+        local l, r = ov[1], ov[3]
+        if x1 < x0 then l, r = r, l end
+        x0, x1 = math.min(x0, x1), math.max(x0, x1)
+        y0, y1 = math.min(y0, y1), math.max(y0, y1)
+        drawn[#drawn + 1] = { k.name, x0 - l * size, y0 - ov[2] * size, x1 + r * size, y1 + ov[4] * size }
+      end
+      return draw(kind, pt, rng, box, o)
+    end
+    P.stroke = function(pt, paths, rgb, w, a, ...)
+      if w == 0.4 and a == 0.9 and #paths == 2 and paths[1][1] == "m" and paths[2][1] == "l" then
+        local pj = pt:_pj()
+        local p, q = paths[1], paths[2]
+        local x0, y0, x1, y1 = p[2], p[3], q[2], q[3]
+        if pj then x0, y0 = pj(x0, y0); x1, y1 = pj(x1, y1) end
+        if math.abs(y0 - y1) < 1e-9 then rules[#rules + 1] = { math.min(x0, x1), y0, math.max(x0, x1) } end
+      end
+      return stroke(pt, paths, rgb, w, a, ...)
+    end
+    local ok, err = pcall(Compose.page, spec)
+    Orn.draw, P.stroke = draw, stroke
+    assert(ok, err)
+    cells = cells + 1
+    if os.getenv("MARK_MATRIX_DEBUG") then
+      for _, d in ipairs(drawn) do io.write(string.format("  %s %s %s %d: %s %.2f %.2f %.2f %.2f\n", row.name, mode, path, seed, d[1], d[2], d[3], d[4], d[5])) end
+      for _, r in ipairs(rules) do io.write(string.format("  %s %s %s %d: rule %.2f..%.2f at %.2f\n", row.name, mode, path, seed, r[1], r[3], r[2])) end
+    end
+    local tag = string.format("%s, %s, %s, seed %d", row.name, mode, path, seed)
+    local function bad(msg) failures = failures + 1; H.check(false, tag .. ": " .. msg) end
+    -- The regions in page coordinates.
+    local outs = {}
+    for _, r in ipairs(s.reserve or {}) do outs[#outs + 1] = r end
+    if row.frame then
+      -- The right layout's frame mirrors x: its notch's corner on the page.
+      outs[#outs + 1] = { 0, 0, W - s.clip_x1, s.clip_y1 }
+    end
+    local top = shown(s)
+    if row.name == "header clip" and mode == "body" then top = math.min(top, 240.09 - 12) end
+    for _, d in ipairs(drawn) do
+      local name, x0, y0, x1, y1 = d[1], d[2], d[3], d[4], d[5]
+      if x0 < 0 or x1 > W then bad(string.format("%s crosses the paper's edge (%.2f..%.2f)", name, x0, x1)) end
+      if y1 > top + 1e-6 and name ~= "compass" then bad(string.format("%s reaches %.2f, above the clip at %.2f", name, y1, top)) end
+      for _, o in ipairs(outs) do
+        if x1 > o[1] and x0 < o[3] and y1 > o[2] and y0 < o[4] then
+          bad(string.format("%s (%.2f %.2f %.2f %.2f) meets the box %.2f %.2f %.2f %.2f", name, x0, y0, x1, y1, o[1], o[2], o[3], o[4]))
+        end
+      end
+    end
+    for _, r in ipairs(rules) do
+      for _, o in ipairs(outs) do
+        if r[3] > o[1] and r[1] < o[3] and r[2] > o[2] and r[2] < o[4] then
+          bad(string.format("the rule at %.2f crosses the box %.2f %.2f %.2f %.2f", r[2], o[1], o[2], o[3], o[4]))
+        end
+      end
+    end
+    return #drawn
+  end
+  local placed = 0
+  for _, row in ipairs(rows) do
+    for _, mode in ipairs({ "margin", "body" }) do
+      for _, path in ipairs({ "full", "marks_only" }) do
+        for _, seed in ipairs(path == "full" and { 1 } or { 1, 2, 4, 7 }) do
+          placed = placed + cell(row, mode, path, seed)
+        end
+      end
+    end
+  end
+  H.check(placed > cells / 2, string.format("the matrix must place marks, not only leave them out (%d in %d cells)", placed, cells))
+  print(string.format("whole-or-absent matrix: %d cells, %d marks, %d failures", cells, placed, failures))
+  -- Beside an obstacle the place does not depend on the kind: seeds whose
+  -- marks are a compass, a rosette, a sunburst and a quatrefoil place them
+  -- alike, so a shared drawing's kind lands where the page's own would.
+  for _, row in ipairs(rows) do
+    if not row.ceiling then
+      local first
+      for _, seed in ipairs({ 1, 2, 4, 7 }) do
+        local s = base("margin", seed)
+        row.set(s)
+        local key = require("flora.serial").encode((Compose.header_marks(s)))
+        first = first or key
+        H.check(key == first, row.name .. ": the mark's place must not depend on its kind (seed " .. seed .. ")")
+      end
+    end
+  end
+end
+
 H.done("test_header_mark")
