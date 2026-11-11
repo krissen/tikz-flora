@@ -816,6 +816,8 @@ end
 -- spec.lines, as the page's frames are: `lines` then set only the marks'
 -- floors, and a layout is shared only by pages whose spec.lines are alike.
 --
+-- A page that a pattern fills (pattern.lua) has no marks.
+--
 -- C.page paints only the marks, and nothing else of the page, for a spec
 -- whose marks_only holds such a list: the same rule and ornament, in the
 -- same clips, as on the full page. An adapter that shows one drawing on
@@ -828,6 +830,8 @@ function C.mark_layout(spec)
   local s = deep_copy(spec)
   if not Frames.follows_lines(s) then s.lines = nil end
   local frames = {}
+  -- A page filled with a pattern grows no plant, so it has no mark.
+  if s.pattern and require("flora.pattern").applies(s) then return setmetatable({ frames = frames }, MarkLayout) end
   Tune._with(s.tune, function()
     local held = marks_held(s)
     for k, f in ipairs(page_frames(s)) do

@@ -891,6 +891,26 @@ do
       if grow == 0.5 then H.check(f == "", string.format("grow 0.50, %s: the page's mark is not born yet", mode)) end
     end
   end
+  -- A page that a pattern fills grows no plant and paints no mark, so
+  -- header_marks gives it none; weights that leave no pattern to pick
+  -- grow flora, and its mark.
+  for _, pattern in ipairs({ "asanoha", { asanoha = 0 } }) do
+    local s = spec("margin", true)
+    s.pattern = pattern
+    local n = 0
+    local draw = Orn.draw
+    Orn.draw = function(kind, ...)
+      local k = type(kind) == "string" and Orn.kinds[kind] or kind
+      if k.slot == "header" then n = n + 1 end
+      return draw(kind, ...)
+    end
+    local ok, err = pcall(Compose.page, s)
+    Orn.draw = draw
+    assert(ok, err)
+    local placed = #Compose.header_marks(s)
+    H.check(placed == n and n == (type(pattern) == "string" and 0 or 1), string.format(
+      "pattern %s: %d marks placed, %d painted on the page", type(pattern) == "string" and pattern or "weighted out", placed, n))
+  end
   -- An empty list paints nothing on a plain page either.
   local ok, pt = pcall(Compose.page, alone("margin", true, {}))
   H.check(ok and pt.count == 0, "an empty marks list paints nothing")
