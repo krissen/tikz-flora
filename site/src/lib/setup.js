@@ -33,28 +33,48 @@ export function setupLine({ layout, seed, mix, ornaments = {}, palette, spin, gi
   return `\\florasetup{${parts.join(", ")}}`;
 }
 
-// The pattern keys of a mixer state, `{ name, edge, outer, scale }`: a
-// pattern (or group) name, and only the settings that differ from their
-// defaults (the first value the catalog lists). Flora, with no name, has none.
-export function patternParts({ name, edge, outer, scale } = {}, meta) {
-  if (!name) return [];
+// The pattern keys of a mixer state, `{ name, edge, hero, outer, scale }`: a
+// pattern (or group) name, and the catalog's pattern keys (settings.lua's
+// Settings.PATTERN, as catalog.pattern_keys), written only when they differ
+// from their defaults. Flora, with no name, has none. Going through the
+// catalog's list, a new pattern key reaches the line without being named here.
+export function patternParts(state = {}, meta) {
+  if (!state.name) return [];
   const s = patternDefaults(meta);
-  const parts = [`pattern=${name}`];
-  if (edge && edge !== s.edge) parts.push(`edge=${edge}`);
-  if (outer && outer !== s.outer) parts.push(`outer=${outer}`);
-  if (scale && scale !== s.scale) parts.push(`scale=${scale}`);
+  const parts = [`pattern=${state.name}`];
+  for (const k of s.keys) if (state[k] !== undefined && state[k] !== s.defaults[k]) parts.push(`${k}=${state[k]}`);
   return parts;
 }
 
-// The values of the pattern settings the catalog describes (settings
-// `edge`, `outer` and `scale`): the edges and outers it lists, the first of
-// each as the default, and scale's range, 1 being a pattern's own size.
+// The pattern settings the catalog describes, `Settings.PATTERN`'s keys in
+// catalog order: `keys`; each key's `defaults` value; `choices`, the values
+// of a key that lists them (edge, hero, outer); and `range`, `[min, max]`,
+// for a key that takes a number (scale, 1 being a pattern's own size).
 export function patternDefaults(meta) {
-  const row = (k) => meta?.catalog?.settings?.find((x) => x.key === k)?.values ?? "";
-  const list = (k) => row(k).split(",").map((v) => v.trim()).filter(Boolean);
-  const edges = list("edge"), outers = list("outer");
-  const [min, max] = (row("scale").match(/[\d.]+/g) ?? [0.25, 4]).map(Number);
-  return { edges, outers, edge: edges[0], outer: outers[0], scale: 1, min, max };
+  const keys = (meta?.catalog?.pattern_keys ?? []).map((k) => k.key);
+  const defaults = Object.fromEntries((meta?.catalog?.pattern_keys ?? []).map((k) => [k.key, k.default]));
+  const choices = {}, range = {};
+  for (const k of keys) {
+    const row = meta.catalog.settings.find((x) => x.key === k)?.values ?? "";
+    if (/^[\d.]+ to [\d.]+$/.test(row)) range[k] = row.match(/[\d.]+/g).map(Number);
+    else choices[k] = row.split(",").map((v) => v.trim()).filter(Boolean);
+  }
+  return { keys, defaults, choices, range };
+}
+
+// A mixer state's pattern keys from a URL's query (?pattern=asanoha&edge=cell
+// &hero=rosette&outer=margin&scale=1.5): each key that names one of its
+// catalog values, or a number inside its range, and none else.
+export function patternFromQuery(query, meta) {
+  const s = patternDefaults(meta);
+  const state = { name: query.get("pattern") ?? "", ...s.defaults };
+  for (const k of s.keys) {
+    const v = query.get(k);
+    if (v === null) continue;
+    if (s.choices[k]?.includes(v)) state[k] = v;
+    else if (s.range[k] && v.trim() !== "" && Number(v) >= s.range[k][0] && Number(v) <= s.range[k][1]) state[k] = Number(v);
+  }
+  return state;
 }
 
 // Page margins that leave the flora room, by layout.

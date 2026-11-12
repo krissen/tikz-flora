@@ -282,10 +282,13 @@ onmessage = async (e) => {
       spec.gilt_env = ${JSON.stringify(giltenv ?? "studio")}
       spec.gilt_look = require("flora.settings").parse("giltlook={" .. GILTLOOK .. "}").giltlook
       spec.backdrop = require("flora.settings").parse("backdrop=" .. BACKDROP).backdrop
-      -- pattern, edge, outer and scale as \\florasetup writes them ("" is flora).
+      -- The pattern and its keys (edge, hero, outer, scale: Settings.PATTERN)
+      -- as \\florasetup writes them ("" is flora).
       if PATTERN ~= "" then
-        local ps = require("flora.settings").parse(PATTERN)
-        spec.pattern, spec.pattern_edge, spec.pattern_outer, spec.pattern_scale = ps.pattern, ps.edge, ps.outer, ps.scale
+        local Settings = require("flora.settings")
+        local ps = Settings.parse(PATTERN)
+        spec.pattern = ps.pattern
+        for k in pairs(Settings.PATTERN) do spec[Settings.SPEC[k]] = ps[k] end
       end
       spec.gilt_dpi = ${px ? `math.max(50, math.min(600, ${Number(px)} / spec.width * 72.27))` : 150}
       spec.progress = PROGRESS
