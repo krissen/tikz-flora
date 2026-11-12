@@ -257,10 +257,6 @@ end
 
 M.motifs = { rosette = rosette, phyllotaxis = phyllotaxis, rose = rose, guilloche = guilloche }
 
--- The motifs that are surfaces, painted on the dark backdrop as on paper
--- over a disc of the paper (pattern.lua): the others are line work.
-M.surface = { rosette = true, rose = true }
-
 -- The roles (pattern.lua's M.roles) each motif paints with.
 M.roles = {
   rosette = { "band", "line", "a", "b", "accent" },

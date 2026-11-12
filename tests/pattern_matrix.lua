@@ -11,9 +11,9 @@
 -- distance of the two fields (or nil), ... }; a failure is a string naming
 -- the cell and the invariant it breaks:
 --
---   order     the bands keep their lightness order to the ground on both
---             backdrops, and a surface looks on the dark backdrop as on
---             paper (the same colours, its paper still the paper)
+--   order     the bands keep their lightness order to a dark ground on
+--             both backdrops, and without one the pattern's paper follows
+--             the page on the dark backdrop
 --   contrast  the band stands off what it lies on by floors.band (OKLab L)
 --   roles     every colour painted is one of the page's role colours (or
 --             a mix of two), and the pattern lists every role it paints
@@ -167,7 +167,7 @@ function M.run(floors, filter)
             end
             local surface = base.ground and shown(base.ground) or (back or Paint.palette.paper)
             if finish == "filled" and p.surface and base.fill1 then
-              -- A surface's band lies on its fields as much as on the paper.
+              -- A surface's band lies on its fields as much as on the page.
               surface = shown(base.fill1)
             end
             c.band_surface = math.abs(Color.lightness(shown(base.band)) - Color.lightness(surface))
@@ -186,19 +186,16 @@ function M.run(floors, filter)
           local L, D = seen.light, seen.dark
           local c = cells[#cells]
           if L and D then
-            if L.base.ground and D.base.ground and not (p.surface and finish == "filled" and not L.base.lit) then
+            -- A dark ground keeps its order to the bands on both backdrops.
+            if L.base.ground and D.base.ground and Color.lightness(L.base.ground) < 0.5 then
               local s1 = Color.lightness(L.shown(L.base.band)) - Color.lightness(L.shown(L.base.ground))
               local s2 = Color.lightness(D.shown(D.base.band)) - Color.lightness(D.shown(D.base.ground))
-              if s1 * s2 < 0 then fail(c, "order", "the band and the ground swap their lightness order on the dark backdrop") end
+              if s1 * s2 <= 0 then fail(c, "order", "the band and the dark ground swap their lightness order on the dark backdrop") end
             end
-            if p.surface and finish == "filled" then
-              local a, b = {}, {}
-              for _, x in ipairs(L.rec.fills) do a[key(x)] = true end
-              for _, x in ipairs(D.rec.fills) do b[key(x)] = true end
-              for k in pairs(a) do
-                if not b[k] then fail(c, "order", "a colour of the surface on paper is not on the dark backdrop"); break end
-              end
-              if not D.base.lit then fail(c, "order", "the surface is repainted on the dark backdrop") end
+            -- Without a dark ground the pattern's paper follows the page:
+            -- it is repainted on the dark backdrop with every other ink.
+            if not (D.base.ground and Color.lightness(D.base.ground) < 0.5) and D.base.lit then
+              fail(c, "order", "the pattern's paper does not follow the dark page")
             end
           end
         end

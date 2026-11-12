@@ -16,8 +16,8 @@
 --          (square, star, triangular, ...): its weight is its own
 --          name's, else the weight given to the group `symbol`, else 0.
 --   surface  true for a pattern whose filled finish is a surface of
---          fields (tiles, stars, petals) rather than line work; on a dark
---          backdrop it is painted as on paper (pattern.lua).
+--          fields (tiles, stars, petals) rather than line work: its bands
+--          lie on its fields (tests/pattern_matrix.lua measures them so).
 --   width, core, bands, line  its bands: full width in pt at scale=1, the
 --          core's share of it, "strap" or "line", and the line's width;
 --          lines_bands the character under the lines finish, if another

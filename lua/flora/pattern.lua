@@ -216,17 +216,14 @@ end
 -- kept as a share of the page's saturation, fallback = the Paint.palette
 -- colour for a part painted "look", taken at the role's lightness when
 -- `relight` }, or { paper = true }, or { gold = true }. The fields and the
--- ground are muted by the page's saturation (spec.pattern_saturation,
--- default M.SATURATION), whichever ink they take.
+-- ground are muted by the page's saturation (the saturation key, default
+-- Settings.PATTERN's), whichever ink they take.
 --
--- On a dark backdrop a pattern looks as it does on paper. A filled
--- pattern that is a surface (the module's `surface`) is painted as it is
--- (pt.metal) over a ground of the paper where it has none of its own, so
--- its paper stays light. Line work (a pattern that is not a surface, or
--- any under the lines finish) is repainted as every ink is on a dark
--- backdrop, its paper core turning to the page. A ground darker than DARK
--- lights the bands on it (Color.on_ground, as a dark backdrop would) and
--- is painted as it is on either backdrop.
+-- On a dark backdrop every ink is repainted as flora's are, and the
+-- pattern's paper follows the page: it turns to the page's own dark. A
+-- ground darker than DARK lights the bands on it (Color.on_ground, as a
+-- dark backdrop would) and is painted as it is on either backdrop, so it
+-- stays darker than its bands on paper and on a dark page alike.
 M.roles = {
   ground = { part = "leaves", L = 0.30, sat = 0.4, fallback = "ink", relight = true },
   band = { part = "leaves", L = 0.22, share = 1, fallback = "ink" },
@@ -326,14 +323,6 @@ function M.role_inks(rng, p, spec)
     base.ground = role("ground", R.ground.on and R.ground.on[p.name] or p.ground)
     base.lit = base.ground and Color.lightness(base.ground) < DARK
   end
-  -- A surface keeps its look on a dark backdrop: painted as it is, over
-  -- the paper where it has no ground.
-  local bd = spec.backdrop
-  if type(bd) ~= "table" then bd = Color.backdrop(bd) end
-  if bd and p.surface and not lines then
-    base.lit = true
-    base.ground = base.ground or pal.paper
-  end
   -- The hero lies on the paper, never on the ground, so it keeps the
   -- bands unlit (band0, line0).
   base.band0 = base.band
@@ -396,22 +385,6 @@ end
 function M.paint_hero(pt, d, ink, grow)
   local Hero = require("flora.pattern_hero")
   local rings = Hero.rings(d, ink)
-  -- A motif that is a surface looks on a dark backdrop as it does on
-  -- paper: painted as it is over a disc of the paper (M.roles).
-  if pt.backdrop and Hero.surface[d.name] and not ink.lines then
-    local inner = rings
-    rings = {}
-    for i, ring in ipairs(inner) do
-      local function lit(f, disc) return function(q)
-        q.metal = q.metal + 1
-        if disc then q:fill({ { "o", d[1], d[2], d[3] } }, Paint.palette.paper, 1) end
-        local ok, err = pcall(f, q)
-        q.metal = q.metal - 1
-        if not ok then error(err, 0) end
-      end end
-      rings[i] = { r = ring.r, paint = lit(ring.paint), construct = lit(ring.construct, i == 1) }
-    end
-  end
   for i, ring in ipairs(rings) do
     local birth = Hero.birth(i, #rings)
     if grow then
