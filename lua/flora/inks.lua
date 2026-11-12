@@ -99,8 +99,12 @@ M.colourways = {
   -- misty rain, with chestnut stems.
   charcoal = { hero = "take-sumi", blooms = "grey", leaves = "grey", leaflets = "grey",
     stems = "yama-guri", sprays = "fuyu-syogun", ghost = "grey", cartouche = "take-sumi" },
+  -- A fresco's pigments: earth red, ochre and green earth, under a night
+  -- blue.
+  fresco = { hero = "fuyu-gaki", blooms = "ina-ho", leaves = "sui-gyoku", leaflets = "fukurokuju",
+    stems = "yama-guri", sprays = "to-ro", ghost = "kiri-same", cartouche = "tsuki-yo" },
 }
-M.colourway_order = { "original", "spring", "summer", "autumn", "winter", "ember", "plum", "rose", "charcoal" }
+M.colourway_order = { "original", "spring", "summer", "autumn", "winter", "ember", "plum", "rose", "charcoal", "fresco" }
 
 -- Each colourway's colours for a geometric pattern, by pattern role
 -- (pattern.lua's M.ROLE_KEYS): chosen for tiles and mosaics, not taken
@@ -118,7 +122,15 @@ M.pattern_colourways = {
   winter = { band = "tsuki-yo", fielda = "kiri-same", fieldb = "fuyu-gaki", ground = "shin-kai" },
   plum = { band = "shimbashi-iro", fielda = "yama-budo", fieldb = "chiku-rin", ground = "edo-murasaki" },
   rose = { band = "take-sumi", fielda = "hana-ikada", fieldb = "fukagawa-nezu", ground = "tsuki-yo" },
-  charcoal = { band = "take-sumi", fielda = "grey", fieldb = "fuyu-syogun", ground = "take-sumi" },
+  -- Greys muted toward neutral (a third of their chroma), the fields
+  -- apart in lightness so they still read as two.
+  charcoal = { band = "take-sumi:0.22:0.3", fielda = "grey:0.76:0.3", fieldb = "fuyu-syogun:0.56:0.3",
+    ground = "take-sumi::0.3" },
+  -- The pigments of the mocks (ochre, green earth, terracotta on a blue
+  -- black, a soft dark contour), each the nearest ink at the mock's
+  -- lightness and chroma.
+  fresco = { band = "chiku-rin:0.46:0.1", fielda = "ina-ho:0.71:0.8", fieldb = "sui-gyoku:0.61:0.45",
+    accent = "fuyu-gaki:0.64:0.4", ground = "tsuki-yo:0.31:0.2" },
 }
 
 -- Colourway `name`'s pattern roles, as patternpalette={...} takes them.

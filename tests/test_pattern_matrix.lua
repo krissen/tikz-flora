@@ -6,11 +6,12 @@ local M = dofile("tests/pattern_matrix.lua")
 local Patterns = require("flora.patterns")
 local Pattern = require("flora.pattern")
 
--- The floors, set after measuring the colourways (geo-roles3 report): the
--- band stands at least 0.45 off its surface in OKLab L in every cell, the
--- fields at least 0.10 apart (charcoal's greys the closest). The floors
--- leave room below those and catch a role that loses its contrast.
-local FLOORS = { band = 0.30, fields = 0.06 }
+-- The floors, set after measuring the colourways (geo-roles3 report). The
+-- band stands 0.18 to 0.76 off its surface in OKLab L; the lowest is
+-- fresco's, whose soft contour is the mocks' own (0.25 off their ochre,
+-- 0.11 off their green). The fields lie 0.10 to 0.22 apart in OKLab. The
+-- floors sit below both and catch a band or a field that loses itself.
+local FLOORS = { band = 0.15, fields = 0.06 }
 
 local cells, failures = M.run(FLOORS)
 if os.getenv("FLORA_MATRIX_VERBOSE") then print(string.format("matrix: %d cells, %d failures", #cells, #failures)) end
