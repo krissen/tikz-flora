@@ -305,6 +305,17 @@ try {
   await pat.locator('input[type="range"]').fill("1.5");
   await settled();
   check(/pattern=asanoha, edge=cell, outer=margin, scale=1.5/.test(await code()), `pattern keys not in the line: ${await code()}`);
+  // The hero is a pattern key of its own: it reaches the line and the picture,
+  // and "none" takes it out again.
+  const noHero = await sheetSum();
+  const hero = pat.locator('[data-pattern-key="hero"]');
+  await hero.getByRole("button", { name: "rosette", exact: true }).click();
+  await settled();
+  check(/pattern=asanoha, edge=cell, hero=rosette, outer=margin, scale=1.5/.test(await code()), `hero is not in the line: ${await code()}`);
+  check(await sheetSum() !== noHero, "the hero does not change the page");
+  await hero.getByRole("button", { name: "none", exact: true }).click();
+  await settled();
+  check(!/hero=/.test(await code()) && await sheetSum() === noHero, `hero=none does not restore the page: ${await code()}`);
   await pat.locator("select").selectOption("japanese");
   await settled();
   check(/pattern=japanese, edge=cell/.test(await code()), `a group is not in the line: ${await code()}`);
@@ -322,6 +333,9 @@ try {
   await fresh.goto(MIXER + "?pattern=truchet");
   await fresh.locator(".status", { hasText: "Grown in" }).waitFor({ timeout: 120000 });
   check(/pattern=truchet/.test(await freshCode()), `?pattern=truchet is not kept: ${await freshCode()}`);
+  await fresh.goto(MIXER + "?pattern=asanoha&edge=cell&hero=rose&outer=margin&scale=1.5");
+  await fresh.locator(".status", { hasText: "Grown in" }).waitFor({ timeout: 120000 });
+  check(/pattern=asanoha, edge=cell, hero=rose, outer=margin, scale=1.5/.test(await freshCode()), `?edge=, ?hero=, ?outer= and ?scale= are not kept: ${await freshCode()}`);
   await fresh.close();
 
   // An ornament weight reaches the setup line, and the page regrows.
