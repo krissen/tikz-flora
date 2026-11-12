@@ -19,7 +19,7 @@ return {
   tags = { "circle_lattice", "circles", "triangular", "lattice" },
   roles = { "band", "accent" },
   scale = 16,
-  width = 1.1, core = 0.35, bands = "strap",
+  width = 1.1, core = 0.35, bands = "strap", lines_bands = "line",
   cells = function(env)
     local r = env.size
     local h = r * sqrt(3) / 2

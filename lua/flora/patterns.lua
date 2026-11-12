@@ -19,7 +19,8 @@
 --          fields (tiles, stars, petals) rather than line work; on a dark
 --          backdrop it is painted as on paper (pattern.lua).
 --   width, core, bands, line  its bands: full width in pt at scale=1, the
---          core's share of it, "strap" or "line", and the line's width
+--          core's share of it, "strap" or "line", and the line's width;
+--          lines_bands the character under the lines finish, if another
 --   ground  for a pattern listing the ground role, the ground's lightness
 --   roles  the colour roles it paints with (pattern.lua's M.roles: band,
 --          core, a, b, accent, ground, and paper for a halo the page's own

@@ -36,7 +36,7 @@ return {
   roles = { "band", "accent", "a", "b" },
   surface = true,
   scale = 18,
-  width = 1.3, core = 0.4, bands = "strap",
+  width = 1.3, core = 0.4, bands = "strap", lines_bands = "line",
   cells = function(env)
     local a = env.size
     local r = a / math.sqrt(2)

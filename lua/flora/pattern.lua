@@ -365,7 +365,9 @@ end
 local function band_ink(ink, p, spec, k)
   local f = spec.pattern_bandwidth or 1
   ink.width = (p.width or p.scale / 6) * k * f
-  ink.bands = spec.pattern_bands or p.bands or "strap"
+  -- Under the lines finish a pattern may read better with another band
+  -- character than its filled one (its `lines_bands`).
+  ink.bands = spec.pattern_bands or (spec.pattern_finish == "lines" and p.lines_bands) or p.bands or "strap"
   ink.corefrac = p.core or 0.45
   ink.linew = (p.line or 0.6) * f
   return ink

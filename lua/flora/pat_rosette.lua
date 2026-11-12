@@ -87,7 +87,7 @@ return {
   -- A light ground, as in the mock (f-14).
   ground = 0.80,
   scale = 30,
-  width = 1.6, core = 0.4, bands = "strap",
+  width = 1.6, core = 0.4, bands = "strap", lines_bands = "line",
   cells = function(env)
     local a = env.size
     local out = {}

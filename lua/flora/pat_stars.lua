@@ -75,7 +75,7 @@ return {
   scale = 9,
   -- Broad light straps with a fine contour between the stars, as in the
   -- mock (t-03).
-  width = 2.6, core = 0.7, bands = "strap",
+  width = 2.6, core = 0.7, bands = "strap", lines_bands = "line",
   cells = function(env)
     local s = env.size
     local a = s * (1 + sqrt(2))
