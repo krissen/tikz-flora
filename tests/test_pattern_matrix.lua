@@ -9,7 +9,7 @@ local Pattern = require("flora.pattern")
 -- The floors, set after measuring the colourways (geo-roles3 report). The
 -- band stands 0.18 to 0.76 off its surface in OKLab L; the lowest is
 -- fresco's, whose soft contour is the mocks' own (0.25 off their ochre,
--- 0.11 off their green). The fields lie 0.10 to 0.22 apart in OKLab. The
+-- 0.11 off their green). The fields lie 0.15 to 0.22 apart in OKLab. The
 -- floors sit below both and catch a band or a field that loses itself.
 local FLOORS = { band = 0.15, fields = 0.06 }
 
