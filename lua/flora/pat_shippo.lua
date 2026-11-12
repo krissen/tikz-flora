@@ -8,10 +8,9 @@
 local K = require("flora.pat_kit")
 
 local function paint(pt, c, ink)
-  pt:fill(c.petals, ink.fill[1], 1, { many = true })
-  pt:stroke(c.path, ink.band, ink.width, 1)
-  pt:stroke(c.path, ink.accent, ink.width * 0.4, 1)
-  pt:fill(c.dot, ink.fill[2], 1)
+  K.fill(pt, c.petals, ink.fill[1], ink, { many = true })
+  K.band(pt, c.path, ink, { core = "accent" })
+  K.fill(pt, c.dot, ink.fill[2], ink, { outline = true })
 end
 
 local function construct(pt, c, ink)
@@ -35,8 +34,9 @@ return {
   title = "Shippō (seven treasures), circles overlapping their neighbours by a quarter",
   tags = { "japanese", "circles", "lattice" },
   roles = { "band", "accent", "a", "b" },
+  surface = true,
   scale = 18,
-  width = 1.3,
+  width = 1.3, core = 0.4, bands = "strap",
   cells = function(env)
     local a = env.size
     local r = a / math.sqrt(2)
@@ -46,6 +46,7 @@ return {
         local x, y = i * a, j * a
         out[#out + 1] = { x = x, y = y, verts = K.ring(x, y, r), circle = { x, y, r }, pad = a * 0.07, path = { { "o", x, y, r } },
           petals = { petal(x, y, x + a, y, r), petal(x, y, x, y + a, r) },
+          tile = { { x - a / 2, y - a / 2 }, { x + a / 2, y - a / 2 }, { x + a / 2, y + a / 2 }, { x - a / 2, y + a / 2 } },
           dot = { { "o", x + a / 2, y + a / 2, a * 0.07 } }, sweep = { x, y, math.pi / 2 }, paint = paint, construct = construct }
       end
     end

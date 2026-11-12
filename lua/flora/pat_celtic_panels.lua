@@ -56,6 +56,6 @@ return {
   tags = { "celtic", "insular", "interlace", "knot", "panel" },
   roles = { "band", "accent", "paper" },
   scale = Celtic.scale,
-  width = Celtic.width,
+  width = Celtic.width, core = 0.4, bands = "strap",
   cells = function(env) return Celtic.engine.cells_with(env, inner_for) end,
 }

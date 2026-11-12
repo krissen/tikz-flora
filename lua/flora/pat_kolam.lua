@@ -10,12 +10,11 @@ local K = require("flora.pat_kit")
 local MIRRORS, PULL = 0.42, 0.22
 
 local function paint_loop(pt, c, ink)
-  pt:stroke(c.path, ink.band, ink.width, 1)
-  pt:stroke(c.path, ink.core, ink.width * 0.45, 1)
+  K.band(pt, c.path, ink)
 end
 
 local function paint_dot(pt, c, ink)
-  pt:fill(c.path, ink.fill[1], 1)
+  K.fill(pt, c.path, ink.fill[1], ink, { outline = true })
 end
 
 local function construct(pt, c, ink)
@@ -29,8 +28,10 @@ return {
   title = "Sikku kolam, lines looped round a grid of dots, as mirror curves",
   tags = { "kolam", "tamil", "south_indian", "dot_grid" },
   roles = { "band", "core", "a", "ground" },
+  -- A dark ground, as in the mock (t-10).
+  ground = 0.31,
   scale = 14,
-  width = 1.6,
+  width = 1.6, core = 0.45, bands = "strap",
   cells = function(env)
     local a = env.size
     local gx, gy = math.floor(env.x0 / a) - 1, math.floor(env.y0 / a) - 1
@@ -78,7 +79,7 @@ return {
             pts[#pts + 1] = q
             cx, cy = cx + q[1], cy + q[2]
           until #pts > 4 * (nx + 1) * (ny + 1) or (x == sx and y == sy and dx == sdx and dy == sdy)
-          out[#out + 1] = { x = cx / #pts, y = cy / #pts, verts = pts, pad = a * 0.12, path = K.smooth(pts),
+          out[#out + 1] = { x = cx / #pts, y = cy / #pts, verts = pts, pad = a * 0.12, path = K.smooth(pts), rests = true,
             paint = paint_loop, construct = construct }
         end
       end

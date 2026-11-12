@@ -6,8 +6,7 @@ local K = require("flora.pat_kit")
 local sqrt = math.sqrt
 
 local function paint(pt, c, ink)
-  pt:stroke(c.path, ink.band, ink.width, 1)
-  pt:stroke(c.path, ink.accent, ink.width * 0.35, 1)
+  K.band(pt, c.path, ink, { core = "accent" })
 end
 
 local function construct(pt, c, ink)
@@ -20,7 +19,7 @@ return {
   tags = { "circle_lattice", "circles", "triangular", "lattice" },
   roles = { "band", "accent" },
   scale = 16,
-  width = 1.1,
+  width = 1.1, core = 0.35, bands = "strap",
   cells = function(env)
     local r = env.size
     local h = r * sqrt(3) / 2

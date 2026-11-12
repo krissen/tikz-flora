@@ -10,12 +10,13 @@ local K = require("flora.pat_kit")
 local cos, sin, rad = math.cos, math.sin, math.rad
 local STAR = 0.78
 
+-- The field round the stars is the cell's plate (pattern.lua paints the
+-- plates with the ground, so neighbouring squares leave no seam).
 local function paint_star(pt, c, ink)
-  pt:fill(c.cellsq, ink.fill[1], 1)
-  pt:fill(c.star, ink.core, 1)
-  pt:stroke(c.star, ink.band, ink.width, 1)
-  pt:fill(c.dot, ink.fill[2], 1)
-  pt:stroke(c.dot, ink.band, ink.width * 0.5, 1)
+  K.fill(pt, c.star, ink.core, ink)
+  K.band(pt, c.star, ink, { core = false })
+  K.fill(pt, c.dot, ink.fill[2], ink)
+  K.band(pt, c.dot, ink, { core = false, w = 0.5 })
 end
 
 local function construct_star(pt, c, ink)
@@ -37,9 +38,10 @@ return {
   title = "Khatam, eight-pointed stars of two squares on a square lattice, light on a coloured ground",
   tags = { "symbol", "khatam", "star", "square" },
   roles = { "band", "core", "a", "b" },
+  surface = true,
   opt_in = true,
   scale = 28,
-  width = 1.2,
+  width = 1.2, bands = "strap",
   cells = function(env)
     local a = env.size
     local out = {}
@@ -57,7 +59,7 @@ return {
           outline[#outline + 1] = { x + rin * cos(u), y + rin * sin(u) }
         end
         local sq = { { x - a / 2, y - a / 2 }, { x + a / 2, y - a / 2 }, { x + a / 2, y + a / 2 }, { x - a / 2, y + a / 2 } }
-        out[#out + 1] = { x = x, y = y, verts = sq, pad = a * 0.02, cellsq = K.path(sq), star = K.path(outline),
+        out[#out + 1] = { x = x, y = y, verts = sq, pad = a * 0.02, plates = { { K.path(sq), "a" } }, under = K.path(sq), star = K.path(outline),
           dot = { { "o", x, y, a * 0.08 } },
           square = K.path(square(x, y, r, 45)), diamond = K.path(square(x, y, r, 0)),
           paint = paint_star, construct = construct_star }

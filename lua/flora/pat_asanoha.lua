@@ -5,11 +5,11 @@
 
 local sqrt = math.sqrt
 
+local K = require("flora.pat_kit")
+
 local function paint(pt, c, ink)
-  pt:stroke(c.edges, ink.band, ink.width, 1, { many = true })
-  pt:stroke(c.spokes, ink.band, ink.width * 0.55, 1, { many = true })
-  pt:stroke(c.edges, ink.accent, ink.width * 0.4, 1, { many = true })
-  pt:stroke(c.spokes, ink.accent, ink.width * 0.22, 1, { many = true })
+  K.band(pt, c.edges, ink, { many = true, core = "accent" })
+  K.band(pt, c.spokes, ink, { many = true, core = "accent", w = 0.55 })
 end
 
 local function construct(pt, c, ink)
@@ -23,8 +23,10 @@ return {
   title = "Asanoha (hemp leaf), triangles split at their centres",
   tags = { "japanese", "kumiko", "lattice", "triangular" },
   roles = { "band", "accent", "ground" },
+  -- A dark ground, as in the mock (t-11).
+  ground = 0.40,
   scale = 26,
-  width = 1.4,
+  width = 1.4, core = 0.4, bands = "strap",
   cells = function(env)
     local s = env.size
     local h = s * sqrt(3) / 2

@@ -7,10 +7,10 @@ local K = require("flora.pat_kit")
 local sqrt, cos, sin, rad = math.sqrt, math.cos, math.sin, math.rad
 
 local function paint(pt, c, ink)
-  pt:fill(c.up, ink.fill[1], 1)
-  pt:fill(c.down, ink.fill[2], 1)
-  pt:stroke(c.up, ink.band, ink.width, 1)
-  pt:stroke(c.down, ink.band, ink.width, 1)
+  K.fill(pt, c.up, ink.fill[1], ink)
+  K.fill(pt, c.down, ink.fill[2], ink)
+  K.band(pt, c.up, ink, { core = false })
+  K.band(pt, c.down, ink, { core = false })
 end
 
 local function construct(pt, c, ink)
@@ -32,9 +32,10 @@ return {
   title = "Hexagrams on a triangular lattice, tips touching",
   tags = { "symbol", "hexagram", "triangular", "star" },
   roles = { "band", "a", "b" },
+  surface = true,
   opt_in = true,
   scale = 30,
-  width = 1.2,
+  width = 1.2, bands = "strap",
   cells = function(env)
     local d = env.size
     local h = d * sqrt(3) / 2
@@ -50,7 +51,13 @@ return {
           local b = rad(120 + 60 * k)
           star[#star + 1] = { x + R / sqrt(3) * cos(b), y + R / sqrt(3) * sin(b) }
         end
-        out[#out + 1] = { x = x, y = y, verts = star, pad = d * 0.02,
+        -- The lattice's hexagon round the star, for a ground under it.
+        local hex = {}
+        for k = 0, 5 do
+          local a = rad(30 + 60 * k)
+          hex[#hex + 1] = { x + R * cos(a), y + R * sin(a) }
+        end
+        out[#out + 1] = { x = x, y = y, verts = star, pad = d * 0.02, under = K.path(hex),
           up = K.path(triangle(x, y, R, 90)), down = K.path(triangle(x, y, R, 270)),
           paint = paint, construct = construct }
       end

@@ -7,10 +7,9 @@ local K = require("flora.pat_kit")
 local sqrt = math.sqrt
 
 local function paint(pt, c, ink)
-  pt:stroke(c.path, ink.band, ink.width, 1)
-  pt:stroke(c.path, ink.core, ink.width * 0.45, 1)
-  pt:fill(c.inner, ink.fill[c.tone], 1)
-  pt:stroke(c.inner, ink.band, ink.width * 0.5, 1)
+  K.band(pt, c.path, ink)
+  K.fill(pt, c.inner, ink.fill[c.tone], ink)
+  K.band(pt, c.inner, ink, { core = false, w = 0.5 })
 end
 
 local function construct(pt, c, ink)
@@ -22,8 +21,9 @@ return {
   title = "Kikkō (tortoiseshell), a honeycomb of hexagons with a hexagon inside each",
   tags = { "japanese", "hexagonal", "lattice" },
   roles = { "band", "core", "a", "b" },
+  surface = true,
   scale = 12,
-  width = 1.4,
+  width = 1.4, core = 0.45, bands = "strap",
   cells = function(env)
     local s = env.size
     local dx, dy = 1.5 * s, sqrt(3) * s

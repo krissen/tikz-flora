@@ -37,18 +37,17 @@ end
 
 local function paint_rosette(pt, c, ink, f1, f2)
   local r = c.rosette
-  pt:fill({ { "o", c.x, c.y, c.R } }, ink.core, 1)
-  pt:fill(r.outer, f1, 1, { many = true })
-  pt:stroke(r.outer, ink.band, ink.width * 0.3, 1, { many = true })
-  pt:fill(r.inner, f2, 1, { many = true })
-  pt:stroke({ { "o", c.x, c.y, c.R } }, ink.band, ink.width * 0.45, 1)
-  pt:fill({ { "o", c.x, c.y, c.R * 0.12 } }, ink.accent, 1)
+  K.fill(pt, { { "o", c.x, c.y, c.R } }, ink.core, ink)
+  K.fill(pt, r.outer, f1, ink, { many = true })
+  K.band(pt, r.outer, ink, { many = true, core = false, w = 0.3 })
+  K.fill(pt, r.inner, f2, ink, { many = true, outline = true })
+  K.band(pt, { { "o", c.x, c.y, c.R } }, ink, { core = false, w = 0.45 })
+  K.fill(pt, { { "o", c.x, c.y, c.R * 0.12 } }, ink.accent, ink, { outline = true })
 end
 
 local function paint(pt, c, ink)
   if c.straps then
-    pt:stroke(c.straps, ink.band, ink.width, 1, { many = true })
-    pt:stroke(c.straps, ink.core, ink.width * 0.4, 1, { many = true })
+    K.band(pt, c.straps, ink, { many = true })
     paint_rosette(pt, c, ink, ink.fill[1], ink.accent)
   else
     paint_rosette(pt, c, ink, ink.fill[2], ink.fill[1])
@@ -84,8 +83,11 @@ return {
   title = "Rosettes on a quincunx, small at the grid points and large in the squares, joined by a strap grid",
   tags = { "rosette", "quincunx", "lattice", "square" },
   roles = { "band", "core", "a", "b", "accent", "ground" },
+  surface = true,
+  -- A light ground, as in the mock (f-14).
+  ground = 0.80,
   scale = 30,
-  width = 1.6,
+  width = 1.6, core = 0.4, bands = "strap",
   cells = function(env)
     local a = env.size
     local out = {}
@@ -101,7 +103,7 @@ return {
           -- The grid point's square, for a ground under the field.
           under = K.path({ { x - h, y - h }, { x + h, y - h }, { x + h, y + h }, { x - h, y + h } }) }
         local cx, cy, Rb = x + a / 2, y + a / 2, a * 0.4
-        out[#out + 1] = { x = cx, y = cy, R = Rb, rosette = rosette(cx, cy, Rb, 12), circle = { cx, cy, Rb },
+        out[#out + 1] = { x = cx, y = cy, R = Rb, rosette = rosette(cx, cy, Rb, 12), circle = { cx, cy, Rb }, rests = true,
           verts = K.ring(cx, cy, Rb), paint = paint, construct = construct }
       end
     end
