@@ -8,11 +8,15 @@ local K = require("flora.pat_kit")
 
 local RINGS = { 1, 0.78, 0.56, 0.34 }
 
+-- Each fan is the paper, to cover the row behind it, ruled with its rings;
+-- only its innermost disc is coloured, and the ring outside that is drawn
+-- in the second field.
 local function paint(pt, c, ink)
+  pt:fill({ { "o", c.x, c.y, c.r } }, ink.core, 1)
   for k, f in ipairs(RINGS) do
     local disc = { { "o", c.x, c.y, c.r * f } }
-    pt:fill(disc, k % 2 == 1 and ink.fill[2] or ink.core, 1)
-    pt:stroke(disc, ink.band, ink.width * (k == 1 and 1 or 0.55), 1)
+    if k == #RINGS then pt:fill(disc, ink.fill[1], 1) end
+    pt:stroke(disc, k == #RINGS - 1 and ink.fill[2] or ink.band, ink.width * (k == 1 and 1 or 0.55), 1)
   end
 end
 
@@ -24,6 +28,7 @@ return {
   name = "seigaiha",
   title = "Seigaiha (blue sea waves), overlapping fans of concentric rings",
   tags = { "japanese", "circles", "wave" },
+  roles = { "band", "core", "a", "b" },
   scale = 20,
   width = 1.2,
   cells = function(env)

@@ -1,14 +1,15 @@
 -- Kikkō, the tortoiseshell pattern: a honeycomb of hexagons, each with a
--- smaller hexagon set inside it, as on Japanese textiles and lacquer.
+-- smaller hexagon set inside it, as on Japanese textiles and lacquer. The
+-- honeycomb is line work on the ground; only the inner hexagons are
+-- coloured, every third in the second field.
 
 local K = require("flora.pat_kit")
 local sqrt = math.sqrt
 
 local function paint(pt, c, ink)
-  pt:fill(c.path, ink.fill[c.tone], 1)
   pt:stroke(c.path, ink.band, ink.width, 1)
   pt:stroke(c.path, ink.core, ink.width * 0.45, 1)
-  pt:fill(c.inner, ink.fill[3 - c.tone], 1)
+  pt:fill(c.inner, ink.fill[c.tone], 1)
   pt:stroke(c.inner, ink.band, ink.width * 0.5, 1)
 end
 
@@ -20,6 +21,7 @@ return {
   name = "kikko",
   title = "Kikkō (tortoiseshell), a honeycomb of hexagons with a hexagon inside each",
   tags = { "japanese", "hexagonal", "lattice" },
+  roles = { "band", "core", "a", "b" },
   scale = 12,
   width = 1.4,
   cells = function(env)
