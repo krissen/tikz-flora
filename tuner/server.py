@@ -33,7 +33,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(
 import bake_tune  # noqa: E402
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-TEX_BIN = os.path.expanduser("~/Library/TinyTeX/bin/universal-darwin")
+TEX_BIN = os.path.dirname(bake_tune.TEXLUA)
 OUT = os.path.join(ROOT, "build", "tuner")
 LOCAL = os.path.join(ROOT, "tune-local.lua")
 PORT = int(os.environ.get("TUNER_PORT", "8766"))
@@ -195,8 +195,8 @@ class Handler(SimpleHTTPRequestHandler):
     def __init__(self, *a, **k):
         super().__init__(*a, directory=ROOT, **k)
 
-    def log_message(self, fmt, *args):
-        sys.stderr.write("tuner: " + fmt % args + "\n")
+    def log_message(self, format, *args):
+        sys.stderr.write("tuner: " + format % args + "\n")
 
     def send_json(self, code, obj):
         body = json.dumps(obj).encode()

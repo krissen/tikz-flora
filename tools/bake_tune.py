@@ -139,6 +139,8 @@ def _match(text, i):
 def locate(text, path):
     """Span of the value at dotted `path` inside `local T = { ... }`."""
     m = re.search(r"local T = \{", text)
+    if m is None:
+        raise ValueError("no local T = { in " + path)
     span = (m.end() - 1, _match(text, m.end() - 1))
     for key in path.split("."):
         lo, hi = _table_body(text, span)

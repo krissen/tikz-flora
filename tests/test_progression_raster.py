@@ -4,6 +4,7 @@ Run python3 tests/test_progression_raster.py from the repository root.
 """
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
+from struct import iter_unpack
 import subprocess
 import tempfile
 import time
@@ -117,9 +118,13 @@ def raster(path):
 
 
 def pixels(image):
-    # Pillow 13 deprecates getdata; Ubuntu's packaged Pillow predates its
-    # replacement. Support both for the optional test and CI.
-    return image.get_flattened_data() if hasattr(image, 'get_flattened_data') else image.getdata()
+    """The image's RGB pixels, without Pillow's deprecated getdata()."""
+    return list(iter_unpack('3B', image.convert('RGB').tobytes()))
+
+
+def levels(image):
+    """An 'L' mask's pixel values."""
+    return list(image.tobytes())
 
 
 def painted(image):
@@ -184,7 +189,7 @@ def main():
                 expected_blue = Image.new('L', target.size)
                 expected_blue.putdata([255 if b > 180 and r < 120 and g < 120 else 0
                                        for r, g, b in pixels(target)])
-                allowed = list(pixels(expected_blue.filter(ImageFilter.MaxFilter(3))))
+                allowed = levels(expected_blue.filter(ImageFilter.MaxFilter(3)))
                 assert all(allowed[i] or not (b > 180 and r < 120 and g < 120)
                            for i, (r, g, b) in enumerate(pixels(image))), (
                     f'partially clipped geometry scaled into view at {stage}/{count}')

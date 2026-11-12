@@ -7,7 +7,7 @@
 
   let { part, label = part, value = $bindable(), meta, onchange } = $props();
   let open = $state(false);
-  let root, trigger, panel;
+  let root = $state(), trigger = $state(), panel = $state();
 
   // Groups in the order shown: the colours furthest from the original
   // blue first.
