@@ -174,6 +174,9 @@ done
 for f in probe page; do
   for s in 0.912 1.824; do
     for r in pdf webgl canvas2d; do
+      # The web pictures are transparent where nothing is painted; the
+      # mixer shows them over the paper.
+      magick "$f-$r-$s.png" -background '#f9f8f4' -flatten "$f-$r-$s.png"
       if [ $f = probe ]; then
         magick "$f-$r-$s.png" -filter point -resize "$(awk "BEGIN{print int(400/$s)}")%" "$OUT/tmp/b.png"
       else
