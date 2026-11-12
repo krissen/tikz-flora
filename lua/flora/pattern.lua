@@ -191,33 +191,122 @@ local function avoid(spec, side, edge)
   return out
 end
 
--- The page's colours, one ink per role from the palette (as flora's
--- parts are painted): the bands take the leaves' ink, the two fills the
--- blooms' and the sprays'. "look" keeps flora's own navy, gold and sky.
--- An ink group gives one of its inks for the whole page, so a flat field
--- does not turn patchy. Gold stays gold.
-local function base_inks(rng)
-  local pal, tp = Paint.palette, require("flora.tune").color.palette
-  local function role(part, L, fallback)
-    local ink = Color.ink_for(rng:fork("ink " .. part), tp[part])
-    if not ink then return fallback end
-    return Color.ink_rgb(ink, L, 1)
+-- The roles a pattern paints with, and where each takes its colour. A
+-- pattern module lists the roles it uses (`roles`, patterns.lua) and
+-- paints only with them; it never picks an ink itself.
+--
+--   ground  a surface under the cells, cell by cell: the cell's `under`
+--           path, else its tile. Painted only for the patterns `on` names
+--           (or every one, on.all); a number there is that pattern's own
+--           lightness. Without it the ground is the paper.
+--   band    the strapwork and line work
+--   core    the light line down a band's middle
+--   a, b    the two fields (ink.fill[1], ink.fill[2])
+--   accent  small details: centres, dots, jewels
+--   line    construction lines while a cell grows: the band mixed
+--           toward the paper (or the ground) by `mix`
+--
+-- A role is { part = palette part, L = lightness, share = chroma kept
+-- (Color.ink_rgb's share), fallback = the Paint.palette colour for a part
+-- painted "look", taken at the role's lightness when `relight` }, or
+-- { paper = true }, or { gold = true }. An ink group
+-- gives one of its inks for the whole page, so a flat field does not turn
+-- patchy.
+--
+-- A ground darker than DARK is a dark surface: the bands and construction
+-- lines are lit on it (Color.on_ground, as on a dark backdrop), and the
+-- pattern is painted as it is on any backdrop (pt.metal), so the ground
+-- stays darker than its bands on paper and on a dark page alike. A light
+-- ground is a tint, repainted with everything else.
+--
+-- The defaults are the colours patterns had before there were roles:
+-- bands and fills from the leaves', blooms' and sprays' inks at full
+-- chroma, gold accents, no ground. spec.pattern_roles overrides them role
+-- by role, and key by key within a role.
+M.roles = {
+  ground = { part = "hero", L = 0.30, share = 1, fallback = "ink", relight = true, on = {} },
+  band = { part = "leaves", L = 0.22, share = 1, fallback = "ink" },
+  core = { paper = true },
+  a = { part = "blooms", L = 0.74, share = 1, fallback = "gold" },
+  b = { part = "sprays", L = 0.66, share = 1, fallback = "sky" },
+  accent = { gold = true },
+  line = { mix = 0.45 },
+}
+local DARK = 0.5
+
+-- M.roles with the overrides `over` (role -> table of keys).
+function M.role_spec(over)
+  local out = {}
+  for k, r in pairs(M.roles) do
+    local o = over and over[k]
+    if o and (o.paper or o.gold) then
+      out[k] = o
+    else
+      local t = {}
+      if not (o and o.part and (r.paper or r.gold)) then for kk, v in pairs(r) do t[kk] = v end end
+      for kk, v in pairs(o or {}) do t[kk] = v end
+      out[k] = t
+    end
   end
-  return {
-    band = role("leaves", 0.22, pal.ink),
-    fill1 = role("blooms", 0.74, pal.gold),
-    fill2 = role("sprays", 0.66, pal.sky),
-  }
+  return out
 end
 
--- A cell's colours, mixed toward the paper by 1 - a.
-local function inks(base, a)
+-- `rgb` with its chroma scaled by `share`.
+local function muted(rgb, share)
+  if not share or share == 1 then return rgb end
+  local L, Ch, h = Color.lch(rgb)
+  return Color.oklch(L, Ch * share, h)
+end
+
+-- The page's colours for pattern `name` (patterns.lua), one per role (see
+-- M.roles), drawn from `rng`, with the role overrides `over`.
+function M.role_inks(rng, name, over)
+  local pal, tp = Paint.palette, require("flora.tune").color.palette
+  local R = M.role_spec(over)
+  local function role(r, L)
+    if r.paper then return pal.paper end
+    if r.gold then return pal.gold end
+    local ink = Color.ink_for(rng:fork("ink " .. r.part), tp[r.part])
+    if not ink then
+      local c = pal[r.fallback or "ink"]
+      if not r.relight then return muted(c, r.share) end
+      local _, Ch, h = Color.lch(c)
+      return Color.oklch(L or r.L, Ch * (r.share or 1), h)
+    end
+    return Color.ink_rgb(ink, L or r.L, r.share)
+  end
+  local base = { band = role(R.band), core = role(R.core), fill1 = role(R.a), fill2 = role(R.b), accent = role(R.accent) }
+  -- The dark ground a motif with a ground of its own paints (the rose
+  -- window), whether or not the pattern has a ground.
+  base.dark = role(R.ground, math.min(R.ground.L, DARK - 0.05))
+  local on = R.ground.on or {}
+  local g = on[name] or on.all
+  if g then
+    base.ground = role(R.ground, type(g) == "number" and g or nil)
+    base.lit = Color.lightness(base.ground) < DARK
+  end
+  -- The hero lies on the paper, never on the ground, so it keeps the
+  -- bands unlit (band0, line0).
+  base.band0 = base.band
+  base.line0 = Paint.mix(base.band, pal.paper, R.line.mix)
+  base.line = base.line0
+  if base.lit then
+    base.band = Color.on_ground(base.band, base.ground, pal.paper)
+    base.line = Paint.mix(base.band, base.ground, R.line.mix)
+  end
+  return base
+end
+
+-- A cell's colours, mixed toward the paper by 1 - a; `hero` for the
+-- hero's, which lies on the paper with its bands unlit.
+local function inks(base, a, hero)
   local pal = Paint.palette
-  local function f(c) return a >= 1 and c or Paint.mix(pal.paper, c, a) end
+  local function f(c) return c and (a >= 1 and c or Paint.mix(pal.paper, c, a)) end
   return {
-    band = f(base.band), core = f(pal.paper), accent = f(pal.gold),
-    line = f(Paint.mix(base.band, pal.paper, 0.45)),
+    band = f(hero and base.band0 or base.band), core = f(base.core), accent = f(base.accent),
+    line = f(hero and base.line0 or base.line),
     fill = { f(base.fill1), f(base.fill2) },
+    ground = f(base.ground), dark = f(base.dark), paper = f(pal.paper),
   }
 end
 
@@ -287,13 +376,13 @@ function M.paint(spec, pt)
   -- clip compose.lua set (header=body), so margin cells stay whole.
   local inset = spec.top_inset or require("flora.tune").gesture.top_inset or 0
   local top = math.min(H, inset > 0 and H - inset or H, pt.header_clip or H)
-  local base = base_inks(rng:fork("pattern inks"))
+  local base = M.role_inks(rng:fork("pattern inks"), p.name, spec.pattern_roles)
   local hero = M.hero(spec, side, top, keep_rects, gap)
 
   local cells = p.cells({ x0 = 0, y0 = 0, x1 = W, y1 = H, size = size, rng = rng:fork("cells") })
   local fall = rng:fork("dissolve")
   local stagger = rng:fork("growth")
-  local kept, offered = {}, 0
+  local kept, offered, bare = {}, 0, {}
   for _, c in ipairs(cells) do
     local r, jitter = fall:next(), stagger:next()
     local in_side = not side or (side.left and c.x < text.x0) or (side.right and c.x > text.x1)
@@ -320,6 +409,11 @@ function M.paint(spec, pt)
       end
       if a > 0 then
         kept[#kept + 1] = { cell = c, a = a, jitter = jitter }
+      elseif dens > 0 and d >= gap and edge == "dissolve" then
+        -- A cell dissolved away still lays its piece of the ground, so the
+        -- ground runs whole to the field's edge and the cells fall away
+        -- over it.
+        bare[#bare + 1] = { cell = c, a = 1, jitter = jitter }
       end
     end
   end
@@ -334,19 +428,54 @@ function M.paint(spec, pt)
   for _, k in ipairs(kept) do far = math.max(far, root(k.cell)) end
 
   local grow = spec.grow and spec.grow < 1 and math.max(0, spec.grow) or nil
-  pt:begin_group("pattern")
-  for _, k in ipairs(kept) do
-    local c, ink = k.cell, inks(base, k.a)
-    ink.width = width
+  -- On a dark ground the pattern is painted as it is on any backdrop
+  -- (M.roles).
+  local function lit(fn)
+    if not base.lit then return fn() end
+    pt.metal = pt.metal + 1
+    local ok, err = pcall(fn)
+    pt.metal = pt.metal - 1
+    if not ok then error(err, 0) end
+  end
+  local grounded = {}
+  for _, k in ipairs(kept) do grounded[#grounded + 1] = k end
+  for _, k in ipairs(bare) do grounded[#grounded + 1] = k end
+  for _, k in ipairs(grounded) do
     -- The construction lines lie under the finished cell's bands, so a
     -- page painted at once and the last frame of its growth are the same.
-    local birth = 0.78 * root(c) / far + 0.1 * k.jitter
+    local c = k.cell
+    k.birth = 0.78 * root(c) / far + 0.1 * k.jitter
     -- A cell with a compass point (c.sweep) draws its lines as the
     -- compass turns, then its bands as a second turn once the first is
     -- done. Its births are drawn closer together so that the last of those
     -- turns, as the last cell's painting, ends by DONE.
-    if c.sweep then birth = birth * (DONE - LINES - BAND) / 0.88 end
-    local painted = birth + (c.sweep and LINES or 0.05)
+    if c.sweep then k.birth = k.birth * (DONE - LINES - BAND) / 0.88 end
+    k.painted = k.birth + (c.sweep and LINES or 0.05)
+  end
+  pt:begin_group("pattern")
+  -- The ground, every cell's piece of it before any cell's lines, as the
+  -- cell is painted.
+  if base.ground then
+    local K = require("flora.pat_kit")
+    for _, k in ipairs(grounded) do
+      local c = k.cell
+      local under = c.under or (c.tile and K.path(c.tile))
+      if under then
+        local colour = inks(base, k.a).ground
+        -- Stroked as well as filled, so neighbouring pieces leave no seam.
+        local function draw() lit(function() pt:fill(under, colour, 1); pt:stroke(under, colour, 0.6, 1) end) end
+        if grow then
+          if grow >= k.painted then draw() end
+        else
+          Progression.part(pt, "pattern_ground", { c.x, c.y }, k.painted, BAND, draw, nil, { no_area = true })
+        end
+      end
+    end
+  end
+  for _, k in ipairs(kept) do
+    local c, ink = k.cell, inks(base, k.a)
+    ink.width = width
+    local birth, painted = k.birth, k.painted
     if grow then
       -- A "watch it grow" frame (spec.grow, tools/grow-frame.sh) shows a
       -- cell on the times the progression parts below use: its lines once
@@ -362,29 +491,29 @@ function M.paint(spec, pt)
         end
       end
       if c.sweep then
-        swept((grow - birth) / LINES, function() c.construct(pt, c, ink) end)
-        swept((grow - painted) / BAND, function() c.paint(pt, c, ink) end)
+        swept((grow - birth) / LINES, function() lit(function() c.construct(pt, c, ink) end) end)
+        swept((grow - painted) / BAND, function() lit(function() c.paint(pt, c, ink) end) end)
       else
-        if grow >= birth then c.construct(pt, c, ink) end
-        if grow >= painted + 0.04 then c.paint(pt, c, ink) end
+        if grow >= birth then lit(function() c.construct(pt, c, ink) end) end
+        if grow >= painted + 0.04 then lit(function() c.paint(pt, c, ink) end) end
       end
     else
       Progression.part(pt, "pattern_line", { c.x, c.y }, birth, LINES,
-        function() c.construct(pt, c, ink) end, nil, { no_area = true, sweep = c.sweep })
+        function() lit(function() c.construct(pt, c, ink) end) end, nil, { no_area = true, sweep = c.sweep })
       Progression.part(pt, "pattern", { c.x, c.y }, painted, BAND,
-        function() c.paint(pt, c, ink) end, nil, c.sweep and { sweep = c.sweep } or nil)
+        function() lit(function() c.paint(pt, c, ink) end) end, nil, c.sweep and { sweep = c.sweep } or nil)
     end
   end
-  if hero then M.paint_hero(pt, hero, inks(base, 1), grow) end
+  if hero then M.paint_hero(pt, hero, inks(base, 1, true), grow) end
   if edge == "guilloche" and (not grow or grow >= 0.1) then
-    local ink = inks(base, 1)
+    local ink = inks(base, 1, true)
     ink.width = width
     Progression.part(pt, "pattern_border", { text.x0, text.y0 }, 0, 0.2, function()
       require("flora.pattern_hero").paint_band(pt, text, gap / 2, 4, ink)
     end)
   end
   if edge == "border" and (not grow or grow >= 0.1) then
-    local ink = inks(base, 1)
+    local ink = inks(base, 1, true)
     local o = gap / 2
     local frame = { { "m", text.x0 - o, text.y0 - o }, { "l", text.x1 + o, text.y0 - o },
       { "l", text.x1 + o, text.y1 + o }, { "l", text.x0 - o, text.y1 + o }, { "z" } }
@@ -395,7 +524,7 @@ function M.paint(spec, pt)
   end
   pt:end_group()
   pt.coverage = offered > 0 and #kept / offered or 0
-  pt.pattern = { name = p.name, cells = #kept, offered = offered, kept = kept, avoid = keep_rects, reach = width / 2, gap = gap, hero = hero }
+  pt.pattern = { name = p.name, cells = #kept, offered = offered, kept = kept, avoid = keep_rects, reach = width / 2, gap = gap, hero = hero, inks = base }
   return true
 end
 

@@ -24,6 +24,7 @@ return {
   name = "truchet",
   title = "Truchet tiles of quarter circles, turned at random into winding bands",
   tags = { "truchet", "tiles", "square" },
+  roles = { "band", "accent" },
   scale = 18,
   width = 3,
   cells = function(env)

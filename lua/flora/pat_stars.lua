@@ -69,6 +69,7 @@ return {
   name = "stars_8_4",
   title = "Eight- and four-pointed stars, by Hankin's method on the 4.8.8 tiling",
   tags = { "girih", "hankin", "star", "lattice" },
+  roles = { "band", "core", "a", "b" },
   scale = 9,
   width = 1.5,
   cells = function(env)

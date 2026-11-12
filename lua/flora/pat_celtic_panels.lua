@@ -54,6 +54,7 @@ return {
   name = "celtic_panels",
   title = "Celtic knot panels, symmetric mirror curves in square groups with alternating crossings",
   tags = { "celtic", "insular", "interlace", "knot", "panel" },
+  roles = { "band", "accent", "paper" },
   scale = Celtic.scale,
   width = Celtic.width,
   cells = function(env) return Celtic.engine.cells_with(env, inner_for) end,

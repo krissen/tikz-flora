@@ -31,6 +31,7 @@ return {
   name = "hexagram_lattice",
   title = "Hexagrams on a triangular lattice, tips touching",
   tags = { "symbol", "hexagram", "triangular", "star" },
+  roles = { "band", "a", "b" },
   opt_in = true,
   scale = 30,
   width = 1.2,

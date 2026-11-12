@@ -26,6 +26,7 @@ return {
   name = "greek_crosses",
   title = "Greek crosses tiling the plane edge to edge, in four colours",
   tags = { "symbol", "cross", "square", "tiling" },
+  roles = { "band", "a", "b", "accent", "core" },
   opt_in = true,
   scale = 36,
   width = 1.2,

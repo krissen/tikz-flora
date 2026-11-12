@@ -83,6 +83,7 @@ return {
   name = "rosette_lattice",
   title = "Rosettes on a quincunx, small at the grid points and large in the squares, joined by a strap grid",
   tags = { "rosette", "quincunx", "lattice", "square" },
+  roles = { "band", "core", "a", "b", "accent", "ground" },
   scale = 30,
   width = 1.6,
   cells = function(env)
@@ -96,7 +97,9 @@ return {
         out[#out + 1] = { x = x, y = y, R = R, rosette = rosette(x, y, R, 8), verts = cross(x, y, R, h),
           straps = { K.seg({ x, y }, { x + h, y }), K.seg({ x, y }, { x, y + h }),
             K.seg({ x, y }, { x - h, y }), K.seg({ x, y }, { x, y - h }) },
-          paint = paint, construct = construct }
+          paint = paint, construct = construct,
+          -- The grid point's square, for a ground under the field.
+          under = K.path({ { x - h, y - h }, { x + h, y - h }, { x + h, y + h }, { x - h, y + h } }) }
         local cx, cy, Rb = x + a / 2, y + a / 2, a * 0.4
         out[#out + 1] = { x = cx, y = cy, R = Rb, rosette = rosette(cx, cy, Rb, 12), circle = { cx, cy, Rb },
           verts = K.ring(cx, cy, Rb), paint = paint, construct = construct }

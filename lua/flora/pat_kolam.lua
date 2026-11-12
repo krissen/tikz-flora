@@ -28,6 +28,7 @@ return {
   name = "sikku_kolam",
   title = "Sikku kolam, lines looped round a grid of dots, as mirror curves",
   tags = { "kolam", "tamil", "south_indian", "dot_grid" },
+  roles = { "band", "core", "a", "ground" },
   scale = 14,
   width = 1.6,
   cells = function(env)
@@ -86,7 +87,9 @@ return {
       for j = 0, ny - 1 do
         local q = page({ i + .5, j + .5 })
         out[#out + 1] = { x = q[1], y = q[2], verts = K.ring(q[1], q[2], a * 0.08, 4), circle = { q[1], q[2], a * 0.08 },
-          path = { { "o", q[1], q[2], a * 0.08 } }, paint = paint_dot, construct = paint_dot }
+          path = { { "o", q[1], q[2], a * 0.08 } }, paint = paint_dot, construct = paint_dot,
+          -- The dot's square of the grid, for a ground under the field.
+          under = K.path({ { q[1] - a / 2, q[2] - a / 2 }, { q[1] + a / 2, q[2] - a / 2 }, { q[1] + a / 2, q[2] + a / 2 }, { q[1] - a / 2, q[2] + a / 2 } }) }
       end
     end
     return out

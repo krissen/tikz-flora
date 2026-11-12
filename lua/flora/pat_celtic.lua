@@ -202,6 +202,7 @@ return {
   name = "celtic_knot",
   title = "Celtic knotwork, mirror curves with alternating over/under crossings",
   tags = { "celtic", "insular", "interlace", "knot" },
+  roles = { "band", "accent", "paper" },
   scale = SCALE,
   width = WIDTH,
   cells = function(env) return M.cells_with(env, nil) end,

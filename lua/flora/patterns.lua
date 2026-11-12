@@ -15,6 +15,12 @@
 --          opt-in pattern is never picked through an ordinary group
 --          (square, star, triangular, ...): its weight is its own
 --          name's, else the weight given to the group `symbol`, else 0.
+--   roles  the colour roles it paints with (pattern.lua's M.roles: band,
+--          core, a, b, accent, ground, and paper for a halo the page's own
+--          colour); it paints with no other. A pattern listing ground
+--          gives each cell's piece of it, the cell's `under` path or its
+--          `tile`, which the field paints under every cell when the page's
+--          roles turn the ground on.
 --   scale  its cell size in pt at scale=1
 --   width  its band width in pt at scale=1 (default: a sixth of scale)
 --   cells(env) -> list of cells covering env's box {x0, y0, x1, y1} at
@@ -41,6 +47,9 @@
 
 local M = { list = {}, by_name = {}, tags = {} }
 
+-- The roles a pattern may list.
+M.ROLES = { band = true, core = true, a = true, b = true, accent = true, ground = true, paper = true }
+
 local MODULES = {
   "flora.pat_stars", "flora.pat_asanoha", "flora.pat_kikko", "flora.pat_shippo", "flora.pat_seigaiha", "flora.pat_kolam", "flora.pat_circles", "flora.pat_truchet", "flora.pat_penrose", "flora.pat_celtic", "flora.pat_celtic_panels",
   "flora.pat_hexagram", "flora.pat_khatam", "flora.pat_crosses",
@@ -48,7 +57,8 @@ local MODULES = {
 }
 
 function M.register(p)
-  assert(p.name and p.title and p.tags and p.scale and p.cells, "pattern needs name, title, tags, scale and cells")
+  assert(p.name and p.title and p.tags and p.scale and p.cells and p.roles, "pattern needs name, title, tags, roles, scale and cells")
+  for _, r in ipairs(p.roles) do assert(M.ROLES[r], p.name .. ": no role " .. tostring(r)) end
   assert(not M.by_name[p.name], "duplicate pattern " .. p.name)
   M.list[#M.list + 1] = p
   M.by_name[p.name] = p

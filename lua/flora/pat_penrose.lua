@@ -22,6 +22,7 @@ return {
   name = "penrose_rhombs",
   title = "Penrose rhombs (P3), thick and thin rhombs in a tiling that never repeats",
   tags = { "aperiodic", "rhombs" },
+  roles = { "band", "a", "b" },
   scale = 16,
   width = 1.1,
   cells = function(env)
