@@ -419,13 +419,33 @@ end
 -- marks_only over a shared drawing): in each cell every mark painted lies,
 -- with all it paints past its box (measured here, per kind), inside what
 -- is shown, and no rule crosses a reserved box or the notch.
---
--- The ceiling rows (inset, body clip, header clip) hold the mark's box to
--- the ceiling, as compose places it: the compass paints a quarter of its
--- size past its box on every side and so reaches past those clips. That
--- is left as it is (pages without obstacles keep their marks exactly), so
--- those rows weigh the compass out and no row holds the compass's top to
--- them. The obstacle rows hold every kind, the compass too, to the boxes.
+-- Placement holds the mark's box to the ceilings, so this needs every
+-- header kind to paint inside its box vertically; that is checked first.
+do
+  local Paint = require("flora.paint")
+  local Rng = require("flora.rng")
+  for _, k in ipairs(Orn.of("header")) do
+    for _, size in ipairs({ 10, 13, 20, 26 }) do
+      for _, seed in ipairs({ 1, 3, 7 }) do
+        local x0, y0, x1, y1 = math.huge, math.huge, -math.huge, -math.huge
+        local pt = Paint.new({})
+        pt.probe = function(x, y, pad)
+          x0, x1 = math.min(x0, x - pad), math.max(x1, x + pad)
+          y0, y1 = math.min(y0, y - pad), math.max(y1, y + pad)
+        end
+        local b = { 100 - size / 2, 100 - size / 2, 100 + size / 2, 100 + size / 2 }
+        Orn.draw(k, pt, Rng.new(seed), b)
+        local tag = string.format("%s at %d pt, seed %d", k.name, size, seed)
+        H.check(y0 >= b[2] - 1e-6 and y1 <= b[4] + 1e-6, string.format(
+          "%s paints past its box vertically (%.2f below, %.2f above)", tag, b[2] - y0, y1 - b[4]))
+        -- Sideways only the sunburst's bar may pass the box, by its reach.
+        local side = math.max(b[1] - x0, x1 - b[3])
+        H.check(side <= (k.name == "sunburst" and k.reach * size or 0) + 1e-6,
+          string.format("%s paints %.2f pt past its box sideways", tag, side))
+      end
+    end
+  end
+end
 do
   local Paint = require("flora.paint")
   local Rng = require("flora.rng")
@@ -486,12 +506,10 @@ do
   local function cell(row, mode, path, seed)
     local s = base(mode, seed)
     row.set(s)
-    if row.ceiling then s.ornaments = { compass = 0 } end
     local spec = s
     if path == "marks_only" then
       local marks = Compose.header_marks(s)
       spec = base(mode, seed); row.set(spec)
-      if row.ceiling then spec.ornaments = { compass = 0 } end
       spec.marks_only = marks
     end
     local drawn, rules = {}, {}
@@ -544,7 +562,7 @@ do
     for _, d in ipairs(drawn) do
       local name, x0, y0, x1, y1 = d[1], d[2], d[3], d[4], d[5]
       if x0 < 0 or x1 > W then bad(string.format("%s crosses the paper's edge (%.2f..%.2f)", name, x0, x1)) end
-      if y1 > top + 1e-6 and name ~= "compass" then bad(string.format("%s reaches %.2f, above the clip at %.2f", name, y1, top)) end
+      if y1 > top + 1e-6 then bad(string.format("%s reaches %.2f, above the clip at %.2f", name, y1, top)) end
       for _, o in ipairs(outs) do
         if x1 > o[1] and x0 < o[3] and y1 > o[2] and y0 < o[4] then
           bad(string.format("%s (%.2f %.2f %.2f %.2f) meets the box %.2f %.2f %.2f %.2f", name, x0, y0, x1, y1, o[1], o[2], o[3], o[4]))
@@ -590,12 +608,19 @@ do
 end
 
 -- The placement is exact in both dimensions. A mark of size s whose box top
--- is t paints, with the largest reach of any header kind, over its box
--- widened by reach * s + MARK.head on every side; that must meet no
--- obstacle, wherever the obstacle lies (beside the mark, under the band's
--- floor, over its ceiling), and stay MARK.head inside the paper's left edge.
-local REACH = 0
-for _, k in ipairs(Orn.of("header")) do REACH = math.max(REACH, k.reach or 0) end
+-- is t keeps its box widened by MARK.clear * s + MARK.head on every side
+-- clear of every obstacle, wherever the obstacle lies (beside the mark,
+-- under the band's floor, over its ceiling), and stays MARK.head inside the
+-- paper's left edge. MARK.clear covers every header kind's reach; it is
+-- held at 0.26, the compass's reach before the compass was drawn inside its
+-- box, so marks beside obstacles keep their places.
+local REACH = K.clear
+do
+  H.check(REACH == 0.26, string.format("the placement's clearance is 0.26 of the mark's size, not %s", tostring(REACH)))
+  for _, k in ipairs(Orn.of("header")) do
+    H.check((k.reach or 0) <= REACH, string.format("%s reaches %.2f, past the placement's clearance", k.name, k.reach or 0))
+  end
+end
 local function whole(s, t, hx, ceil, lo, obstacles, tol)
   tol = tol or 1e-6
   if s < K.min - tol or s > K.size + tol or t > ceil + tol or t - s < lo - tol then return false end
