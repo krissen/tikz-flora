@@ -25,8 +25,8 @@ M.about = {
   { "visitors", "0 to 10", "The weight of every visitor at once: bees, butterflies, birds and snails. mix={bee=0} after it still turns one off." },
   { "palette", "{part=ink, ...}",
     "What paints each part: look (the original blue gradients), an ink group, one iroshizuku ink by name, or random for one ink picked per page." },
-  { "colourway", "original, spring, summer, autumn (or fall), winter, ember, plum, rose",
-    "A whole palette at once. A palette={...} after it changes single parts." },
+  { "colourway", "original, spring, summer, autumn (or fall), winter, ember, plum, rose, charcoal",
+    "A whole palette at once, for flora and for patterns (patternpalette). A palette={...} or patternpalette={...} after it changes single parts." },
   { "spin", "a whole number", "Picks the random inks again. The shapes stay where they are." },
   { "ornaments", "{kind=weight, ...}, weights 0 to 10",
     "How often each ornament kind is picked for its place on the page, against the other kinds for that place: 0 never." },
@@ -44,6 +44,12 @@ M.about = {
     "One large radial motif at a top corner of a pattern page, which the cells give way to: rings of petals, seeds set as a sunflower sets them, a rose window, or guilloche rings. It sits in the top corner of the pattern's side (top right for right, top left for left; top right for layouts with both sides or the whole page): centred on the paper's corner and running off it under outer=bleed, a whole disc inside the margin under outer=margin. It grows ring by ring from its centre. none (the default) paints none." },
   { "outer", "bleed, margin", "How a pattern meets the paper's edge: running off the page (the default), or whole cells, and a whole hero, inside a small margin." },
   { "scale", "0.25 to 4", "The size of a pattern's cells, as a factor of its own." },
+  { "patternpalette", "{role=ink, ...} for the roles band, core, fielda, fieldb, ground, accent",
+    "What paints each part of a pattern: an ink group, one iroshizuku ink by name, paper or gold, and for the ground also none. A colourway sets them all; a role left out takes its colour from the palette's flora parts." },
+  { "saturation", "0 to 1", "How much of its inks' colour a pattern's fields and ground keep: 0.5 (the default) mutes them as tiles and mosaics are, 1 keeps the ink's full colour." },
+  { "finish", "filled, lines", "How a pattern is drawn: filled (the default), with its fields and ground, or lines, its bands and outlines alone with nothing filled." },
+  { "bands", "strap, line", "How a pattern's bands are drawn: strap, a broad band with a fine contour and a light core (the default for most patterns), or line, one thin line." },
+  { "bandwidth", "0.25 to 4", "The width of a pattern's bands and lines, as a factor of its own." },
   { "cache", "true, false",
     "true (the default) keeps each page's flora in a folder <jobname>-flora beside the PDF, so a later compile reuses it; false grows every page afresh." },
 }
@@ -171,6 +177,48 @@ M.define("scale", function(v)
   local n = tonumber(v)
   if n and n >= 0.25 and n <= 4 then return n end
   return nil, "scale must be a number from 0.25 to 4"
+end)
+
+M.define("patternpalette", function(v)
+  local Pattern = require("flora.pattern")
+  local roles = {}
+  for _, r in ipairs(Pattern.ROLE_KEYS) do roles[r.key] = true end
+  local t = {}
+  for _, kv in ipairs(M.parse_list(v)) do
+    local role, ink = kv[1], kv[2]
+    if not roles[role] then
+      local names = {}
+      for _, r in ipairs(Pattern.ROLE_KEYS) do names[#names + 1] = r.key end
+      return nil, "no pattern role \"" .. role .. "\" (roles: " .. table.concat(names, ", ") .. ")"
+    end
+    if not (ink == "paper" or ink == "gold" or (ink == "none" and role == "ground") or Inks.groups[ink] or Inks.ramps[ink]) then
+      return nil, "\"" .. tostring(ink) .. "\" is not paper, gold, an ink group or an ink name" .. (role == "ground" and " (or none)" or "")
+    end
+    t[role] = ink
+  end
+  return t
+end)
+
+M.define("saturation", function(v)
+  local n = tonumber(v)
+  if n and n >= 0 and n <= 1 then return n end
+  return nil, "saturation must be a number from 0 to 1"
+end)
+
+M.define("finish", function(v)
+  if require("flora.pattern").finishes[v] then return v end
+  return nil, "finish must be filled or lines"
+end)
+
+M.define("bands", function(v)
+  if require("flora.pattern").band_kinds[v] then return v end
+  return nil, "bands must be strap or line"
+end)
+
+M.define("bandwidth", function(v)
+  local n = tonumber(v)
+  if n and n >= 0.25 and n <= 4 then return n end
+  return nil, "bandwidth must be a number from 0.25 to 4"
 end)
 
 M.define("cache", function(v)
@@ -422,6 +470,9 @@ function M.parse(s)
       t.mix = M.merge({ mix = t.mix }, { mix = { density = val } }).mix
     elseif k == "colourway" then
       t.palette = M.merge({ palette = t.palette }, { palette = val }).palette
+      -- A colourway sets its pattern roles too (inks.lua).
+      local roles = Inks.pattern_palette(Inks.colourway_alias[v] or v)
+      t.patternpalette = M.merge({ patternpalette = t.patternpalette }, { patternpalette = roles }).patternpalette
     elseif k == "visitors" then
       local m = {}
       for _, name in ipairs(Mix.visitors) do m[name] = val end
@@ -462,7 +513,8 @@ M.SPEC = {
   mix = "mix", ornaments = "ornaments", palette = "palette", spin = "spin", tune = "tune",
   gilt = "gilt", giltdpi = "gilt_dpi", giltenv = "gilt_env", giltlook = "gilt_look", backdrop = "backdrop",
   pattern = "pattern", edge = "pattern_edge", outer = "pattern_outer", scale = "pattern_scale",
-  hero = "pattern_hero",
+  hero = "pattern_hero", patternpalette = "pattern_palette", saturation = "pattern_saturation",
+  finish = "pattern_finish", bands = "pattern_bands", bandwidth = "pattern_bandwidth",
 }
 -- The pattern keys besides `pattern` itself, by key -> default. A mixer's
 -- pattern state, its \florasetup line and the preview's spec all carry
@@ -475,7 +527,7 @@ M.OWN = { layout = true, header = true, seed = true, cache = true, density = tru
 -- What a "fresh" restyle (tools/preview.lua, the site's mixer) drops of a
 -- page's own settings: its growth mix, inks and tuning. Every other
 -- M.SPEC key is kept, so a new key is kept without being listed.
-M.FRESH_DROPS = { mix = true, palette = true, spin = true, tune = true }
+M.FRESH_DROPS = { mix = true, palette = true, patternpalette = true, spin = true, tune = true }
 
 -- The M.SPEC keys a fresh restyle keeps, for M.from_spec.
 function M.fresh_keys()
