@@ -45,10 +45,10 @@ M.about = {
   { "outer", "bleed, margin", "How a pattern meets the paper's edge: running off the page (the default), or whole cells, and a whole hero, inside a small margin." },
   { "scale", "0.25 to 4", "The size of a pattern's cells, as a factor of its own." },
   { "patternpalette", "{role=ink, ...} for the roles band, core, fielda, fieldb, ground, accent",
-    "What paints each part of a pattern: an ink group, one iroshizuku ink by name, paper or gold, and for the ground also none. A colourway sets them all; a role left out takes its colour from the palette's flora parts." },
+    "What paints each part of a pattern: an ink group, one iroshizuku ink by name (as ink:L or ink:L:share with its lightness and chroma kept), paper or gold, and for the ground also none. A colourway sets them all; a role left out takes its colour from the palette's flora parts." },
   { "saturation", "0 to 1", "How much of its inks' colour a pattern's fields and ground keep: 0.5 (the default) mutes them as tiles and mosaics are, 1 keeps the ink's full colour." },
   { "finish", "filled, lines", "How a pattern is drawn: filled (the default), with its fields and ground, or lines, its bands and outlines alone with nothing filled." },
-  { "bands", "strap, line", "How a pattern's bands are drawn: strap, a broad band with a fine contour and a light core (the default for most patterns), or line, one thin line." },
+  { "bands", "auto, strap, line", "How a pattern's bands are drawn: auto (the default), each pattern's own; strap, a broad band with a fine contour and a light core; or line, one thin line." },
   { "bandwidth", "0.25 to 4", "The width of a pattern's bands and lines, as a factor of its own." },
   { "cache", "true, false",
     "true (the default) keeps each page's flora in a folder <jobname>-flora beside the PDF, so a later compile reuses it; false grows every page afresh." },
@@ -191,8 +191,12 @@ M.define("patternpalette", function(v)
       for _, r in ipairs(Pattern.ROLE_KEYS) do names[#names + 1] = r.key end
       return nil, "no pattern role \"" .. role .. "\" (roles: " .. table.concat(names, ", ") .. ")"
     end
-    if not (ink == "paper" or ink == "gold" or (ink == "none" and role == "ground") or Inks.groups[ink] or Inks.ramps[ink]) then
-      return nil, "\"" .. tostring(ink) .. "\" is not paper, gold, an ink group or an ink name" .. (role == "ground" and " (or none)" or "")
+    local name, L, share = Pattern.palette_value(ink)
+    local rest = tostring(ink):sub(#name + 1)
+    local ok_rest = rest == "" or ((L or rest:match("^::")) and (L == nil or (L >= 0 and L <= 1)) and (share == nil or (share >= 0 and share <= 1)))
+    if not ((name == "paper" or name == "gold" or (name == "none" and role == "ground")) and rest == ""
+        or (Inks.groups[name] or Inks.ramps[name]) and ok_rest) then
+      return nil, "\"" .. tostring(ink) .. "\" is not paper, gold, an ink group or an ink name (with :L or :L:share from 0 to 1)" .. (role == "ground" and ", or none" or "")
     end
     t[role] = ink
   end
@@ -211,8 +215,8 @@ M.define("finish", function(v)
 end)
 
 M.define("bands", function(v)
-  if require("flora.pattern").band_kinds[v] then return v end
-  return nil, "bands must be strap or line"
+  if v == "auto" or require("flora.pattern").band_kinds[v] then return v end
+  return nil, "bands must be auto, strap or line"
 end)
 
 M.define("bandwidth", function(v)
@@ -513,7 +517,7 @@ M.SPEC = {
   mix = "mix", ornaments = "ornaments", palette = "palette", spin = "spin", tune = "tune",
   gilt = "gilt", giltdpi = "gilt_dpi", giltenv = "gilt_env", giltlook = "gilt_look", backdrop = "backdrop",
   pattern = "pattern", edge = "pattern_edge", outer = "pattern_outer", scale = "pattern_scale",
-  hero = "pattern_hero", patternpalette = "pattern_palette", saturation = "pattern_saturation",
+  hero = "pattern_hero", patternpalette = "patternpalette", saturation = "pattern_saturation",
   finish = "pattern_finish", bands = "pattern_bands", bandwidth = "pattern_bandwidth",
 }
 -- The pattern keys besides `pattern` itself, by key -> default. A mixer's
@@ -521,7 +525,10 @@ M.SPEC = {
 -- exactly these (catalog.lua lists them as pattern_keys), and
 -- tests/test_settings.lua holds every M.SPEC key naming a pattern_* field
 -- to this table, so a new pattern key cannot be left out of one of them.
-M.PATTERN = { edge = "dissolve", hero = "none", outer = "bleed", scale = 1 }
+-- pattern.lua reads its defaults from here too. patternpalette is a
+-- palette, set role by role as palette is, so it is not one of them.
+M.PATTERN = { edge = "dissolve", hero = "none", outer = "bleed", scale = 1,
+  saturation = 0.5, finish = "filled", bands = "auto", bandwidth = 1 }
 M.OWN = { layout = true, header = true, seed = true, cache = true, density = true, visitors = true, colourway = true }
 
 -- What a "fresh" restyle (tools/preview.lua, the site's mixer) drops of a

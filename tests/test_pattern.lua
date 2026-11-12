@@ -800,4 +800,15 @@ do
   H.check(banded, "edge=guilloche painted no band round the text")
 end
 
+-- Every pattern key's default (Settings.PATTERN) is what the field does
+-- with the key unset: a page with the key set to its default paints the
+-- same page.
+do
+  local unset = page():body()
+  for k, d in pairs(Settings.PATTERN) do
+    local set = page({ [Settings.SPEC[k]] = d }):body()
+    H.check(set == unset, k .. "=" .. tostring(d) .. " paints another page than leaving " .. k .. " unset")
+  end
+end
+
 H.done("pattern")

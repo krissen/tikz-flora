@@ -207,10 +207,12 @@ end
 --           toward the paper (or the ground) by `mix`
 --
 -- Each role takes its ink from the page's pattern palette
--- (spec.pattern_palette, \florasetup's patternpalette or a colourway's
+-- (spec.patternpalette, \florasetup's patternpalette or a colourway's
 -- own, inks.lua), keyed by the names users see (M.ROLE_KEYS): an ink, an
 -- ink group (one of its inks for the whole page, so a flat field does not
--- turn patchy), paper, gold, or for the ground none. A role the palette
+-- turn patchy), paper, gold, or for the ground none. An ink or group may
+-- carry its lightness and chroma share, ink:L or ink:L:share (an empty L
+-- keeps the role's), which a colourway composed for patterns uses. A role the palette
 -- leaves out is derived from the flora's palette parts, as M.roles says:
 -- { part = palette part, L = lightness, share = chroma kept, sat = chroma
 -- kept as a share of the page's saturation, fallback = the Paint.palette
@@ -233,8 +235,23 @@ M.roles = {
   accent = { gold = true },
   line = { mix = 0.45 },
 }
-M.SATURATION = 0.5
 local DARK = 0.5
+
+-- Pattern key `k` of `spec` (Settings.PATTERN's keys), or its default.
+local function key(spec, k)
+  local Settings = require("flora.settings")
+  local v = spec[Settings.SPEC[k]]
+  if v == nil then v = Settings.PATTERN[k] end
+  return v
+end
+M.key = key
+
+-- A palette value split into its ink (or group) and the lightness and
+-- chroma share it may carry: "ink", "ink:L", "ink:L:share" or "ink::share".
+function M.palette_value(v)
+  local ink, L, share = tostring(v):match("^([^:]*):?([^:]*):?([^:]*)$")
+  return ink, tonumber(L), tonumber(share)
+end
 
 -- The palette's keys, as users write them, and the roles they set; in the
 -- order the catalog lists them, with each role's label and the flora part
@@ -286,12 +303,17 @@ function M.role_inks(rng, p, spec)
   spec = spec or {}
   local pal, tp = Paint.palette, require("flora.tune").color.palette
   local R = M.role_spec(spec.pattern_roles)
-  local given = spec.pattern_palette or {}
-  local sat = spec.pattern_saturation or M.SATURATION
+  local given = spec.patternpalette or {}
+  local sat = key(spec, "saturation")
   local function role(name, L)
     local r = R[name]
     local share = r.share or (r.sat and r.sat * sat) or 1
-    local v = given[USER[name]]
+    local v, vL, vs = given[USER[name]], nil, nil
+    if v then v, vL, vs = M.palette_value(v) end
+    -- A lightness the palette gives holds unless the caller asks for one
+    -- (the ground's own, the dark disc's).
+    L = L or vL
+    share = vs or share
     if v == "paper" or (v == nil and r.paper) then return pal.paper end
     if v == "gold" or (v == nil and r.gold) then return pal.gold end
     if v == "none" then return nil end
@@ -309,7 +331,7 @@ function M.role_inks(rng, p, spec)
     end
     return Color.ink_rgb(ink, L or r.L, share)
   end
-  local lines = spec.pattern_finish == "lines"
+  local lines = key(spec, "finish") == "lines"
   local base = { band = role("band"), core = role("core"), fill1 = role("a"), fill2 = role("b"),
     accent = role("accent"), lines = lines }
   base.core = base.core or pal.paper
@@ -352,11 +374,13 @@ end
 -- The band character on `ink`: width (the full width), bands, corefrac
 -- and linew (the line character's width), for pattern p at scale `k`.
 local function band_ink(ink, p, spec, k)
-  local f = spec.pattern_bandwidth or 1
+  local f = key(spec, "bandwidth")
   ink.width = (p.width or p.scale / 6) * k * f
   -- Under the lines finish a pattern may read better with another band
   -- character than its filled one (its `lines_bands`).
-  ink.bands = spec.pattern_bands or (spec.pattern_finish == "lines" and p.lines_bands) or p.bands or "strap"
+  local bands = key(spec, "bands")
+  if bands == "auto" then bands = (key(spec, "finish") == "lines" and p.lines_bands) or p.bands or "strap" end
+  ink.bands = bands
   ink.corefrac = p.core or 0.45
   ink.linew = (p.line or 0.6) * f
   return ink
@@ -373,9 +397,9 @@ end
 -- spec.pattern_hero is unset or none, or its corner has no room. Under
 -- outer=margin it lies wholly inside the page's margin, as the cells do.
 function M.hero(spec, side, top, keep, gap)
-  local name = spec.pattern_hero
+  local name = key(spec, "hero")
   if not name or name == "none" then return nil end
-  local margin = spec.pattern_outer == "margin" and OUTER_MARGIN or nil
+  local margin = key(spec, "outer") == "margin" and OUTER_MARGIN or nil
   return require("flora.pattern_hero").place(name, spec, side, top, keep, gap, margin)
 end
 
@@ -415,10 +439,11 @@ function M.paint(spec, pt)
   if not p then return false end
   local W, H, text = spec.width, spec.height, spec.text
   local side = sides(spec)
-  local edge = spec.pattern_edge or "dissolve"
-  local outer = spec.pattern_outer or "bleed"
-  local size = p.scale * (spec.pattern_scale or 1)
-  local width = band_ink({}, p, spec, spec.pattern_scale or 1).width
+  local edge = key(spec, "edge")
+  local outer = key(spec, "outer")
+  local k_scale = key(spec, "scale")
+  local size = p.scale * k_scale
+  local width = band_ink({}, p, spec, k_scale).width
   local dens = Mix.weight(spec.mix, "density")
   local gap = FRAMED[edge] or GAP
   -- The room the field has beside the text sets how far it takes to thin.
@@ -537,7 +562,7 @@ function M.paint(spec, pt)
     end
   end
   for _, k in ipairs(kept) do
-    local c, ink = k.cell, band_ink(inks(base, k.a), p, spec, spec.pattern_scale or 1)
+    local c, ink = k.cell, band_ink(inks(base, k.a), p, spec, k_scale)
     local birth, painted = k.birth, k.painted
     if grow then
       -- A "watch it grow" frame (spec.grow, tools/grow-frame.sh) shows a
@@ -567,9 +592,9 @@ function M.paint(spec, pt)
         function() lit(function() c.paint(pt, c, ink) end) end, nil, c.sweep and { sweep = c.sweep } or nil)
     end
   end
-  if hero then M.paint_hero(pt, hero, band_ink(inks(base, 1, true), p, spec, spec.pattern_scale or 1), grow) end
+  if hero then M.paint_hero(pt, hero, band_ink(inks(base, 1, true), p, spec, k_scale), grow) end
   if edge == "guilloche" and (not grow or grow >= 0.1) then
-    local ink = band_ink(inks(base, 1, true), p, spec, spec.pattern_scale or 1)
+    local ink = band_ink(inks(base, 1, true), p, spec, k_scale)
     Progression.part(pt, "pattern_border", { text.x0, text.y0 }, 0, 0.2, function()
       require("flora.pattern_hero").paint_band(pt, text, gap / 2, 4, ink)
     end)
