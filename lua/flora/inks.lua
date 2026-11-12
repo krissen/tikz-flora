@@ -71,13 +71,10 @@ M.groups = {
   ["earth"] = { "yama-guri", "tsukushi", "ina-ho", "syun-gyo", "take-sumi", "hoteison" },
   ["gold"] = { "daikokuten", "hotaru-bi" },
   -- Greys, none of them quite neutral: bamboo charcoal and the winter
-  -- general's blue-grey, with misty rain; a cooler set with the grey-teal;
-  -- and a warm one round the chestnut brown.
+  -- general's blue-grey, with misty rain.
   ["grey"] = { "take-sumi", "fuyu-syogun", "kiri-same" },
-  ["grey-cool"] = { "take-sumi", "fuyu-syogun", "fukagawa-nezu" },
-  ["grey-warm"] = { "yama-guri", "take-sumi" },
 }
-M.group_order = { "blue", "blue-grey", "teal", "green", "violet", "warm", "earth", "gold", "grey", "grey-cool", "grey-warm" }
+M.group_order = { "blue", "blue-grey", "teal", "green", "violet", "warm", "earth", "gold", "grey" }
 
 -- Whole palettes. The seasons are chosen by the inks' names as much as
 -- their colours: azalea and cherry petals in spring, hydrangea and
@@ -98,8 +95,38 @@ M.colourways = {
     stems = "yama-guri", sprays = "yama-budo", ghost = "kiri-same", cartouche = "tsuki-yo" },
   winter = { hero = "tsuki-yo", blooms = "fuyu-gaki", leaves = "blue-grey", leaflets = "syo-ro",
     stems = "take-sumi", sprays = "kiri-same", ghost = "fukagawa-nezu", cartouche = "shin-kai" },
+  -- Greys in their inks' own tone: bamboo charcoal, the winter general and
+  -- misty rain, with chestnut stems.
+  charcoal = { hero = "take-sumi", blooms = "grey", leaves = "grey", leaflets = "grey",
+    stems = "yama-guri", sprays = "fuyu-syogun", ghost = "grey", cartouche = "take-sumi" },
 }
-M.colourway_order = { "original", "spring", "summer", "autumn", "winter", "ember", "plum", "rose" }
+M.colourway_order = { "original", "spring", "summer", "autumn", "winter", "ember", "plum", "rose", "charcoal" }
+
+-- Each colourway's colours for a geometric pattern, by pattern role
+-- (pattern.lua's M.ROLE_KEYS): chosen for tiles and mosaics, not taken
+-- from the flowers'. A role left out is derived from the colourway's
+-- flora parts; core is the paper and accent gold unless set.
+M.pattern_colourways = {
+  -- Navy straps, ochre and cornflower fields on a moonlit ground.
+  original = { band = "kon-peki", fielda = "daikokuten", fieldb = "tsuyu-kusa", ground = "tsuki-yo" },
+  -- Lantern ochre and bamboo green, chestnut straps, a deep green ground.
+  ember = { band = "yama-guri", fielda = "to-ro", fieldb = "chiku-rin", ground = "shin-ryoku" },
+  -- Rice-ear straw and maple, chestnut straps, a dawn-dark ground.
+  autumn = { band = "yama-guri", fielda = "ina-ho", fieldb = "momiji", ground = "syun-gyo" },
+  spring = { band = "fukurokuju", fielda = "tsutsuji", fieldb = "ebisu", ground = "chiku-rin" },
+  summer = { band = "kon-peki", fielda = "daikokuten", fieldb = "ajisai", ground = "shin-ryoku" },
+  winter = { band = "tsuki-yo", fielda = "kiri-same", fieldb = "fuyu-gaki", ground = "shin-kai" },
+  plum = { band = "shimbashi-iro", fielda = "yama-budo", fieldb = "chiku-rin", ground = "edo-murasaki" },
+  rose = { band = "take-sumi", fielda = "hana-ikada", fieldb = "fukagawa-nezu", ground = "tsuki-yo" },
+  charcoal = { band = "take-sumi", fielda = "grey", fieldb = "fuyu-syogun", ground = "take-sumi" },
+}
+
+-- Colourway `name`'s pattern roles, as patternpalette={...} takes them.
+function M.pattern_palette(name)
+  local t = {}
+  for k, v in pairs(M.pattern_colourways[name] or {}) do t[k] = v end
+  return t
+end
 M.colourway_alias = { fall = "autumn" }
 
 return M
