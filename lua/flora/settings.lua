@@ -464,6 +464,12 @@ M.SPEC = {
   pattern = "pattern", edge = "pattern_edge", outer = "pattern_outer", scale = "pattern_scale",
   hero = "pattern_hero",
 }
+-- The pattern keys besides `pattern` itself, by key -> default. A mixer's
+-- pattern state, its \florasetup line and the preview's spec all carry
+-- exactly these (catalog.lua lists them as pattern_keys), and
+-- tests/test_settings.lua holds every M.SPEC key naming a pattern_* field
+-- to this table, so a new pattern key cannot be left out of one of them.
+M.PATTERN = { edge = "dissolve", hero = "none", outer = "bleed", scale = 1 }
 M.OWN = { layout = true, header = true, seed = true, cache = true, density = true, visitors = true, colourway = true }
 
 -- What a "fresh" restyle (tools/preview.lua, the site's mixer) drops of a

@@ -1,7 +1,7 @@
 <script>
   import { onMount } from "svelte";
   import { meta as loadMeta, render, show, px, drawnBy } from "./render.js";
-  import { setupLine, documentFor, patternDefaults, patternParts, TITLE_PAGES, ARCHES } from "./setup.js";
+  import { setupLine, documentFor, patternDefaults, patternParts, patternFromQuery, TITLE_PAGES, ARCHES } from "./setup.js";
   import InkPicker from "./InkPicker.svelte";
   import COLOURWAYS from "./colourways.json";
   import { face } from "./ink.js";
@@ -30,10 +30,11 @@
   // What the page is painted over, as \florasetup's backdrop; ?backdrop=dark
   // opens on a dark page.
   let backdrop = $state(query.get("backdrop") === "dark" ? "dark" : "light");
-  // What fills the page, as \florasetup's pattern, edge, outer and scale:
-  // no name is flora, else a pattern or group name (?pattern=asanoha opens
-  // on one).
-  let pattern = $state({ name: query.get("pattern") ?? "", edge: "dissolve", outer: "bleed", scale: 1 });
+  // What fills the page, as \florasetup's pattern, edge, hero, outer and
+  // scale: no name is flora, else a pattern or group name (?pattern=asanoha
+  // opens on one; ?edge=, ?hero=, ?outer= and ?scale= on their values). The
+  // keys besides the name are the catalog's pattern_keys, set once it loads.
+  let pattern = $state({ name: query.get("pattern") ?? "" });
   // The title lettering of the four title-page layouts (\floraletters).
   let letters = $state({ style: "engraved", arch: 20, ink: "black" });
   let status = $state("Loading the generator…");
@@ -55,6 +56,10 @@
   // The gilt look's keys for the look in use, with their defaults there.
   let lookKeys = $derived(meta ? meta.catalog.gilt.keys.filter((k) => !k.look || k.look === giltenv) : []);
   let pat = $derived(patternDefaults(meta));
+  // What each pattern key sets, for its control; hero is named the corner
+  // motif, since the palette's "hero" part is the main flower.
+  const PATTERN_LABELS = { edge: "How the pattern meets the text", hero: "Corner motif", outer: "How the pattern meets the paper's edge", scale: "Scale" };
+  const aboutOf = (k) => meta.catalog.settings.find((x) => x.key === k)?.about;
   let patterns = $derived(meta?.catalog.patterns ?? []);
   // The groups (tags shared by two or more patterns), with their members.
   let patternGroups = $derived.by(() => {
@@ -90,6 +95,7 @@
       const [m, man] = await Promise.all([loadMeta(), fetch("/bake/manifest.json").then((r) => r.json())]);
       meta = m;
       pages = man;
+      pattern = patternFromQuery(query, m);
       // ?pattern= stays only when it names a pattern or a listed group.
       if (pattern.name && !patterns.some((p) => p.name === pattern.name) && !patternGroups.some(([t]) => t === pattern.name)) pattern.name = "";
       mix = Object.fromEntries(m.kinds.map(([k, , , d]) => [k, d]));
@@ -331,23 +337,23 @@
           </select>
         </label>
         <p class="hint">Flora grows the page; a pattern fills it instead. A group picks one of its patterns per page.</p>
-        <div class="choices" role="group" aria-label="How the pattern meets the text">
-          {#each pat.edges as e}
-            <button type="button" aria-pressed={pattern.edge === e} disabled={!pattern.name}
-              title={meta.catalog.settings.find((x) => x.key === "edge")?.about} onclick={() => { pattern.edge = e; changed(); }}>{e}</button>
-          {/each}
-        </div>
-        <div class="choices" role="group" aria-label="How the pattern meets the paper's edge">
-          {#each pat.outers as o}
-            <button type="button" aria-pressed={pattern.outer === o} disabled={!pattern.name}
-              title={meta.catalog.settings.find((x) => x.key === "outer")?.about} onclick={() => { pattern.outer = o; changed(); }}>{o}</button>
-          {/each}
-        </div>
-        <label class="row" title={meta.catalog.settings.find((x) => x.key === "scale")?.about}>
-          <span>Scale</span>
-          <input type="range" min={pat.min} max={pat.max} step="0.05" disabled={!pattern.name} bind:value={pattern.scale} oninput={changed}>
-          <output>{pattern.scale}</output>
-        </label>
+        {#each pat.keys as k}
+          {#if pat.choices[k]}
+            {#if k === "hero"}<p class="hint">Corner motif: one large radial motif at a top corner, which the cells give way to.</p>{/if}
+            <div class="choices" role="group" aria-label={PATTERN_LABELS[k] ?? k} data-pattern-key={k}>
+              {#each pat.choices[k] as v}
+                <button type="button" aria-pressed={pattern[k] === v} disabled={!pattern.name}
+                  title={aboutOf(k)} onclick={() => { pattern[k] = v; changed(); }}>{v}</button>
+              {/each}
+            </div>
+          {:else if pat.range[k]}
+            <label class="row" title={aboutOf(k)} data-pattern-key={k}>
+              <span>{PATTERN_LABELS[k] ?? k}</span>
+              <input type="range" min={pat.range[k][0]} max={pat.range[k][1]} step="0.05" disabled={!pattern.name} bind:value={pattern[k]} oninput={changed}>
+              <output>{pattern[k]}</output>
+            </label>
+          {/if}
+        {/each}
       </details>
       <details class="backdrop">
         <summary>Backdrop</summary>

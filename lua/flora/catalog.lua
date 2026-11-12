@@ -43,6 +43,12 @@ function M.build()
   c.settings = {}
   for _, a in ipairs(Settings.about) do c.settings[#c.settings + 1] = { key = a[1], values = a[2], about = a[3] } end
 
+  c.pattern_keys = {}
+  for _, a in ipairs(Settings.about) do
+    local d = Settings.PATTERN[a[1]]
+    if d ~= nil then c.pattern_keys[#c.pattern_keys + 1] = { key = a[1], default = d } end
+  end
+
   c.layouts = {}
   for _, k in ipairs(Frames.order) do c.layouts[#c.layouts + 1] = { name = k, about = Frames.about[k] } end
 

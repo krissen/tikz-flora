@@ -69,4 +69,20 @@ do
   for k in pairs(Settings.FRESH_DROPS) do H.check(Settings.SPEC[k], "FRESH_DROPS names a key not in SPEC: " .. k) end
   H.check(keep.hero and keep.pattern and keep.ornaments and not keep.mix, "fresh keeps the wrong keys")
 end
+-- The pattern keys: every M.SPEC key that fills a pattern_* field is in
+-- Settings.PATTERN, with a default the parser accepts, so the mixer (which
+-- builds its pattern state, setup line and worker spec from the catalog's
+-- pattern_keys) cannot miss one.
+do
+  for k, f in pairs(Settings.SPEC) do
+    if f:match("^pattern_") then H.check(Settings.PATTERN[k] ~= nil, "pattern key missing from Settings.PATTERN: " .. k) end
+  end
+  for k, d in pairs(Settings.PATTERN) do
+    H.check(Settings.SPEC[k] and Settings.SPEC[k]:match("^pattern_"), "Settings.PATTERN names a non-pattern key: " .. k)
+    H.check(Settings.parse(k .. "=" .. tostring(d))[k] == d, "default of " .. k .. " does not parse")
+  end
+  local listed = {}
+  for _, p in ipairs(require("flora.catalog").build().pattern_keys) do listed[p.key] = true end
+  for k in pairs(Settings.PATTERN) do H.check(listed[k], "catalog pattern_keys lacks " .. k) end
+end
 H.done("settings")

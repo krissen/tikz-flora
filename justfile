@@ -164,6 +164,7 @@ test-garden: garden
 
 test-site:
     cd site && npm ci --no-audit --no-fund --silent && npm run build --silent
+    node site/tests/pattern-keys.mjs
     node site/tests/e2e.mjs
     node site/tests/margins-e2e.mjs
 
