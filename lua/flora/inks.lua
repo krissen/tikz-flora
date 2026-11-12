@@ -70,8 +70,14 @@ M.groups = {
   ["warm"] = { "tsutsuji", "bishamonten", "hana-ikada", "kosumosu", "momiji", "benzaiten", "fuyu-gaki", "yu-yake", "to-ro" },
   ["earth"] = { "yama-guri", "tsukushi", "ina-ho", "syun-gyo", "take-sumi", "hoteison" },
   ["gold"] = { "daikokuten", "hotaru-bi" },
+  -- Greys, none of them quite neutral: bamboo charcoal and the winter
+  -- general's blue-grey, with misty rain; a cooler set with the grey-teal;
+  -- and a warm one round the chestnut brown.
+  ["grey"] = { "take-sumi", "fuyu-syogun", "kiri-same" },
+  ["grey-cool"] = { "take-sumi", "fuyu-syogun", "fukagawa-nezu" },
+  ["grey-warm"] = { "yama-guri", "take-sumi" },
 }
-M.group_order = { "blue", "blue-grey", "teal", "green", "violet", "warm", "earth", "gold" }
+M.group_order = { "blue", "blue-grey", "teal", "green", "violet", "warm", "earth", "gold", "grey", "grey-cool", "grey-warm" }
 
 -- Whole palettes. The seasons are chosen by the inks' names as much as
 -- their colours: azalea and cherry petals in spring, hydrangea and
