@@ -15,14 +15,22 @@
 --          opt-in pattern is never picked through an ordinary group
 --          (square, star, triangular, ...): its weight is its own
 --          name's, else the weight given to the group `symbol`, else 0.
+--   surface  true for a pattern whose filled finish is a surface of
+--          fields (tiles, stars, petals) rather than line work; on a dark
+--          backdrop it is painted as on paper (pattern.lua).
+--   width, core, bands, line  its bands: full width in pt at scale=1, the
+--          core's share of it, "strap" or "line", and the line's width
+--   ground  for a pattern listing the ground role, the ground's lightness
 --   roles  the colour roles it paints with (pattern.lua's M.roles: band,
 --          core, a, b, accent, ground, and paper for a halo the page's own
 --          colour); it paints with no other. A pattern listing ground
 --          gives each cell's piece of it, the cell's `under` path or its
 --          `tile`, which the field paints under every cell when the page's
---          roles turn the ground on.
+--          roles turn the ground on. A cell that lies on its neighbours'
+--          pieces and has none of its own says `rests = true`. A cell's
+--          `plates`, {path, "a" or "b"} pairs, are fields that tile the
+--          plane, painted with the ground.
 --   scale  its cell size in pt at scale=1
---   width  its band width in pt at scale=1 (default: a sixth of scale)
 --   cells(env) -> list of cells covering env's box {x0, y0, x1, y1} at
 --          cell size env.size, drawing from env.rng. A cell is
 --          { x, y, verts, paint = fn(pt, cell, ink), construct = fn(pt,
@@ -33,7 +41,8 @@
 --          outline, and `pad` further where paint sticks out more. The
 --          field measures the whole outline against the page's edges
 --          and the text (pattern.lua). `ink` holds the colours, already
---          faded for the cell. A cell built on a tiling keeps its tile
+--          faded for the cell, and the band's character (pat_kit.lua's
+--          K.band and K.fill paint with it). A cell built on a tiling keeps its tile
 --          as `tile`; tiles meet edge to edge (tests/test_pattern.lua).
 --          A cell drawn with a compass may give `sweep = {x, y, a0,
 --          turn}`: the compass point and the angle (radians) it starts
