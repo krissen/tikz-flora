@@ -18,7 +18,6 @@
 #                            now as lines, for ember, original and autumn
 #                            on paper and on the dark backdrop
 #   detail__<variant>__<backdrop>.png, slide__...   every pattern
-#   alternatives__<colourway>.png   the two proposals side by side
 #   lines-widths.png          the lines finish's band characters and widths
 #   bands.png                 straps of rising width, and stars_8_4's page,
 #                             as PDF and as the web renderers draw them
@@ -141,18 +140,6 @@ for n in $names; do
   else
     magick -font "$FONT" "$OUT/tmp/grid.png" -background '#d8d4cc' -gravity northwest -splice 0x30 -pointsize 20 -annotate +8+4 "$n (no mock)" "$OUT/sheets/compare__$n.png"
   fi
-done
-
-# The two proposals for ember and autumn, pattern by pattern.
-for cw in ember autumn; do
-  t=""
-  for n in $names; do
-    for v in "$cw" "$cw-B"; do for bd in light dark; do
-      t="$t -label ${n}_${v}_${bd} $OUT/tiles/${v}__${bd}__$n.png"
-    done; done
-  done
-  # shellcheck disable=SC2086
-  montage -font "$FONT" $t -tile 8x -geometry 200x200+3+3 -pointsize 10 -background '#d8d4cc' -title "$cw: A (inks.lua) and B" "$OUT/sheets/alternatives__$cw.png"
 done
 
 # The lines finish's characters and widths.

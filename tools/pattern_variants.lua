@@ -14,15 +14,6 @@ for _, cw in ipairs(Inks.colourway_order) do
   add(cw .. "-lines", "colourway=" .. cw .. ", finish=lines", true)
 end
 
--- The second proposal for ember and autumn, beside the first (inks.lua).
-add("ember-B", "colourway=ember, patternpalette={band=shin-ryoku, fielda=fuyu-gaki, fieldb=hotaru-bi, ground=yama-guri}", true)
-add("autumn-B", "colourway=autumn, patternpalette={band=ina-ho, fielda=yu-yake, fieldb=yama-budo, ground=yama-guri}", true)
-
--- charcoal's fields at three distances in lightness: 0.10, 0.20 (its
--- own, inks.lua) and 0.30.
-add("charcoal-L1", "colourway=charcoal, patternpalette={fielda=grey:0.70:0.3, fieldb=fuyu-syogun:0.60:0.3}", true)
-add("charcoal-L3", "colourway=charcoal, patternpalette={fielda=grey:0.80:0.3, fieldb=fuyu-syogun:0.50:0.3}", true)
-
 -- The lines finish with each band character and a wider band, on the
 -- original colourway.
 add("lines-line", "colourway=original, finish=lines, bands=line")
