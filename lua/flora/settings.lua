@@ -45,7 +45,7 @@ M.about = {
   { "outer", "bleed, margin", "How a pattern meets the paper's edge: running off the page (the default), or whole cells, and a whole hero, inside a small margin." },
   { "scale", "0.25 to 4", "The size of a pattern's cells, as a factor of its own." },
   { "patternpalette", "{role=ink, ...} for the roles band, core, fielda, fieldb, ground, accent",
-    "What paints each part of a pattern: an ink group, one iroshizuku ink by name (as ink:L or ink:L:share with its lightness and chroma kept), paper or gold, and for the ground also none. A colourway sets them all; a role left out takes its colour from the palette's flora parts." },
+    "What paints each part of a pattern: an ink group, one iroshizuku ink by name (as ink:L or ink:L:share with its lightness and chroma kept), paper or gold, and for the ground also none. A colourway sets them all; a role left out takes its colour from the palette's flora parts. An ink without a lightness takes the role's own, and for core and accent, which have none, the ink's richest (most chromatic) shade." },
   { "saturation", "0 to 1", "How much of its inks' colour a pattern's fields and ground keep: 0.5 (the default) mutes them as tiles and mosaics are, 1 keeps the ink's full colour. A share patternpalette gives a field or the ground (ink:L:share) is the one it keeps at 0.5, and other values scale it." },
   { "finish", "filled, lines", "How a pattern is drawn: filled (the default), with its fields and ground, or lines, its bands and outlines alone with nothing filled." },
   { "bands", "auto, line, strap", "How a pattern's bands are drawn: auto (the default), each pattern's own; line, one thin line; or strap, a broad band with a fine contour and a light core." },
