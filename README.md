@@ -93,7 +93,7 @@ compile with a message naming the key.
 | `backdrop` | `light` (default), `dark`, or a dark `#rrggbb` | What the flora is painted over. On `dark` every ink is painted light, as if lit, and gold stays gold; set the page to match, e.g. `\pagecolor[HTML]{0A1014}` |
 | `pattern` | a pattern or group name, `{name=weight, ...}`, or `none` | Fills the page with a geometric pattern instead of flora (see Patterns) |
 | `edge` | `dissolve` (default), `cell`, `fade`, `border`, `guilloche` | How a pattern meets the text |
-| `hero` | `rosette`, `phyllotaxis`, `rose`, `guilloche`, `none` (default) | One large radial motif at a top corner of a pattern page |
+| `hero` | `rosette`, `phyllotaxis`, `rose`, `guilloche`, `turned_circles`, `circle_disc`, `none` (default) | One large radial motif at a top corner of a pattern page |
 | `outer` | `bleed` (default), `margin` | How a pattern meets the paper's edge |
 | `scale` | 0.25 to 4 | The size of a pattern's cells |
 | `cache` | `true` (default), `false` | Keeps each page's flora in a folder `<jobname>-flora/` beside the PDF so a later compile reuses it (see Long documents) |
@@ -259,8 +259,12 @@ Two colourways are made for patterns: `tsuki-mi` (月見, moon viewing), ochre, 
 `hero` adds one large radial motif to a pattern page, as a flora page has
 its hero bloom: `rosette` (rings of petals round a gold centre),
 `phyllotaxis` (seeds set as a sunflower sets them, golden angle by golden
-angle), `rose` (a rose window of glass roundels and tracery) or
-`guilloche` (rings of fine hypotrochoids, as a rose engine cuts them). It
+angle), `rose` (a rose window of glass roundels and tracery), `guilloche`
+(rings of fine hypotrochoids, as a rose engine cuts them),
+`turned_circles` (forty circles turned about the centre, filling a ring)
+or `circle_disc` (the overlapping circles cut to a disc in a rim of two
+rings, the seven middle ones picked out; a finite figure, where the
+pattern `overlapping_circles` is the lattice without end). It
 sits in the top corner of the pattern's side, the top right for `right`
 and the top left for `left` (`split` takes the outer one), and the top
 right for layouts with both sides or the whole page. With `outer=bleed`

@@ -563,7 +563,7 @@ local function hero_extent(d)
   end
   return last, #rings
 end
-for _, name in ipairs({ "rosette", "phyllotaxis", "rose", "guilloche" }) do
+for _, name in ipairs({ "rosette", "phyllotaxis", "rose", "guilloche", "turned_circles", "circle_disc" }) do
   for _, R in ipairs({ 24, 60, 135 }) do
     local outer = hero_extent({ 100, 100, R, name = name })
     H.check(outer <= R + 1e-6, name .. " paints beyond its disc")

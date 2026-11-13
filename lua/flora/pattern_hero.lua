@@ -255,7 +255,102 @@ local function guilloche(x, y, R, ink)
   return rings
 end
 
-M.motifs = { rosette = rosette, phyllotaxis = phyllotaxis, rose = rose, guilloche = guilloche }
+-- Turned circles (ORDER #12, after the study's sketch t-09): forty equal
+-- circles whose centres stand on a circle, turned evenly about the
+-- centre, so that together they fill a ring from a third of the radius
+-- to the whole; each circle a narrow band of fine lines. Not the
+-- guilloche, whose rings are three families of hypotrochoids.
+local function turned_circles(x, y, R, ink)
+  local N, u = 40, R / 80
+  local w = 2.4 * u -- the band's width
+  local rc = 0.34 * (R - w) -- each circle's radius, and its centre's
+  local dc = (R - w) - rc
+  local function at(k) local a = 2 * pi * k / N return x + dc * cos(a), y + dc * sin(a) end
+  return { { r = R,
+    construct = function(pt)
+      pt:stroke(circle(x, y, dc), ink.line, 0.4, 1)
+      for k = 0, N - 1 do local cx, cy = at(k) pt:stroke(circle(cx, cy, rc), ink.line, 0.3, 1) end
+    end,
+    paint = function(pt)
+      for k = 0, N - 1 do
+        local cx, cy = at(k)
+        pt:stroke(circle(cx, cy, rc), ink.fill[1], w, 1)
+        for _, o in ipairs({ -0.5, -1 / 6, 1 / 6, 0.5 }) do
+          pt:stroke(circle(cx, cy, rc + o * (w - 0.3 * u)), ink.band, 0.3 * u, 1)
+        end
+      end
+    end } }
+end
+
+-- A disc of overlapping circles (ORDER #12, after the study's sketch
+-- t-01): the circles of the overlapping-circles lattice, each through its
+-- six neighbours' centres, cut to a disc of three of their radii, inside a rim of two rings; the seven middle circles in
+-- the accent. A finite figure: the pattern overlapping_circles is the
+-- lattice without end.
+-- The part of the circle about (cx, cy), radius r, d from (x, y), that
+-- lies inside the disc of radius D about (x, y): an arc in steps of a
+-- tenth of a turn's quarter at most, so that no Bezier control point
+-- strays more than a few hundredths of r outside the disc.
+local function inside_arc(x, y, cx, cy, r, d, D)
+  local toward = math.atan(y - cy, x - cx)
+  local a0, a1
+  if d + r <= D then a0, a1 = 0, 2 * pi
+  else
+    local half = math.acos(math.max(-1, math.min(1, (d * d + r * r - D * D) / (2 * d * r))))
+    a0, a1 = toward - half, toward + half
+  end
+  local n = math.max(1, math.ceil((a1 - a0) / (pi / 18)))
+  local step = (a1 - a0) / n
+  local k = 4 / 3 * math.tan(step / 4) * r
+  local path = { { "m", cx + r * cos(a0), cy + r * sin(a0) } }
+  for i = 0, n - 1 do
+    local s, e = a0 + step * i, a0 + step * (i + 1)
+    path[#path + 1] = { "c", cx + r * cos(s) - k * sin(s), cy + r * sin(s) + k * cos(s),
+      cx + r * cos(e) + k * sin(e), cy + r * sin(e) - k * cos(e), cx + r * cos(e), cy + r * sin(e) }
+  end
+  return path
+end
+
+local function circle_disc(x, y, R, ink)
+  local function inside(cx, cy, r, d, D) return inside_arc(x, y, cx, cy, r, d, D) end
+  local u = R / 80
+  local r = (R - 1.2 * u) / 3.1
+  local disc = circle(x, y, 3 * r)
+  local seed, rest = {}, {}
+  local h = sqrt(3) / 2
+  for j = -4, 4 do
+    for i = -5, 5 do
+      local cx, cy = x + r * (i + j / 2), y + r * h * j
+      local d = sqrt((cx - x) ^ 2 + (cy - y) ^ 2)
+      if d < r + 1e-6 then
+        seed[#seed + 1] = circle(cx, cy, r)
+      elseif d < 4 * r - 1e-6 then
+        rest[#rest + 1] = inside(cx, cy, r, d, 3 * r)
+      end
+    end
+  end
+  local lw = 0.6 * u
+  return {
+    { r = 2 * r + lw + 0.2,
+      construct = function(pt) pt:stroke(seed, ink.line, 0.4, 1, { many = true }) end,
+      paint = function(pt) pt:stroke(seed, ink.accent, lw, 1, { many = true }) end },
+    { r = R,
+      construct = function(pt) pt:stroke(rest, ink.line, 0.4, 1, { many = true }) end,
+      paint = function(pt)
+        pt:stroke(rest, ink.band, lw, 1, { many = true })
+        pt:stroke(seed, ink.accent, lw, 1, { many = true })
+      end },
+    { r = R,
+      construct = function(pt) pt:stroke(disc, ink.line, 0.4, 1) end,
+      paint = function(pt)
+        pt:stroke(disc, ink.fill[1], 1.6 * u, 1)
+        pt:stroke(circle(x, y, R - 0.5 * u), ink.fill[1], 0.6 * u, 1)
+      end },
+  }
+end
+
+M.motifs = { rosette = rosette, phyllotaxis = phyllotaxis, rose = rose, guilloche = guilloche,
+  turned_circles = turned_circles, circle_disc = circle_disc }
 
 -- The roles (pattern.lua's M.roles) each motif paints with.
 M.roles = {
@@ -263,6 +358,8 @@ M.roles = {
   phyllotaxis = { "band", "line", "a", "accent" },
   rose = { "dark", "paper", "line", "a", "b", "accent" },
   guilloche = { "band", "line", "a", "accent" },
+  turned_circles = { "band", "line", "a" },
+  circle_disc = { "band", "line", "a", "accent" },
 }
 
 -- The names hero= accepts, sorted, then none.
