@@ -26,7 +26,31 @@ local sqrt, cos, sin, rad = math.sqrt, math.cos, math.sin, math.rad
 --              down triangle hides the up one's lines and shows as one
 --              figure; the up triangle shows only as three tips, and the
 --              rhombs between the stars are light
+-- And with the star whole in one colour, tips and middle alike (ORDER #12),
+-- thin dark lines:
+--   star-thin  the star in the first field, the gaps in the second
+--   plain      the star in the first field, the gaps the paper
+--   rows       the stars row by row in the first field and the second, the
+--              gaps the paper (two colours cannot keep every pair of
+--              touching stars apart on this lattice; a row's stars touch)
+--   three      the stars in the first field, the second and the accent,
+--              so that no two touching stars share one; the gaps the paper
+local THIN = { ["star-thin"] = true, plain = true, rows = true, three = true }
 local function paint(pt, c, ink)
+  if THIN[c.form] then
+    local tones = { ink.fill[1], ink.fill[2], ink.accent }
+    if c.form == "star-thin" then
+      -- Stroked in their own colour too, so the two halves of a rhomb
+      -- leave no seam between them.
+      K.fill(pt, c.gaps, ink.fill[2], ink, { many = true })
+      if not ink.lines then pt:stroke(c.gaps, ink.fill[2], 0.6, 1, { many = true }) end
+    end
+    local t = 1
+    if c.form == "rows" then t = c.row % 2 + 1 elseif c.form == "three" then t = c.three + 1 end
+    K.fill(pt, c.star, tones[t], ink)
+    K.band(pt, c.star, ink, { core = false, w = 0.6 })
+    return
+  end
   if c.form == "measured" then
     K.fill(pt, c.gaps, ink.core, ink, { many = true })
     K.fill(pt, c.up, ink.fill[1], ink)
@@ -131,7 +155,10 @@ return {
         out[#out + 1] = { x = x, y = y, verts = star, pad = d * 0.02, under = K.path(hex),
           up = K.path(triangle(x, y, R, 90)), down = K.path(triangle(x, y, R, 270)),
           star = K.path(star), gaps = gaps, crossings = crossings, tips = tips,
-          form = env.opts and env.opts.hexagram,
+          form = env.opts and env.opts.hexagram, row = j,
+          -- A colour of three per star, no two touching stars alike: the
+          -- star's axial coordinates' difference, modulo 3.
+          three = ((i - (j - j % 2) / 2) - j) % 3,
           paint = paint, construct = construct }
       end
     end
