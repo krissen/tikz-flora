@@ -884,7 +884,9 @@ function M.paint(spec, pt)
   local pieces = M.edge_pieces(ge, fr, edgeinfo)
   -- The fields' plates end cell by cell, whatever the ground does, unless
   -- a prototype asks otherwise (pattern_opts.field_edge).
-  local fpieces = M.edge_pieces(opts.field_edge or "cells", fr, edgeinfo)
+  -- Plates belong to the kept cells only, so their edge is the kept cells'.
+  local fe = opts.field_edge or "cells"
+  local fpieces = M.edge_pieces(fe, fr, fe ~= "cells" and fe ~= "panel" and M.field_edges(cells, kept, onpage) or edgeinfo)
   if base.ground then
     local K = require("flora.pat_kit")
     if pieces.panel then
