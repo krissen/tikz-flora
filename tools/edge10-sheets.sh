@@ -17,7 +17,10 @@ done
 sheet "form__hexagram" hexagram_lattice y-02 "hexagram_lattice: how the star is built" "tsuki-mi ember" \
   "hex-today=Today: up triangle field A, down triangle over it field B" "hex-star=Whole star in field A, gaps in field B" \
   "hex-interlace=Two triangles woven as bands, star filled" "hex-weave=Two triangles woven as bands, no fill" \
-  "hex-mock=As the sketch y-02: star, light rhombs, accent at the tips" "hex-outline=Whole star in field A on the paper (own proposal)"
+  "hex-mock=First reading of y-02: whole star" "hex-outline=Whole star in field A on the paper (own proposal)" \
+  "hex-measured=As y-02 measures: down triangle on top, thin lines"
 sheet "kant__khatam" khatam y-03 "khatam: how its field ends where the pattern ends" "tsuki-mi ember" \
   "khatam2-cells=Today: a square per star" "khatam2-shape=Ends along the stars' outline" "khatam2-panel=A straight panel" \
-  "khatam2-inner=Only between stars with neighbours all round" "khatam2-fade=Fades out over the outer stars (own proposal)"
+  "khatam2-inner=Only between stars with neighbours all round" "khatam2-fade=Fades out over the outer stars (own proposal)" \
+  "khatam3-mock=As y-03: field between kept stars" \
+  "khatam3-mock-any=As y-03: field round every star"
