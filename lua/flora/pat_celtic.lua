@@ -150,7 +150,8 @@ function M.cells_with(env, make_inner)
   local a = env.size
   local gx, gy = floor(env.x0 / a) - 1, floor(env.y0 / a) - 1
   local nx, ny = ceil(env.x1 / a) + 1 - gx, ceil(env.y1 / a) + 1 - gy
-  local inner = make_inner and make_inner(gx, gy, nx, ny, env.rng) or nil
+  local inner, alive, group
+  if make_inner then inner, alive, group = make_inner(gx, gy, nx, ny, env.rng) end
   -- Under a second drawing (pattern.lua's reweave) every crossing the
   -- field dropped is a mirror, so the strands turn back at the field's
   -- edge instead of ending there.
@@ -164,6 +165,17 @@ function M.cells_with(env, make_inner)
     for _, pts in ipairs(loops) do
       for _, q in ipairs(pts) do
         if not blocked(q.X, q.Y) then live[#live + 1] = pts; break end
+      end
+    end
+    loops = live
+  end
+  if alive then
+    -- A layout's own panels (M.panels): a strand with no crossing inside a
+    -- panel lies wholly in the space between them and is not drawn.
+    local live = {}
+    for _, pts in ipairs(loops) do
+      for _, q in ipairs(pts) do
+        if alive(q.X, q.Y) then live[#live + 1] = pts; break end
       end
     end
     loops = live
@@ -190,6 +202,7 @@ function M.cells_with(env, make_inner)
         c = { x = x, y = y, pad = PAD * a, under = {}, over = {}, under_core = {}, over_core = {}, halo = {}, lines = {},
           verts = { { x - r, y - r }, { x + r, y - r }, { x + r, y + r }, { x - r, y + r } },
           paint = paint, construct = construct }
+        if group then c.group, c.fixed = group(p.X, p.Y), true end
         by_point[k] = c
         out[#out + 1] = c
       end
@@ -223,6 +236,91 @@ function M.cells_with(env, make_inner)
   return out
 end
 
+-- ------------------------------------------------------------ Panels
+-- Closed knot panels laid out in the field's own room (pattern_opts.knot,
+-- a study, ORDER #12, after the sketches y-06 and y-08): each panel a
+-- rectangle of whole grid units whose border is all mirrors, so its
+-- strands close into a finished edge all round, and a plain plait inside.
+--   one       one panel per side the field takes, as large as the room
+--             beside the text allows
+--   several   square panels of n units (opts.knot_n, default 7, as the
+--             sketches measure) side by
+--             side, a unit of paper between them, as many as fit
+-- The panels' cells keep clear of the text without thinning toward it and
+-- fall away a panel at a time.
+function M.panel_rects(env, mode, n)
+  local a, room = env.size, env.room
+  if not room then return {} end
+  local t, gap, side = room.text, room.gap, room.side
+  -- The loops' turns stand out about a quarter unit past the border, plus
+  -- the band's reach; half a unit of paper is kept from the page's edge.
+  local over = 0.25 + (room.reach + 1) / a
+  local strips = {}
+  local y0 = math.ceil(0.5 + over)
+  local y1 = math.floor(room.top / a - 0.5 - over)
+  if not side or side.left then strips[#strips + 1] = { math.ceil(0.5 + over), math.floor((t.x0 - gap) / a - over) } end
+  if not side or side.right then strips[#strips + 1] = { math.ceil((t.x1 + gap) / a + over), math.floor(room.W / a - 0.5 - over) } end
+  local rects = {}
+  for _, st in ipairs(strips) do
+    local x0, x1 = st[1], st[2]
+    if mode == "one" then
+      if x1 - x0 >= 2 and y1 - y0 >= 2 then rects[#rects + 1] = { x0, y0, x1, y1 } end
+    else
+      local cols = math.floor((x1 - x0 + 1) / (n + 1))
+      local rows = math.floor((y1 - y0 + 1) / (n + 1))
+      if cols >= 1 and rows >= 1 then
+        -- Centred in the strip, on whole units.
+        local sx = x0 + math.floor(((x1 - x0) - (cols * (n + 1) - 1)) / 2)
+        local sy = y0 + math.floor(((y1 - y0) - (rows * (n + 1) - 1)) / 2)
+        for i = 0, cols - 1 do
+          for j = 0, rows - 1 do
+            local px, py = sx + i * (n + 1), sy + j * (n + 1)
+            rects[#rects + 1] = { px, py, px + n, py + n }
+          end
+        end
+      end
+    end
+  end
+  return rects
+end
+
+function M.panels_inner(env, mode, n)
+  local rects = M.panel_rects(env, mode, n)
+  return function(gx, gy)
+    local function where(X, Y)
+      local x, y = gx + X / 2, gy + Y / 2
+      for k, r in ipairs(rects) do
+        if x >= r[1] and x <= r[3] and y >= r[2] and y <= r[4] then
+          local edge = (X % 2 == 0 and (x == r[1] or x == r[3])) or (Y % 2 == 0 and (y == r[2] or y == r[4]))
+          return k, edge
+        end
+      end
+      return nil
+    end
+    local function inner(X, Y)
+      local k, edge = where(X, Y)
+      return not k or edge
+    end
+    local function alive(X, Y)
+      local k, edge = where(X, Y)
+      return k ~= nil and not edge
+    end
+    local function group(X, Y)
+      local k = where(X, Y)
+      return "panel " .. tostring(k)
+    end
+    return inner, alive, group
+  end
+end
+
+function M.cells(env)
+  local mode = env.opts and env.opts.knot
+  if mode == "one" or mode == "several" then
+    return M.cells_with(env, M.panels_inner(env, mode, env.opts.knot_n or 7))
+  end
+  return M.cells_with(env, nil)
+end
+
 return {
   name = "celtic_knot",
   title = "Celtic knotwork, mirror curves with alternating over/under crossings",
@@ -230,7 +328,7 @@ return {
   roles = { "band", "accent", "paper" },
   scale = SCALE,
   width = WIDTH, core = 0.4, bands = "strap",
-  cells = function(env) return M.cells_with(env, nil) end,
+  cells = function(env) return M.cells(env) end,
   -- It can be drawn again with the field's edge as a wall (pattern.lua),
   -- and by default is (the ends key).
   reweave = true, ends = "closed",

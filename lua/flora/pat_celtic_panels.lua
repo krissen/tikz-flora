@@ -59,6 +59,9 @@ return {
   width = Celtic.width, core = 0.4, bands = "strap",
   -- A panel is the unit that falls away whole (pattern.lua's units).
   cells = function(env)
+    -- The closed-panel study (pat_celtic.lua's M.panel_rects) lays its own
+    -- panels.
+    if env.opts and env.opts.knot then return Celtic.engine.cells(env) end
     local out = Celtic.engine.cells_with(env, inner_for)
     local w = SPAN * env.size
     for _, c in ipairs(out) do c.group = math.floor(c.x / w + 1e-3) .. "," .. math.floor(c.y / w + 1e-3) end

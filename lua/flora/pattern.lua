@@ -699,7 +699,12 @@ function M.paint(spec, pt)
   if opts.symmetric == nil then opts.symmetric = panels == "on" end
   local ground_edges = { auto = "panel", panel = "panel", motif = "shape", round = "discs", cells = "cells" }
   if opts.ground_edge == nil then opts.ground_edge = ground_edges[key(spec, "ground")] or "cells" end
-  local env = { x0 = 0, y0 = 0, x1 = W, y1 = H, size = size, rng = rng:fork("cells"), opts = opts }
+  -- The room the field has (for a layout that places its own panels in
+  -- it, pat_celtic.lua's knot study): the text block, the gap kept from
+  -- it, the sides the field takes, the page's painted top and the reach of
+  -- a band.
+  local field_room = { text = text, gap = gap, side = side, W = W, top = top, reach = width / 2 }
+  local env = { x0 = 0, y0 = 0, x1 = W, y1 = H, size = size, rng = rng:fork("cells"), opts = opts, room = field_room }
   local cells = p.cells(env)
   local fall = rng:fork("dissolve")
   local stagger = rng:fork("growth")
@@ -732,6 +737,9 @@ function M.paint(spec, pt)
       return false, 0, false, free
     end
     local a = 0
+    -- A cell of a layout that places itself (c.fixed) is kept whenever it
+    -- keeps clear of the text; it does not thin out toward it.
+    if c.fixed then return true, d >= gap and 1 or 0, false, d >= gap end
     if dens > 0 and d >= gap then
       local t = (d - gap) / ramp
       if edge == "dissolve" then a = r < smooth(t) and 1 or 0
