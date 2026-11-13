@@ -20,7 +20,21 @@ local sqrt, cos, sin, rad = math.sqrt, math.cos, math.sin, math.rad
 --              first field, the rhombs between the stars light, and a small
 --              triangle of the accent at each meeting of six tips
 --   outline    the whole star in the first field, the gaps the paper
+--   measured   as y-02 measures (ORDER #11): the up triangle in the first
+--              field, then the down triangle whole over it in the second,
+--              each outlined with a thin dark line as it is laid, so the
+--              down triangle hides the up one's lines and shows as one
+--              figure; the up triangle shows only as three tips, and the
+--              rhombs between the stars are light
 local function paint(pt, c, ink)
+  if c.form == "measured" then
+    K.fill(pt, c.gaps, ink.core, ink, { many = true })
+    K.fill(pt, c.up, ink.fill[1], ink)
+    K.band(pt, c.up, ink, { core = false, w = 0.6 })
+    K.fill(pt, c.down, ink.fill[2], ink)
+    K.band(pt, c.down, ink, { core = false, w = 0.6 })
+    return
+  end
   local form = c.form
   if form == "star" or form == "mock" or form == "outline" then
     K.fill(pt, c.star, ink.fill[1], ink)
