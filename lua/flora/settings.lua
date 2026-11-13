@@ -180,6 +180,23 @@ M.define("scale", function(v)
   return nil, "scale must be a number from 0.25 to 4"
 end)
 
+-- A pattern palette value split into its name and the rest, when it has
+-- one of the forms patternpalette takes: name, name:L, name:L:share or
+-- name::share, with L and share numbers from 0 to 1. The rest is "" for a
+-- bare name, the suffix when it is well formed, and nil when it is not;
+-- the name is nil when there is none.
+local function palette_form(v)
+  local name, rest = tostring(v):match("^([^:]+)(.*)$")
+  if not name then return nil end
+  if rest == "" then return name, rest end
+  local function unit(s) local n = tonumber(s); return n and n >= 0 and n <= 1 end
+  local L = rest:match("^:([^:]+)$")
+  if L then return name, unit(L) and rest or nil end
+  local L2, share = rest:match("^:([^:]*):([^:]+)$")
+  if share and (L2 == "" or unit(L2)) and unit(share) then return name, rest end
+  return name, nil
+end
+
 M.define("patternpalette", function(v)
   local Pattern = require("flora.pattern")
   local roles = {}
@@ -192,11 +209,9 @@ M.define("patternpalette", function(v)
       for _, r in ipairs(Pattern.ROLE_KEYS) do names[#names + 1] = r.key end
       return nil, "no pattern role \"" .. role .. "\" (roles: " .. table.concat(names, ", ") .. ")"
     end
-    local name, L, share = Pattern.palette_value(ink)
-    local rest = tostring(ink):sub(#name + 1)
-    local ok_rest = rest == "" or ((L or rest:match("^::")) and (L == nil or (L >= 0 and L <= 1)) and (share == nil or (share >= 0 and share <= 1)))
-    if not ((name == "paper" or name == "gold" or (name == "none" and role == "ground")) and rest == ""
-        or (Inks.groups[name] or Inks.ramps[name]) and ok_rest) then
+    local name, rest = palette_form(ink)
+    if not (name and ((name == "paper" or name == "gold" or (name == "none" and role == "ground")) and rest == ""
+        or (Inks.groups[name] or Inks.ramps[name]) and rest ~= nil)) then
       return nil, "\"" .. tostring(ink) .. "\" is not paper, gold, an ink group or an ink name (with :L or :L:share from 0 to 1)" .. (role == "ground" and ", or none" or "")
     end
     t[role] = ink
