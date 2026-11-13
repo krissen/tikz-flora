@@ -21,6 +21,4 @@ sheet "form__hexagram" hexagram_lattice y-02 "hexagram_lattice: how the star is 
   "hex-measured=As y-02 measures: down triangle on top, thin lines"
 sheet "kant__khatam" khatam y-03 "khatam: how its field ends where the pattern ends" "tsuki-mi ember" \
   "khatam2-cells=Today: a square per star" "khatam2-shape=Ends along the stars' outline" "khatam2-panel=A straight panel" \
-  "khatam2-inner=Only between stars with neighbours all round" "khatam2-fade=Fades out over the outer stars (own proposal)" \
-  "khatam3-mock=As y-03: field between kept stars" \
-  "khatam3-mock-any=As y-03: field round every star"
+  "khatam2-inner=Only between stars with neighbours all round" "khatam2-fade=Fades out over the outer stars (own proposal)"

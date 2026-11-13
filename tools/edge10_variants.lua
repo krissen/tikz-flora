@@ -1,6 +1,7 @@
 -- The variants of ORDER #10's sheets (tools/edge10-sheets.sh): before and
 -- after the ground, ends and panels keys, hexagram's star, and how
--- khatam's field ends, and (ORDER #11) both built as their sketches measure. Each a \florasetup line and prototype options.
+-- khatam's field ends, and (ORDER #11) hexagram built as its sketch
+-- measures. Each a \florasetup line and prototype options.
 
 local variants = {}
 local function add(name, setup, opts, patterns)
@@ -17,10 +18,6 @@ for _, cw in ipairs({ "tsuki-mi", "ember" }) do
   end
   for _, e in ipairs({ "cells", "shape", "panel", "inner", "fade" }) do
     add("khatam2-" .. e .. "__" .. cw, "colourway=" .. cw, { field_edge = e }, { "khatam" })
-  end
-  -- ORDER #11: khatam built as y-03 measures.
-  for _, f in ipairs({ "mock", "mock-any" }) do
-    add("khatam3-" .. f .. "__" .. cw, "colourway=" .. cw, { khatam = f }, { "khatam" })
   end
 end
 return { variants = variants }
