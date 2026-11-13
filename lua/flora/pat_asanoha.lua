@@ -39,7 +39,7 @@ return {
         local D = { x0 + s * 1.5, y0 + h }
         for _, T in ipairs({ { A, B, C }, { B, D, C } }) do
           local g = { (T[1][1] + T[2][1] + T[3][1]) / 3, (T[1][2] + T[2][2] + T[3][2]) / 3 }
-          out[#out + 1] = { x = g[1], y = g[2], verts = T, tile = T,
+          out[#out + 1] = { x = g[1], y = g[2], verts = T, tile = T, shape = K.path(T),
             edges = { seg(T[1], T[2]), seg(T[2], T[3]), seg(T[3], T[1]) },
             spokes = { seg(T[1], g), seg(T[2], g), seg(T[3], g) },
             paint = paint, construct = construct }

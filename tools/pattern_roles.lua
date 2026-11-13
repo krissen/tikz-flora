@@ -49,7 +49,7 @@ end
 -- The page for `setup` (a \florasetup key list) on the baked page, as
 -- tools/preview.lua builds it with "fresh": the page's own settings
 -- without its inks, then the setup's.
-local function page_spec(page, layout, setup, backdrop)
+local function page_spec(page, layout, setup, backdrop, opts)
   local spec = load(page)
   spec.seed = Init.seed(tostring(SEED), tonumber(page) or 1)
   local own = Settings.from_spec(spec, Settings.fresh_keys())
@@ -58,6 +58,7 @@ local function page_spec(page, layout, setup, backdrop)
   Settings.to_spec(set, spec)
   spec.layout = layout
   spec.ornaments = {}
+  spec.pattern_opts = opts
   return spec
 end
 
@@ -129,15 +130,17 @@ for _, v in ipairs(V.variants) do
       local dir = outdir .. "/" .. v.name .. "/" .. bd
       mkdir(dir)
       for _, p in ipairs(Patterns.list) do
-        local spec = page_spec("4", "left", "pattern=" .. p.name .. ", " .. v.setup, bd)
+        if v.patterns and not v.patterns[p.name] then goto skip end
+        local spec = page_spec("4", "left", "pattern=" .. p.name .. ", " .. v.setup, bd, v.opts)
         render(spec, dir .. "/" .. p.name .. ".pdf")
         measure(v.name, bd, p, spec)
         if v.slide then
-          render(page_spec("slide", "right", "pattern=" .. p.name .. ", " .. v.setup, bd), dir .. "/slide-" .. p.name .. ".pdf")
+          render(page_spec("slide", "right", "pattern=" .. p.name .. ", " .. v.setup, bd, v.opts), dir .. "/slide-" .. p.name .. ".pdf")
         end
+        ::skip::
       end
-      for _, h in ipairs({ "rosette", "phyllotaxis", "rose", "guilloche" }) do
-        render(page_spec("3", "right", "pattern=stars_8_4, hero=" .. h .. ", " .. v.setup, bd), dir .. "/hero-" .. h .. ".pdf")
+      for _, h in ipairs(v.patterns and {} or { "rosette", "phyllotaxis", "rose", "guilloche" }) do
+        render(page_spec("3", "right", "pattern=stars_8_4, hero=" .. h .. ", " .. v.setup, bd, v.opts), dir .. "/hero-" .. h .. ".pdf")
       end
     end
   end
