@@ -16,7 +16,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { chromium } from "playwright-core";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { patternDefaults, patternParts, patternFromQuery } from "../src/lib/setup.js";
+import { patternDefaults, patternParts, patternFromQuery, colourParts } from "../src/lib/setup.js";
 
 const SITE = join(dirname(fileURLToPath(import.meta.url)), "..");
 const catalog = JSON.parse(readFileSync(process.argv[2] ?? join(SITE, "public/bake/catalog.json"), "utf8"));
@@ -47,6 +47,38 @@ for (const k of pat.keys) {
   check(patternFromQuery(new URLSearchParams(`${k}=nonesuch`), meta)[k] === d, `?${k}=nonesuch is not ignored`);
 }
 check(patternParts({ name: "", hero: "rose" }, meta).length === 0, "flora has pattern keys");
+
+// The colour parts the worker parses for its preview (settings.lua's
+// pattern_preview) are the setup line's: a colourway chosen in the mixer
+// (Mixer.svelte's useColourway, the colourway's inks over the defaults),
+// after no other, after any other or after an ink was changed, gives
+// exactly colourway=NAME, and an ink changed after it adds that part only.
+// tests/test_pattern_colourways.lua holds that those parts paint the roles
+// the document paints. The meta is the worker's: every colourway with
+// inks of its own.
+{
+  const cmeta = {
+    parts: catalog.parts.map((p) => [p.key, p.default]),
+    colourways: Object.fromEntries(catalog.colourways.filter((c) => Object.keys(c.inks).length).map((c) => [c.name, c.inks])),
+  };
+  const defaults = Object.fromEntries(cmeta.parts);
+  const use = (_before, name) => ({ ...defaults, ...cmeta.colourways[name] });
+  const names = Object.keys(cmeta.colourways);
+  check(names.length >= 9, `the worker's meta lists ${names.length} colourways`);
+  let cells = 0;
+  for (const name of names) {
+    const histories = [defaults, { ...defaults, hero: "hoteison" }, ...names.filter((n) => n !== name).map((n) => use(defaults, n))];
+    for (const before of histories) {
+      cells++;
+      const got = colourParts(use(before, name), cmeta).join(", ");
+      check(got === `colourway=${name}`, `${name} chosen in the mixer gives the colour parts "${got}"`);
+    }
+    const edited = colourParts({ ...use(defaults, name), hero: "hoteison" }, cmeta).join(", ");
+    check(edited === `colourway=${name}, palette={hero=hoteison}`, `${name} with its hero changed gives "${edited}"`);
+  }
+  check(colourParts(defaults, cmeta).length === 0, "the package's own look names a colourway");
+  console.log(`colour parts: ${cells} cells`);
+}
 
 // The built mixer: every catalog key has a control; a non-default value
 // reaches the line and changes the picture; the URL opens on it. The page

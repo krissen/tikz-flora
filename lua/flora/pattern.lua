@@ -376,7 +376,8 @@ function M.role_inks(rng, p, spec)
   local sat = key(spec, "saturation")
   local function role(name, L)
     local r = R[name]
-    local v, vL, vs = given[USER[name]], nil, nil
+    -- false (a colourway's reset, settings.lua) is a role left out.
+    local v, vL, vs = given[USER[name]] or nil, nil, nil
     if v then v, vL, vs = M.palette_value(v) end
     -- A lightness the palette gives holds unless the caller asks for one
     -- (the ground's own, the dark disc's).

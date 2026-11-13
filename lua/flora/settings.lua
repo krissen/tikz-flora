@@ -26,7 +26,7 @@ M.about = {
   { "palette", "{part=ink, ...}",
     "What paints each part: look (the original blue gradients), an ink group, one iroshizuku ink by name, or random for one ink picked per page." },
   { "colourway", "original, spring, summer, autumn (or fall), winter, ember, plum, rose, usu-zumi, tsuki-mi",
-    "A whole palette at once, for flora and for patterns (patternpalette). A palette={...} or patternpalette={...} after it changes single parts." },
+    "A whole palette at once, for flora and for patterns (patternpalette). A palette={...} or patternpalette={...} after it changes single parts; a colourway after them sets every part and role again." },
   { "spin", "a whole number", "Picks the random inks again. The shapes stay where they are." },
   { "ornaments", "{kind=weight, ...}, weights 0 to 10",
     "How often each ornament kind is picked for its place on the page, against the other kinds for that place: 0 never." },
@@ -480,8 +480,13 @@ function M.parse(s)
       t.mix = M.merge({ mix = t.mix }, { mix = { density = val } }).mix
     elseif k == "colourway" then
       t.palette = M.merge({ palette = t.palette }, { palette = val }).palette
-      -- A colourway sets its pattern roles too (inks.lua).
-      local roles = Inks.pattern_palette(Inks.colourway_alias[v] or v)
+      -- A colourway sets its pattern roles too (inks.lua), every one of
+      -- them: a role it leaves out goes back to its derived colour (false),
+      -- so what a colourway paints does not depend on an earlier colourway
+      -- or patternpalette. A patternpalette after it still changes one role.
+      local roles = {}
+      for _, r in ipairs(require("flora.pattern").ROLE_KEYS) do roles[r.key] = false end
+      for role, ink in pairs(Inks.pattern_palette(Inks.colourway_alias[v] or v)) do roles[role] = ink end
       t.patternpalette = M.merge({ patternpalette = t.patternpalette }, { patternpalette = roles }).patternpalette
     elseif k == "visitors" then
       local m = {}
@@ -547,6 +552,22 @@ function M.fresh_keys()
   local keys = {}
   for k in pairs(M.SPEC) do if not M.FRESH_DROPS[k] then keys[k] = true end end
   return keys
+end
+
+-- The mixer's preview of a page (site/src/lib/render.worker.js): its
+-- pattern keys and its colours from the very \florasetup parts its setup
+-- line writes (setup.js: patternParts, colourParts), parsed here as the
+-- document parses them, so the preview paints the roles the downloaded
+-- document does. "" leaves either out (flora; no colourway). Returns spec.
+function M.pattern_preview(spec, pattern, colours)
+  local cs = (colours and colours ~= "") and M.parse(colours) or {}
+  spec.patternpalette = cs.patternpalette
+  if pattern and pattern ~= "" then
+    local ps = M.parse(pattern)
+    spec.pattern = ps.pattern
+    for k in pairs(M.PATTERN) do spec[M.SPEC[k]] = ps[k] end
+  end
+  return spec
 end
 
 -- Copy settings `set` onto `spec` (M.SPEC); returns spec.
