@@ -14,8 +14,6 @@ local SHAPE = {
 
 local function paint(pt, c, ink)
   local fills = { ink.fill[1], ink.fill[2], ink.accent, ink.core }
-  -- Fewer filled cells (pattern_opts.sparse): every other cross the paper.
-  if c.sparse then fills = { ink.fill[1], ink.core, ink.fill[2], ink.core } end
   K.fill(pt, c.path, fills[c.tone], ink)
   K.band(pt, c.path, ink, { core = false })
 end
@@ -48,7 +46,7 @@ return {
         if cx > env.x0 - 3 * u and cx < env.x1 + 3 * u and cy > env.y0 - 3 * u and cy < env.y1 + 3 * u then
           local P = {}
           for k, q in ipairs(SHAPE) do P[k] = { cx + q[1] * u, cy + q[2] * u } end
-          out[#out + 1] = { x = cx, y = cy, verts = P, tile = P, path = K.path(P), sparse = env.opts and env.opts.sparse,
+          out[#out + 1] = { x = cx, y = cy, verts = P, tile = P, path = K.path(P),
             tone = (i + 2 * j) % 4 + 1, paint = paint, construct = construct }
         end
       end

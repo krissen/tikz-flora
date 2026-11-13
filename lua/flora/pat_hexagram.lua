@@ -7,15 +7,8 @@ local K = require("flora.pat_kit")
 local sqrt, cos, sin, rad = math.sqrt, math.cos, math.sin, math.rad
 
 local function paint(pt, c, ink)
-  if c.sparse then
-    -- Fewer filled cells (pattern_opts.sparse): the stars stay the paper
-    -- and only the gaps between them, the cell's plate, are coloured.
-    K.fill(pt, c.up, ink.core, ink)
-    K.fill(pt, c.down, ink.core, ink)
-  else
-    K.fill(pt, c.up, ink.fill[1], ink)
-    K.fill(pt, c.down, ink.fill[2], ink)
-  end
+  K.fill(pt, c.up, ink.fill[1], ink)
+  K.fill(pt, c.down, ink.fill[2], ink)
   K.band(pt, c.up, ink, { core = false })
   K.band(pt, c.down, ink, { core = false })
 end
@@ -64,9 +57,7 @@ return {
           local a = rad(30 + 60 * k)
           hex[#hex + 1] = { x + R * cos(a), y + R * sin(a) }
         end
-        local sparse = env.opts and env.opts.sparse
-        out[#out + 1] = { x = x, y = y, verts = star, pad = d * 0.02, under = K.path(hex), sparse = sparse,
-          plates = sparse and { { K.path(hex), "a" } } or nil,
+        out[#out + 1] = { x = x, y = y, verts = star, pad = d * 0.02, under = K.path(hex),
           up = K.path(triangle(x, y, R, 90)), down = K.path(triangle(x, y, R, 270)),
           paint = paint, construct = construct }
       end

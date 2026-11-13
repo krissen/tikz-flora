@@ -466,7 +466,6 @@ local function band_ink(ink, p, spec, k)
   ink.bands = bands
   ink.corefrac = p.core or 0.45
   ink.linew = (p.line or 0.6) * f
-  ink.strap_all = spec.pattern_opts and spec.pattern_opts.strap_all
   return ink
 end
 M.band_ink = band_ink

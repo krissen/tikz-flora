@@ -104,9 +104,6 @@ function K.band(pt, path, ink, opt)
     return
   end
   local W = ink.width * k
-  -- A prototype's option (pattern.lua's pattern_opts.strap_all): every
-  -- solid band drawn as a strap, so the figure is drawn in light bands.
-  if opt.core == false and ink.strap_all then opt = { many = opt.many, w = k, core = "core" } end
   if opt.core == false then
     pt:stroke(path, ink.band, W, 1, o)
     return

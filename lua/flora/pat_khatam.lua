@@ -13,9 +13,7 @@ local STAR = 0.78
 -- The field round the stars is the cell's plate (pattern.lua paints the
 -- plates with the ground, so neighbouring squares leave no seam).
 local function paint_star(pt, c, ink)
-  -- Fewer filled cells (pattern_opts.sparse): the stars coloured and the
-  -- gaps the paper.
-  K.fill(pt, c.star, c.sparse and ink.fill[1] or ink.core, ink)
+  K.fill(pt, c.star, ink.core, ink)
   K.band(pt, c.star, ink, { core = false })
   K.fill(pt, c.dot, ink.fill[2], ink)
   K.band(pt, c.dot, ink, { core = false, w = 0.5 })
@@ -61,8 +59,7 @@ return {
           outline[#outline + 1] = { x + rin * cos(u), y + rin * sin(u) }
         end
         local sq = { { x - a / 2, y - a / 2 }, { x + a / 2, y - a / 2 }, { x + a / 2, y + a / 2 }, { x - a / 2, y + a / 2 } }
-        out[#out + 1] = { x = x, y = y, verts = sq, pad = a * 0.02, plates = not (env.opts and env.opts.sparse) and { { K.path(sq), "a" } } or nil, sparse = env.opts and env.opts.sparse,
-          under = K.path(sq), star = K.path(outline),
+        out[#out + 1] = { x = x, y = y, verts = sq, pad = a * 0.02, plates = { { K.path(sq), "a" } }, under = K.path(sq), star = K.path(outline),
           dot = { { "o", x, y, a * 0.08 } },
           square = K.path(square(x, y, r, 45)), diamond = K.path(square(x, y, r, 0)),
           paint = paint_star, construct = construct_star }
