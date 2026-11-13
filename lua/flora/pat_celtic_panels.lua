@@ -57,5 +57,12 @@ return {
   roles = { "band", "accent", "paper" },
   scale = Celtic.scale,
   width = Celtic.width, core = 0.4, bands = "strap",
-  cells = function(env) return Celtic.engine.cells_with(env, inner_for) end,
+  -- A panel is the unit that falls away whole (pattern.lua's units).
+  cells = function(env)
+    local out = Celtic.engine.cells_with(env, inner_for)
+    local w = SPAN * env.size
+    for _, c in ipairs(out) do c.group = math.floor(c.x / w + 1e-3) .. "," .. math.floor(c.y / w + 1e-3) end
+    return out
+  end,
+  reweave = true,
 }

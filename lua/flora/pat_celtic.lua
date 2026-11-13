@@ -150,7 +150,24 @@ function M.cells_with(env, make_inner)
   local a = env.size
   local gx, gy = floor(env.x0 / a) - 1, floor(env.y0 / a) - 1
   local nx, ny = ceil(env.x1 / a) + 1 - gx, ceil(env.y1 / a) + 1 - gy
-  local loops = M.trace(nx, ny, make_inner and make_inner(gx, gy, nx, ny, env.rng) or nil)
+  local inner = make_inner and make_inner(gx, gy, nx, ny, env.rng) or nil
+  -- Under a second drawing (pattern.lua's reweave) every crossing the
+  -- field dropped is a mirror, so the strands turn back at the field's
+  -- edge instead of ending there.
+  local blocked = env.blocked and function(X, Y) return env.blocked((gx + X / 2) * a, (gy + Y / 2) * a) end
+  local walls = inner
+  if blocked then walls = function(X, Y) return blocked(X, Y) or (inner and inner(X, Y)) or false end end
+  local loops = M.trace(nx, ny, walls)
+  if blocked then
+    -- A strand wholly among dropped crossings is dropped with them.
+    local live = {}
+    for _, pts in ipairs(loops) do
+      for _, q in ipairs(pts) do
+        if not blocked(q.X, q.Y) then live[#live + 1] = pts; break end
+      end
+    end
+    loops = live
+  end
   local halfwidth = WIDTH / SCALE * a * HALO / 2
   local by_point, out = {}, {}
   for _, pts in ipairs(loops) do
@@ -214,5 +231,7 @@ return {
   scale = SCALE,
   width = WIDTH, core = 0.4, bands = "strap",
   cells = function(env) return M.cells_with(env, nil) end,
+  -- It can be drawn again with the field's edge as a wall (pattern.lua).
+  reweave = true,
   engine = M,
 }
