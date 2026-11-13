@@ -141,6 +141,61 @@ local function within(c, r, m)
   return true
 end
 
+-- The convex hull of points P (Andrew's monotone chain), anticlockwise.
+local function hull(P)
+  table.sort(P, function(a, b) return a[1] < b[1] or (a[1] == b[1] and a[2] < b[2]) end)
+  if #P < 3 then return P end
+  local function cross(o, a, b) return (a[1] - o[1]) * (b[2] - o[2]) - (a[2] - o[2]) * (b[1] - o[1]) end
+  local lo, hi = {}, {}
+  for _, q in ipairs(P) do
+    while #lo >= 2 and cross(lo[#lo - 1], lo[#lo], q) <= 0 do lo[#lo] = nil end
+    lo[#lo + 1] = q
+  end
+  for i = #P, 1, -1 do
+    local q = P[i]
+    while #hi >= 2 and cross(hi[#hi - 1], hi[#hi], q) <= 0 do hi[#hi] = nil end
+    hi[#hi + 1] = q
+  end
+  lo[#lo] = nil
+  hi[#hi] = nil
+  for _, q in ipairs(hi) do lo[#lo + 1] = q end
+  return lo
+end
+
+-- A painted path as shapes M.clearance measures: its circles as circles,
+-- and the hull of every other point (a curve lies within its control
+-- points, so the hull holds what the path paints).
+local function path_shapes(cmds, out)
+  local pts = {}
+  local function walk(cs)
+    for _, c in ipairs(cs) do
+      if type(c[1]) == "table" then walk(c)
+      elseif c[1] == "o" then out[#out + 1] = { circle = { c[2], c[3], c[4] } }
+      elseif c[1] ~= "z" then for i = 2, #c, 2 do pts[#pts + 1] = { c[i], c[i + 1] } end
+      end
+    end
+  end
+  walk(cmds)
+  if #pts > 0 then out[#out + 1] = { verts = hull(pts) } end
+  return out
+end
+
+-- Everything cell `c` paints, as shapes the field measures its clearance
+-- by: the cell's outline, and the pieces it lays beyond it, its piece of
+-- the ground when the page has one (`base.ground`: its `under` path, else
+-- its tile) and its plates unless the page is painted as lines. A ground
+-- square round a small dot reaches far past the dot.
+function M.footprint(c, base)
+  local out = { c }
+  if base.ground then
+    if c.under then path_shapes(c.under, out) elseif c.tile then out[#out + 1] = { verts = c.tile } end
+  end
+  if not base.lines then
+    for _, pl in ipairs(c.plates or {}) do path_shapes(pl[1], out) end
+  end
+  return out
+end
+
 -- How long a cell's construction lines and its painting take, as
 -- growth time.
 local LINES, BAND = 0.07, 0.08
@@ -467,16 +522,20 @@ function M.paint(spec, pt)
     -- Paint reaches half a band and the cell's own pad beyond its outline.
     local reach = width / 2 + (c.pad or 0)
     local page = { 0, 0, W, top }
-    local placed = in_side and not (hero and M.disc_clearance(c, hero) - reach < GAP)
-    if outer == "margin" then
-      placed = placed and within(c, page, OUTER_MARGIN + reach)
-    else
-      placed = placed and M.clearance(c, page) <= reach
+    -- The gaps hold for everything the cell paints, not its outline alone.
+    local shapes = M.footprint(c, base)
+    local placed = in_side
+    for _, s in ipairs(shapes) do
+      if hero and M.disc_clearance(s, hero) - reach < GAP then placed = false end
+      if outer == "margin" and not within(s, page, OUTER_MARGIN + reach) then placed = false end
     end
+    if outer ~= "margin" then placed = placed and M.clearance(c, page) <= reach end
     if placed then
       offered = offered + 1
       local d = math.huge
-      for _, rc in ipairs(keep_rects) do d = math.min(d, M.clearance(c, rc) - reach) end
+      for _, rc in ipairs(keep_rects) do
+        for _, s in ipairs(shapes) do d = math.min(d, M.clearance(s, rc) - reach) end
+      end
       local a = 0
       if dens > 0 and d >= gap then
         local t = (d - gap) / ramp
