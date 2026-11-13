@@ -560,7 +560,8 @@ end
 -- ground_edge): cells (each cell's tile, today's), dark (the same, but no
 -- ground on paper), panel (one panel with a straight edge toward the
 -- text), shape (inside the field each cell's tile, at its edge the cell's
--- own unit, c.shape, or nothing), fade (the edge's pieces paled toward
+-- own unit, c.shape, or nothing), inner (only the pieces whose every
+-- neighbour is in the field), fade (the edge's pieces paled toward
 -- the paper over the two outermost rings) and discs (a disc round every
 -- cell, so the edge is rounded). Returns { panel = path } or
 -- { piece = fn(k, path, colour) -> path, colour }.
@@ -583,6 +584,13 @@ function M.edge_pieces(mode, f, info)
     return { drops = true, piece = function(k, path, colour)
       if info.share[k] >= 1 then return path, colour end
       return k.cell.shape, colour
+    end }
+  end
+  if mode == "inner" then
+    -- Only the pieces with every neighbour in the field.
+    return { drops = true, piece = function(k, path, colour)
+      if info.share[k] >= 1 then return path, colour end
+      return nil
     end }
   end
   if mode == "fade" then

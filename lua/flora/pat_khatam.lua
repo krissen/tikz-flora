@@ -60,6 +60,9 @@ return {
         end
         local sq = { { x - a / 2, y - a / 2 }, { x + a / 2, y - a / 2 }, { x + a / 2, y + a / 2 }, { x - a / 2, y + a / 2 } }
         out[#out + 1] = { x = x, y = y, verts = sq, pad = a * 0.02, plates = { { K.path(sq), "a" } }, under = K.path(sq), star = K.path(outline),
+          -- At the field's edge (pattern.lua's shape edge) the field ends
+          -- along the star's outline, widened to the square's sides.
+          shape = K.path(K.scaled(outline, x, y, 1 / STAR)),
           dot = { { "o", x, y, a * 0.08 } },
           square = K.path(square(x, y, r, 45)), diamond = K.path(square(x, y, r, 0)),
           paint = paint_star, construct = construct_star }
