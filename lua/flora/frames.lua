@@ -110,12 +110,14 @@ end
 
 -- A frame of size w x h whose map to the page is `m`. The page's text block
 -- (or `block`, a page box standing in for it) and its measured lines are
--- carried into the frame; lines outside the frame are dropped.
+-- carried into the frame; lines outside the frame are dropped. Nil when the
+-- block misses the frame: a plant is laid out round its text block, so a
+-- frame without one has no plant to grow (M.of drops it).
 local function frame(spec, m, w, h, opts)
   opts = opts or {}
   local inv = M.invert(m)
   local text = clip(map_box(inv, opts.block or spec.text), w, h)
-  assert(text, "layout: the text block lies outside its frame")
+  if not text then return nil end
   local lines = spec.lines and M.carry_lines(spec.lines, inv, w, h)
   local s = {}
   for k, v in pairs(spec) do s[k] = v end
@@ -234,6 +236,17 @@ end
 
 local IDENTITY = { 1, 0, 0, 1, 0, 0 }
 
+-- The frames among the arguments that exist (frame gives nil for one its
+-- block misses), in order; `dropped` counts the missing ones.
+local function present(...)
+  local out = { dropped = 0 }
+  for i = 1, select("#", ...) do
+    local f = select(i, ...)
+    if f then out[#out + 1] = f else out.dropped = out.dropped + 1 end
+  end
+  return out
+end
+
 -- A frame's seed, so the plants of one page differ but each reproduces.
 local function seed_of(spec, k)
   return (tonumber(spec.seed) or 1) * 31 + k * 7907
@@ -250,7 +263,10 @@ end
 -- unmapped. `spec.layout` names the layout; `spec.page` (for split) the
 -- page number; `spec.title` (for title) the title block {x0, y0, x1, y1},
 -- defaulting to the measured ink of the top of the text block.
-function M.of(spec)
+-- A frame whose text block falls outside it is left out of the list (the
+-- list's `dropped` counts them, and a TeX run logs it): an off-centre title
+-- may lie wholly in one half of a crown, a column wholly beside one flank.
+local function layout_frames(spec)
   local layout = spec.layout or "left"
   local W, H = spec.width, spec.height
   assert(M.layouts[layout], "unknown layout " .. tostring(layout))
@@ -260,13 +276,12 @@ function M.of(spec)
   if layout == "left" then
     return { { spec = spec } }
   elseif layout == "right" then
-    return { frame(spec, { -1, 0, 0, 1, W, 0 }, W, H, { header = true }) }
+    return present(frame(spec, { -1, 0, 0, 1, W, 0 }, W, H, { header = true }))
   elseif layout == "centered" then
     local half = W / 2
-    return {
+    return present(
       frame(spec, IDENTITY, half, H, { label = "left" }),
-      frame(spec, { -1, 0, 0, 1, W, 0 }, half, H, { seed = seed_of(spec, 2), label = "right" }),
-    }
+      frame(spec, { -1, 0, 0, 1, W, 0 }, half, H, { seed = seed_of(spec, 2), label = "right" }))
   elseif layout == "surround" then
     -- Each plant keeps to its own margin and its own end band, so the two
     -- meet in a pinwheel: the first owns the left margin up to the text's
@@ -278,7 +293,7 @@ function M.of(spec)
     local Htop = math.max(1, H - (spec.top_inset or Tune.gesture.top_inset or 0))
     local b = frame(spec, { -1, 0, 0, -1, W, Htop }, W, Htop,
       { seed = seed_of(spec, 2), label = "right", frame_only = true })
-    if spec.header or Htop < H then
+    if b and (spec.header or Htop < H) then
       -- Start the upper plant's foot run right of the title and the left hero.
       local edge, gutter = spec.edge or 16, spec.gutter or 9
       local mw = (spec.text.x0 - gutter) - edge
@@ -304,14 +319,15 @@ function M.of(spec)
       b.spec.clip_x1 = W - start
       b.spec.clip_y1 = math.min(b.spec.height, b.spec.text.y0 + (spec.frametitle_height or 0) + 4)
     end
-    for _, f in ipairs({ a, b }) do
+    local fs = present(a, b)
+    for _, f in ipairs(fs) do
       local ft = f.spec.text
       f.spec.closed = {
         { ft.x1, ft.y0 - 6, W, H },  -- the other plant's margin
         { 0, ft.y1 + 4, W, H },      -- the other plant's end band
       }
     end
-    return { a, b }
+    return fs
   elseif layout == "title" then
     local B = spec.title or M.top_block(spec)
     -- The left plant's frame is the page turned a quarter: its left margin
@@ -323,10 +339,9 @@ function M.of(spec)
     local R = hero_radius(spec, H - B.y1)
     local crest = Title.crest_size(spec, R)
     local half = W / 2 - R * 0.47 - crest * 0.45
-    local fs = {
+    local fs = present(
       frame(spec, { 0, -1, 1, 0, 0, H }, depth, half, { block = B, label = "left", frame_only = true }),
-      frame(spec, { 0, -1, -1, 0, W, H }, depth, half, { block = B, seed = seed_of(spec, 2), label = "right", frame_only = true }),
-    }
+      frame(spec, { 0, -1, -1, 0, W, H }, depth, half, { block = B, seed = seed_of(spec, 2), label = "right", frame_only = true }))
     -- The plants keep out of the furniture's boxes.
     local plan, keep = Title.plan(spec, B, crest)
     for _, f in ipairs(fs) do
@@ -348,6 +363,15 @@ function M.of(spec)
   elseif layout == "scrollwork" then
     return M.scrollwork(spec)
   end
+end
+
+function M.of(spec)
+  local fs = layout_frames(spec)
+  if (fs.dropped or 0) > 0 and texio then
+    texio.write_nl("log", string.format("flora: page %s layout %s: %d of its frames left bare, the text block lies outside them",
+      tostring(spec.page or "?"), tostring(spec.layout), fs.dropped))
+  end
+  return fs
 end
 
 -- The measured lines' extent across the page, made symmetric about its
@@ -376,10 +400,9 @@ function M.flank(spec)
   local half = G.clamp((column(spec) or (t.x1 - t.x0) / 2) + 12,
     W / 2 - edge - gutter - mw_max, W / 2 - edge - gutter - mw_min)
   local block = { x0 = W / 2 - half, x1 = W / 2 + half, y0 = t.y0, y1 = t.y1 }
-  local fs = {
+  local fs = present(
     frame(spec, IDENTITY, W / 2, H, { block = block, label = "left", frame_only = true }),
-    frame(spec, { -1, 0, 0, 1, W, 0 }, W / 2, H, { block = block, seed = seed_of(spec, 2), label = "right", frame_only = true }),
-  }
+    frame(spec, { -1, 0, 0, 1, W, 0 }, W / 2, H, { block = block, seed = seed_of(spec, 2), label = "right", frame_only = true }))
   local piece = Title.foot(spec, block)
   if piece then
     for _, f in ipairs(fs) do
@@ -552,7 +575,7 @@ function M.bouquet(spec)
   end
   local base = math.max(lo, B.y0 - 230)
   local top = math.min(hi, B.y1 + 170)
-  local fs = {}
+  local fs = { dropped = 0 }
   for i, side in ipairs({ "left", "right" }) do
     local s = side == "left" and -1 or 1
     local h = (top - base) * (i == 1 and 1 or 0.84)
@@ -561,17 +584,21 @@ function M.bouquet(spec)
       or { x0 = cx + hw, x1 = W, y0 = base, y1 = base + h }
     local f = frame(spec, { s, 0, 0, 1, cx, base }, wf, h, { block = block, label = side, frame_only = true,
       seed = i == 2 and seed_of(spec, 2) or nil })
-    f.spec.bare, f.spec.edge, f.spec.gather = true, 4, h * 0.3
-    -- The bouquet's outline: a quarter of its width at the tie, full from
-    -- just past halfway, rounding over at the top.
-    local closed = {}
-    for y = 0, h, 6 do
-      local u = y / h
-      local k = 0.25 + 0.75 * G.smoothstep(0, 0.55, u) - 0.25 * G.smoothstep(0.82, 1, u)
-      closed[#closed + 1] = { 4 + mw * k + 2, y, wf, y + 6 }
+    if f then
+      f.spec.bare, f.spec.edge, f.spec.gather = true, 4, h * 0.3
+      -- The bouquet's outline: a quarter of its width at the tie, full from
+      -- just past halfway, rounding over at the top.
+      local closed = {}
+      for y = 0, h, 6 do
+        local u = y / h
+        local k = 0.25 + 0.75 * G.smoothstep(0, 0.55, u) - 0.25 * G.smoothstep(0.82, 1, u)
+        closed[#closed + 1] = { 4 + mw * k + 2, y, wf, y + 6 }
+      end
+      f.spec.closed = closed
+      fs[#fs + 1] = f
+    else
+      fs.dropped = fs.dropped + 1
     end
-    f.spec.closed = closed
-    fs[i] = f
   end
   local lines = M.lines_in(spec, B)
   -- The bow's tails hang about its own size below the knot, and stay
