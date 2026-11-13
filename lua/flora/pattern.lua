@@ -920,7 +920,8 @@ function M.paint(spec, pt)
     end
     for _, k in ipairs(kept) do
       for _, pl in ipairs(k.cell.plates or {}) do
-        local colour = M.cell_inks(base, k.a).fill[pl[2] == "b" and 2 or 1]
+        local ik = M.cell_inks(base, k.a)
+        local colour = pl[2] == "accent" and ik.accent or ik.fill[pl[2] == "b" and 2 or 1]
         if fpieces.panel then
           if not filled then plate(k.cell, k, fpieces.panel, colour); filled = true end
         elseif between_ok(pl) then

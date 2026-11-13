@@ -24,51 +24,6 @@ local function construct_star(pt, c, ink)
   pt:stroke(c.diamond, ink.line, 0.4, 1)
 end
 
--- The study's sketch y-03 (pattern_opts.khatam, ORDER #11): a square on
--- its point at every lattice point, wide enough that its tips meet its
--- neighbours', so the stars' squares and the field's squares between them
--- tile the plane as a checkerboard turned 45 degrees. Each star's square
--- holds a light cross with pointed arms and a wedge of the second field in
--- each of the cross's inner corners, a dot of the accent at its heart, and
--- every surface has a thin dark outline.
---   mock      the field's square between four stars only when all four
---             are kept: the stars carry the net, and the field ends along
---             their outline
---   mock-any  the field's square when any star round it is kept
-local ARM = 0.14 -- the cross's half-width, in periods (measured on y-03)
-local DOT = 0.06 -- the dot's radius, in periods
-
-local function paint_mock(pt, c, ink)
-  K.fill(pt, c.star, ink.core, ink)
-  K.fill(pt, c.wedges, ink.fill[2], ink, { many = true })
-  K.fill(pt, c.dot, ink.accent, ink)
-  K.band(pt, c.wedges, ink, { core = false, many = true, w = 0.6 })
-  K.band(pt, c.star, ink, { core = false, w = 0.6 })
-  if ink.lines then K.band(pt, c.dot, ink, { core = false, w = 0.4 }) end
-end
-
-local function construct_mock(pt, c, ink)
-  pt:stroke(c.star, ink.line, 0.4, 1)
-end
-
-local function mock_cell(x, y, a, need)
-  local h, w = a / 2, a * ARM
-  local star = { { x + h, y }, { x, y + h }, { x - h, y }, { x, y - h } }
-  local wedges = {}
-  for _, s in ipairs({ { 1, 1 }, { -1, 1 }, { -1, -1 }, { 1, -1 } }) do
-    local sx, sy = s[1], s[2]
-    wedges[#wedges + 1] = K.path({ { x + sx * w, y + sy * w }, { x + sx * (h - w), y + sy * w }, { x + sx * w, y + sy * (h - w) } })
-  end
-  -- The field's square up and to the right of the star, between the four
-  -- stars round it.
-  local fx, fy = x + h, y + h
-  local field = { { fx + h, fy }, { fx, fy + h }, { fx - h, fy }, { fx, fy - h } }
-  return { x = x, y = y, verts = star, pad = a * 0.02,
-    plates = { { K.path(field), "a", between = { { x, y }, { x + a, y }, { x, y + a }, { x + a, y + a } }, need = need } },
-    under = K.path(star), star = K.path(star), wedges = wedges,
-    dot = { { "o", x, y, a * DOT } }, paint = paint_mock, construct = construct_mock }
-end
-
 local function square(x, y, r, a0)
   local P = {}
   for k = 0, 3 do
@@ -77,6 +32,74 @@ local function square(x, y, r, a0)
   end
   return P
 end
+
+-- Stars and crosses (pattern_opts.khatam, a study, ORDER #12): the same
+-- star at full size, its tips meeting its neighbours', so the stars tile
+-- the plane with crosses that have pointed arms between them, as y-03
+-- does. The star is the cell; a cross lies between four stars and is
+-- laid only when all four are kept, so the field ends along the stars'
+-- own outline. Thin dark lines throughout.
+--   two       the star's square on its point in the first field and the
+--             other square's four corners in the second; the cross light
+--             (the paper's colour); as y-03
+--   one       the whole star in the first field, the cross in the second
+--   paper     the whole star in the first field, the cross the paper
+--   dot       as one, with a dot of the accent at the cross's heart
+-- For two equal squares of circumradius r, a corner of the one stands out
+-- past the other's side as a right isosceles triangle of height
+-- r (1 - 1/sqrt 2); the cross's arms are a (2 - sqrt 2) / 4 wide on each
+-- side of its axis, a the lattice's period.
+local DOT = 0.06 -- the cross's dot's radius, in periods (measured on y-03)
+local TILED = { two = true, one = true, paper = true, dot = true }
+
+local function paint_tiled(pt, c, ink)
+  if c.form == "two" then
+    K.fill(pt, c.diamond, ink.fill[1], ink)
+    K.fill(pt, c.corners, ink.fill[2], ink, { many = true })
+    K.band(pt, c.corners, ink, { core = false, many = true, w = 0.6 })
+  else
+    K.fill(pt, c.star, ink.fill[1], ink)
+  end
+  K.band(pt, c.star, ink, { core = false, w = 0.6 })
+end
+
+local function construct_tiled(pt, c, ink)
+  pt:stroke(c.star, ink.line, 0.4, 1)
+end
+
+-- The cross whose centre is (X, Y), between four stars a apart.
+local function cross(X, Y, a)
+  local h, w = a / 2, a * (2 - math.sqrt(2)) / 4
+  local P = {}
+  for k = 0, 3 do
+    local ca, sa = cos(rad(90 * k)), sin(rad(90 * k))
+    local function at(u, v) return { X + u * ca - v * sa, Y + u * sa + v * ca } end
+    P[#P + 1] = at(h, 0)
+    P[#P + 1] = at(h - w, w)
+    P[#P + 1] = at(w, w)
+    P[#P + 1] = at(w, h - w)
+  end
+  return P
+end
+
+local function tiled_cell(x, y, a, outline, form)
+  local r = a / 2
+  local q = r / math.sqrt(2)
+  local corners = {}
+  for _, s in ipairs({ { 1, 1 }, { -1, 1 }, { -1, -1 }, { 1, -1 } }) do
+    local sx, sy = s[1], s[2]
+    corners[#corners + 1] = K.path({ { x + sx * q, y + sy * q }, { x + sx * q, y + sy * (r - q) }, { x + sx * (r - q), y + sy * q } })
+  end
+  local X, Y = x + r, y + r
+  local around = { { x, y }, { x + a, y }, { x, y + a }, { x + a, y + a } }
+  local plates = {}
+  if form == "one" or form == "dot" then plates[#plates + 1] = { K.path(cross(X, Y, a)), "b", between = around } end
+  if form == "dot" then plates[#plates + 1] = { { { "o", X, Y, a * DOT } }, "accent", between = around } end
+  return { x = x, y = y, verts = outline, pad = a * 0.02, plates = plates, under = K.path(outline),
+    star = K.path(outline), diamond = K.path(square(x, y, r, 0)), corners = corners, form = form,
+    paint = paint_tiled, construct = construct_tiled }
+end
+
 
 return {
   name = "khatam",
@@ -93,20 +116,21 @@ return {
     -- The star's tips, short of the square's edge so the field shows
     -- between neighbours.
     local r = a * 0.5 * STAR
-    local rin = r * math.cos(rad(45)) / math.cos(rad(22.5))
     for i = math.floor(env.x0 / a) - 1, math.ceil(env.x1 / a) + 1 do
       for j = math.floor(env.y0 / a) - 1, math.ceil(env.y1 / a) + 1 do
         local x, y = i * a, j * a
-        local form = env.opts and env.opts.khatam
-        if form == "mock" or form == "mock-any" then
-          out[#out + 1] = mock_cell(x, y, a, form == "mock-any" and "any" or "all")
-          goto next
-        end
+        local form = env.opts and TILED[env.opts.khatam] and env.opts.khatam
+        local R = form and a / 2 or r
+        local Rin = R * math.cos(rad(45)) / math.cos(rad(22.5))
         local outline = {}
         for k = 0, 7 do
           local t, u = rad(45 * k), rad(45 * k + 22.5)
-          outline[#outline + 1] = { x + r * cos(t), y + r * sin(t) }
-          outline[#outline + 1] = { x + rin * cos(u), y + rin * sin(u) }
+          outline[#outline + 1] = { x + R * cos(t), y + R * sin(t) }
+          outline[#outline + 1] = { x + Rin * cos(u), y + Rin * sin(u) }
+        end
+        if form then
+          out[#out + 1] = tiled_cell(x, y, a, outline, form)
+          goto next
         end
         local sq = { { x - a / 2, y - a / 2 }, { x + a / 2, y - a / 2 }, { x + a / 2, y + a / 2 }, { x - a / 2, y + a / 2 } }
         out[#out + 1] = { x = x, y = y, verts = sq, pad = a * 0.02, plates = { { K.path(sq), "a" } }, under = K.path(sq), star = K.path(outline),
