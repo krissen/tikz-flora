@@ -872,7 +872,11 @@ function M.paint(spec, pt)
     for _, k in ipairs(kept) do if k.cell.plates then need = true break end end
   end
   local edgeinfo = need and M.field_edges(cells, grounded, onpage) or { share = {}, depth = {}, isolated = 0, edge = 0, nd = size }
-  local pieces = M.edge_pieces(ge, { text = text, gap = gap, side = side, W = W, top = top, ramp = ramp }, edgeinfo)
+  local fr = { text = text, gap = gap, side = side, W = W, top = top, ramp = ramp }
+  local pieces = M.edge_pieces(ge, fr, edgeinfo)
+  -- The fields' plates end cell by cell, whatever the ground does, unless
+  -- a prototype asks otherwise (pattern_opts.field_edge).
+  local fpieces = M.edge_pieces(opts.field_edge or "cells", fr, edgeinfo)
   if base.ground then
     local K = require("flora.pat_kit")
     if pieces.panel then
@@ -892,10 +896,10 @@ function M.paint(spec, pt)
     for _, k in ipairs(kept) do
       for _, pl in ipairs(k.cell.plates or {}) do
         local colour = M.cell_inks(base, k.a).fill[pl[2] == "b" and 2 or 1]
-        if pieces.panel then
-          if not filled then plate(k.cell, k, pieces.panel, colour); filled = true end
+        if fpieces.panel then
+          if not filled then plate(k.cell, k, fpieces.panel, colour); filled = true end
         else
-          local path, col = pieces.piece(k, pl[1], colour)
+          local path, col = fpieces.piece(k, pl[1], colour)
           if path then plate(k.cell, k, path, col) end
         end
       end
