@@ -466,6 +466,7 @@ local function band_ink(ink, p, spec, k)
   ink.bands = bands
   ink.corefrac = p.core or 0.45
   ink.linew = (p.line or 0.6) * f
+  ink.strap_all = spec.pattern_opts and spec.pattern_opts.strap_all
   return ink
 end
 M.band_ink = band_ink
@@ -905,6 +906,11 @@ function M.paint(spec, pt)
     -- The field's edge (M.field_edges): cells with no grounded neighbour, and
     -- at the edge.
     isolated = edgeinfo.isolated, edge_cells = edgeinfo.edge }
+  -- For measuring (pattern_opts.measure): the kept cells' own edge.
+  if opts.measure then
+    local ki = M.field_edges(cells, kept, onpage)
+    pt.pattern.isolated, pt.pattern.edge_cells = ki.isolated, ki.edge
+  end
   return true
 end
 

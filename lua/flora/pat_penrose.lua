@@ -7,7 +7,9 @@ local sqrt, cos, sin, pi = math.sqrt, math.cos, math.sin, math.pi
 local PHI = (1 + sqrt(5)) / 2
 
 local function paint(pt, c, ink)
-  K.fill(pt, c.path, ink.fill[c.thick and 1 or 2], ink)
+  -- Fewer filled cells (pattern_opts.sparse): the thin rhombs the paper.
+  if c.sparse and not c.thick then K.fill(pt, c.path, ink.core, ink)
+  else K.fill(pt, c.path, ink.fill[c.thick and 1 or 2], ink) end
   K.band(pt, c.path, ink, { core = false })
 end
 
@@ -79,7 +81,7 @@ return {
         local P = { t[2], t[3], o[2], t[4] }
         local x = (t[2][1] + o[2][1]) / 2
         local y = (t[2][2] + o[2][2]) / 2
-        out[#out + 1] = { x = x, y = y, verts = P, tile = P, path = K.path(P), thick = t[1] == 1,
+        out[#out + 1] = { x = x, y = y, verts = P, tile = P, path = K.path(P), thick = t[1] == 1, sparse = env.opts and env.opts.sparse,
           paint = paint, construct = construct }
       else
         half[k] = t
