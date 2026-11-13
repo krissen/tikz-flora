@@ -470,6 +470,122 @@ local function band_ink(ink, p, spec, k)
 end
 M.band_ink = band_ink
 
+-- A cell's position as a key, for finding it again in a second drawing.
+function M.cell_key(c) return string.format("%.1f,%.1f", c.x, c.y) end
+
+-- The grounded cells' neighbours: for each cell (by its record), the share
+-- of its neighbours on the page that are grounded too (1 inside the field,
+-- less at its edge) and its depth, how many steps it lies from the edge
+-- (0 at the edge). Neighbours are the cells nearer than 1.6 times the
+-- usual distance to a cell's nearest one.
+function M.field_edges(cells, grounded, onpage)
+  local set = {}
+  for _, k in ipairs(grounded) do set[k.cell] = k end
+  -- A grid of buckets, for the nearest cells.
+  local function nearest_scale()
+    local ds = {}
+    local step = math.max(1, math.floor(#cells / 30))
+    for i = 1, #cells, step do
+      local c, best = cells[i], math.huge
+      for j = 1, #cells do
+        local o = cells[j]
+        if o ~= c then
+          local d = (o.x - c.x) ^ 2 + (o.y - c.y) ^ 2
+          if d > 1e-6 and d < best then best = d end
+        end
+      end
+      ds[#ds + 1] = math.sqrt(best)
+    end
+    table.sort(ds)
+    return ds[math.max(1, math.floor(#ds / 2))] or 1
+  end
+  local nd = 1.6 * nearest_scale()
+  local grid = {}
+  local function gk(x, y) return math.floor(x / nd) .. "," .. math.floor(y / nd) end
+  for _, c in ipairs(cells) do
+    local key = gk(c.x, c.y)
+    grid[key] = grid[key] or {}
+    table.insert(grid[key], c)
+  end
+  local info = { nd = nd, share = {}, depth = {}, isolated = 0, edge = 0 }
+  local neighbours = {}
+  for _, k in ipairs(grounded) do
+    local c, n, g, list = k.cell, 0, 0, {}
+    local gx, gy = math.floor(c.x / nd), math.floor(c.y / nd)
+    for dx = -1, 1 do for dy = -1, 1 do
+      for _, o in ipairs(grid[(gx + dx) .. "," .. (gy + dy)] or {}) do
+        if o ~= c and (o.x - c.x) ^ 2 + (o.y - c.y) ^ 2 <= nd * nd and onpage[o] ~= false then
+          n = n + 1
+          if set[o] then g = g + 1; list[#list + 1] = set[o] end
+        end
+      end
+    end end
+    info.share[k] = n > 0 and g / n or 1
+    neighbours[k] = list
+    if g == 0 then info.isolated = info.isolated + 1 end
+    if g < n then info.edge = info.edge + 1 end
+  end
+  -- Depth from the edge, breadth first.
+  local queue = {}
+  for _, k in ipairs(grounded) do
+    if info.share[k] < 1 then info.depth[k] = 0; queue[#queue + 1] = k end
+  end
+  local head = 1
+  while head <= #queue do
+    local k = queue[head]; head = head + 1
+    for _, o in ipairs(neighbours[k]) do
+      if info.depth[o] == nil then info.depth[o] = info.depth[k] + 1; queue[#queue + 1] = o end
+    end
+  end
+  return info
+end
+
+-- How the ground and the fields end where the pattern ends (pattern_opts'
+-- ground_edge): cells (each cell's tile, today's), dark (the same, but no
+-- ground on paper), panel (one panel with a straight edge toward the
+-- text), shape (inside the field each cell's tile, at its edge the cell's
+-- own unit, c.shape, or nothing), fade (the edge's pieces paled toward
+-- the paper over the two outermost rings) and discs (a disc round every
+-- cell, so the edge is rounded). Returns { panel = path } or
+-- { piece = fn(k, path, colour) -> path, colour }.
+function M.edge_pieces(mode, f, info)
+  local pal = Paint.palette
+  if mode == "panel" then
+    local t, o = f.text, f.gap
+    local rect
+    if f.side and f.side.left and not f.side.right then
+      rect = { { "m", -2, -2 }, { "l", t.x0 - o, -2 }, { "l", t.x0 - o, f.top + 2 }, { "l", -2, f.top + 2 }, { "z" } }
+    elseif f.side and f.side.right and not f.side.left then
+      rect = { { "m", t.x1 + o, -2 }, { "l", f.W + 2, -2 }, { "l", f.W + 2, f.top + 2 }, { "l", t.x1 + o, f.top + 2 }, { "z" } }
+    else
+      rect = { { "m", -2, -2 }, { "l", f.W + 2, -2 }, { "l", f.W + 2, f.top + 2 }, { "l", -2, f.top + 2 }, { "z" },
+        { "m", t.x0 - o, t.y0 - o }, { "l", t.x0 - o, t.y1 + o }, { "l", t.x1 + o, t.y1 + o }, { "l", t.x1 + o, t.y0 - o }, { "z" } }
+    end
+    return { panel = rect, drops = true }
+  end
+  if mode == "shape" then
+    return { drops = true, piece = function(k, path, colour)
+      if info.share[k] >= 1 then return path, colour end
+      return k.cell.shape, colour
+    end }
+  end
+  if mode == "fade" then
+    return { piece = function(k, path, colour)
+      local d = info.depth[k] or 2
+      if d >= 2 then return path, colour end
+      local t = (d + 1) / 3 * (0.5 + 0.5 * info.share[k])
+      return path, Paint.mix(pal.paper, colour, t)
+    end }
+  end
+  if mode == "discs" then
+    return { drops = true, piece = function(k, path, colour)
+      local c = k.cell
+      return { { "o", c.x, c.y, 0.62 * info.nd } }, colour
+    end }
+  end
+  return { piece = function(_, path, colour) return path, colour end }
+end
+
 -- The weights pattern={...} gave, as a table (a bare name weighs 1).
 local function weights(v)
   if type(v) == "string" then return { [v] = 1 } end
@@ -540,16 +656,25 @@ function M.paint(spec, pt)
   local base = M.role_inks(rng:fork("pattern inks"), p, spec)
   local hero = M.hero(spec, side, top, keep_rects, gap)
 
-  local cells = p.cells({ x0 = 0, y0 = 0, x1 = W, y1 = H, size = size, rng = rng:fork("cells") })
+  -- Prototype options (spec.pattern_opts, ORDER #9 of the geometry work;
+  -- not settings): how the ground and the fields end where the pattern
+  -- ends (ground_edge), and whether the cells fall away as the pattern's
+  -- own units (units) or the field closes its strands at its edge
+  -- (reweave). See M.edge_pieces below.
+  local opts = spec.pattern_opts or {}
+  local env = { x0 = 0, y0 = 0, x1 = W, y1 = H, size = size, rng = rng:fork("cells"), opts = opts }
+  local cells = p.cells(env)
   local fall = rng:fork("dissolve")
   local stagger = rng:fork("growth")
   local kept, offered, bare = {}, 0, {}
-  for _, c in ipairs(cells) do
-    local r, jitter = fall:next(), stagger:next()
+  local onpage = {}
+  -- Whether each cell is placed, and the share it keeps (0 drops it).
+  local function judge(c, r)
     local in_side = not side or (side.left and c.x < text.x0) or (side.right and c.x > text.x1)
     -- Paint reaches half a band and the cell's own pad beyond its outline.
     local reach = width / 2 + (c.pad or 0)
     local page = { 0, 0, W, top }
+    onpage[c] = M.clearance(c, page) <= reach
     -- The gaps hold for everything the cell paints, not its outline alone.
     local shapes = M.footprint(c, base)
     local placed = in_side
@@ -558,27 +683,78 @@ function M.paint(spec, pt)
       if outer == "margin" and not within(s, page, OUTER_MARGIN + reach) then placed = false end
     end
     if outer ~= "margin" then placed = placed and M.clearance(c, page) <= reach end
-    if placed then
-      offered = offered + 1
-      local d = math.huge
-      for _, rc in ipairs(keep_rects) do
-        for _, s in ipairs(shapes) do d = math.min(d, M.clearance(s, rc) - reach) end
+    if not placed then return false, 0, false end
+    local d = math.huge
+    for _, rc in ipairs(keep_rects) do
+      for _, s in ipairs(shapes) do d = math.min(d, M.clearance(s, rc) - reach) end
+    end
+    local a = 0
+    if dens > 0 and d >= gap then
+      local t = (d - gap) / ramp
+      if edge == "dissolve" then a = r < smooth(t) and 1 or 0
+      elseif edge == "fade" then a = smooth(t); if a < 0.04 then a = 0 end
+      else a = t >= 0.35 and 1 or 0
       end
-      local a = 0
-      if dens > 0 and d >= gap then
-        local t = (d - gap) / ramp
-        if edge == "dissolve" then a = r < smooth(t) and 1 or 0
-        elseif edge == "fade" then a = smooth(t); if a < 0.04 then a = 0 end
-        else a = t >= 0.35 and 1 or 0
+    end
+    return true, a, dens > 0 and d >= gap and edge == "dissolve"
+  end
+  local function choose(list)
+    kept, offered, bare = {}, 0, {}
+    -- Cells that fall away as units: one draw and one verdict per group,
+    -- the group kept only when every cell of it that lies on the page
+    -- would be placed, and as far as its least kept cell.
+    local groups = {}
+    local verdict = {}
+    for _, c in ipairs(list) do
+      local r, jitter = fall:next(), stagger:next()
+      local placed, a, grounds = judge(c, r)
+      verdict[#verdict + 1] = { c = c, placed = placed, a = a, grounds = grounds, jitter = jitter, r = r }
+      if opts.units and c.group then
+        local g = groups[c.group] or { r = r, a = 1, placed = true }
+        groups[c.group] = g
+        if onpage[c] then
+          g.placed = g.placed and placed
+          if placed then g.a = math.min(g.a, a) end
         end
       end
-      if a > 0 then
-        kept[#kept + 1] = { cell = c, a = a, jitter = jitter }
-      elseif dens > 0 and d >= gap and edge == "dissolve" then
-        -- A cell dissolved away still lays its piece of the ground, so the
-        -- ground runs whole to the field's edge and the cells fall away
-        -- over it.
-        bare[#bare + 1] = { cell = c, a = 1, jitter = jitter }
+    end
+    for _, v in ipairs(verdict) do
+      local placed, a = v.placed, v.a
+      local g = opts.units and v.c.group and groups[v.c.group]
+      if g then placed, a = g.placed, g.placed and g.a or 0 end
+      if placed then
+        offered = offered + 1
+        if a > 0 then
+          kept[#kept + 1] = { cell = v.c, a = a, jitter = v.jitter }
+        elseif v.grounds then
+          -- A cell dissolved away still lays its piece of the ground, so the
+          -- ground runs whole to the field's edge and the cells fall away
+          -- over it.
+          bare[#bare + 1] = { cell = v.c, a = 1, jitter = v.jitter }
+        end
+      end
+    end
+  end
+  choose(cells)
+  -- Reweave: the pattern is drawn again with the field's edge as its own
+  -- border (pat_celtic.lua, pat_kolam.lua close their lines there), so no
+  -- line ends loose; every cell of the second drawing that is placed is
+  -- kept.
+  if opts.reweave and p.reweave then
+    local keep = {}
+    for _, k in ipairs(kept) do keep[M.cell_key(k.cell)] = true end
+    env.blocked = function(x, y) return not keep[M.cell_key({ x = x, y = y })] end
+    -- The same draws as the first drawing, so only the edge changes.
+    env.rng = rng:fork("cells")
+    cells = p.cells(env)
+    local list = {}
+    for _, c in ipairs(cells) do list[#list + 1] = c end
+    kept, offered, bare = {}, 0, {}
+    for _, c in ipairs(list) do
+      local placed = judge(c, 0)
+      if placed then
+        offered = offered + 1
+        kept[#kept + 1] = { cell = c, a = 1, jitter = stagger:next() }
       end
     end
   end
@@ -635,20 +811,41 @@ function M.paint(spec, pt)
     end
   end
   local holes = 0
+  local ge = opts.ground_edge or "cells"
+  -- A1: the ground only on a dark backdrop.
+  if ge == "dark" and not pt.backdrop then base.ground = nil end
+  -- The field's edge is measured only where something follows it.
+  local need = base.ground or opts.measure
+  if not need and not base.lines then
+    for _, k in ipairs(kept) do if k.cell.plates then need = true break end end
+  end
+  local edgeinfo = need and M.field_edges(cells, grounded, onpage) or { share = {}, depth = {}, isolated = 0, edge = 0, nd = size }
+  local pieces = M.edge_pieces(ge, { text = text, gap = gap, side = side, W = W, top = top, ramp = ramp }, edgeinfo)
   if base.ground then
     local K = require("flora.pat_kit")
-    for _, k in ipairs(grounded) do
-      local c = k.cell
-      local under = c.under or (c.tile and K.path(c.tile))
-      if under then plate(c, k, under, M.cell_inks(base, k.a).ground)
-      elseif not c.rests then holes = holes + 1 end
+    if pieces.panel then
+      plate(grounded[1] and grounded[1].cell or { x = 0, y = 0 }, grounded[1] or { painted = 0 }, pieces.panel, M.cell_inks(base, 1).ground)
+    else
+      for _, k in ipairs(grounded) do
+        local c = k.cell
+        local under, colour = pieces.piece(k, c.under or (c.tile and K.path(c.tile)), M.cell_inks(base, k.a).ground)
+        if under then plate(c, k, under, colour)
+        elseif not c.rests and not pieces.drops then holes = holes + 1 end
+      end
     end
   end
   -- A cell's plates: fields that tile the plane, painted with the ground.
   if not base.lines then
+    local filled = false
     for _, k in ipairs(kept) do
       for _, pl in ipairs(k.cell.plates or {}) do
-        plate(k.cell, k, pl[1], M.cell_inks(base, k.a).fill[pl[2] == "b" and 2 or 1])
+        local colour = M.cell_inks(base, k.a).fill[pl[2] == "b" and 2 or 1]
+        if pieces.panel then
+          if not filled then plate(k.cell, k, pieces.panel, colour); filled = true end
+        else
+          local path, col = pieces.piece(k, pl[1], colour)
+          if path then plate(k.cell, k, path, col) end
+        end
       end
     end
   end
@@ -704,7 +901,10 @@ function M.paint(spec, pt)
   pt.coverage = offered > 0 and #kept / offered or 0
   pt.pattern = { name = p.name, cells = #kept, offered = offered, kept = kept, avoid = keep_rects, reach = width / 2, gap = gap, hero = hero, inks = base,
     -- Cells that should lay a piece of the ground and have none.
-    holes = holes, grounded = base.ground and #grounded or 0 }
+    holes = holes, grounded = base.ground and #grounded or 0,
+    -- The field's edge (M.field_edges): cells with no grounded neighbour, and
+    -- at the edge.
+    isolated = edgeinfo.isolated, edge_cells = edgeinfo.edge }
   return true
 end
 
