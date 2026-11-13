@@ -14,7 +14,12 @@
 --   order     the bands keep their lightness order to a dark ground on
 --             both backdrops, and without one the pattern's paper follows
 --             the page on the dark backdrop
---   contrast  the band stands off what it lies on by floors.band (OKLab L)
+--   contrast  the band stands off the surface it lies most on (a filled
+--             surface's field A, else the ground, else the page) by
+--             floors.band (OKLab L); a band's lightness is set against it
+--   vanish    the band stands off every surface it lies on (a surface's
+--             fields and ground too) by floors.band_any, so it never
+--             disappears into one
 --   roles     every colour painted is one of the page's role colours (or
 --             a mix of two), and the pattern lists every role it paints
 --   fields    the two fields differ by floors.fields (OKLab distance)
@@ -168,14 +173,30 @@ function M.run(floors, filter)
               if not back or base.lit or rgb == Paint.palette.gold then return rgb end
               return Color.on_ground(rgb, back, Paint.palette.paper)
             end
-            local surface = base.ground and shown(base.ground) or (back or Paint.palette.paper)
-            if finish == "filled" and p.surface and base.fill1 then
-              -- A surface's band lies on its fields as much as on the page.
-              surface = shown(base.fill1)
+            -- The surfaces a band lies on, the one it lies most on first:
+            -- a filled surface's fields (field A first) and its ground, a
+            -- line pattern's ground, else the page.
+            local on = {}
+            if finish == "filled" and p.surface then
+              if declared.a and base.fill1 then on[#on + 1] = { "field A", shown(base.fill1) } end
+              if declared.b and base.fill2 then on[#on + 1] = { "field B", shown(base.fill2) } end
             end
-            c.band_surface = math.abs(Color.lightness(shown(base.band)) - Color.lightness(surface))
+            if base.ground then on[#on + 1] = { "ground", shown(base.ground) }
+            elseif #on == 0 then on[#on + 1] = { "page", back or Paint.palette.paper } end
+            local Lb = Color.lightness(shown(base.band))
+            local function off(s) return math.abs(Lb - Color.lightness(s[2])) end
+            -- contrast: against the surface it lies most on
+            c.band_surface, c.band_on = off(on[1]), on[1][1]
             if floors.band and c.band_surface < floors.band then
-              fail(c, "contrast", string.format("band and surface differ by %.3f in L", c.band_surface))
+              fail(c, "contrast", string.format("band and %s differ by %.3f in L", c.band_on, c.band_surface))
+            end
+            -- vanish: against every surface it lies on
+            c.band_any, c.band_any_on = math.huge, nil
+            for _, s in ipairs(on) do
+              if off(s) < c.band_any then c.band_any, c.band_any_on = off(s), s[1] end
+            end
+            if floors.band_any and c.band_any < floors.band_any then
+              fail(c, "vanish", string.format("band and %s differ by %.3f in L", c.band_any_on, c.band_any))
             end
             -- fields
             local uses_a, uses_b = declared.a, declared.b
