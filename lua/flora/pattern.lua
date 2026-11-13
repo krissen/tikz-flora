@@ -414,6 +414,10 @@ function M.role_inks(rng, p, spec)
     base.ground = role("ground", R.ground.on and R.ground.on[p.name] or p.ground)
     base.lit = base.ground and Color.lightness(base.ground) < DARK
   end
+  -- What a cell fades toward: the paper, which a dark backdrop repaints
+  -- as the page, or, on a dark ground painted as it is (base.lit), the
+  -- page's own colour, since nothing repaints it there.
+  base.fade = base.lit and Color.backdrop(spec.backdrop) or pal.paper
   -- The hero lies on the paper, never on the ground, so it keeps the
   -- bands unlit (band0, line0).
   base.band0 = base.band
@@ -426,11 +430,13 @@ function M.role_inks(rng, p, spec)
   return base
 end
 
--- A cell's colours, mixed toward the paper by 1 - a; `hero` for the
--- hero's, which lies on the paper with its bands unlit.
-local function inks(base, a, hero)
+-- A cell's colours, mixed by 1 - a toward what it fades into
+-- (base.fade: the page as it is shown); `hero` for the hero's, which lies
+-- on the paper with its bands unlit and is repainted with the page.
+function M.cell_inks(base, a, hero)
   local pal = Paint.palette
-  local function f(c) return c and (a >= 1 and c or Paint.mix(pal.paper, c, a)) end
+  local to = (not hero and base.fade) or pal.paper
+  local function f(c) return c and (a >= 1 and c or Paint.mix(to, c, a)) end
   return {
     band = f(hero and base.band0 or base.band), core = f(base.core), accent = f(base.accent),
     line = f(hero and base.line0 or base.line),
@@ -569,14 +575,21 @@ function M.paint(spec, pt)
     end
   end
 
-  -- Growth starts at the page's outer edge, away from the text.
+  -- Growth starts at the page's outer edge, away from the text. A cell
+  -- whose centre lies off the page (outer=bleed) starts with the edge,
+  -- not before it, so no cell is born before the growth begins.
   local function root(c)
-    if side and side.left and c.x < text.x0 then return c.x end
-    if side and side.right and c.x > text.x1 then return W - c.x end
-    return math.min(c.x, c.y, W - c.x, H - c.y)
+    if side and side.left and c.x < text.x0 then return math.max(0, c.x) end
+    if side and side.right and c.x > text.x1 then return math.max(0, W - c.x) end
+    return math.max(0, math.min(c.x, c.y, W - c.x, H - c.y))
   end
+  -- Growth time runs over every cell that paints: the kept ones and,
+  -- under a ground, the dissolved ones that lay only their piece of it.
+  local grounded = {}
+  for _, k in ipairs(kept) do grounded[#grounded + 1] = k end
+  if base.ground then for _, k in ipairs(bare) do grounded[#grounded + 1] = k end end
   local far = 1e-6
-  for _, k in ipairs(kept) do far = math.max(far, root(k.cell)) end
+  for _, k in ipairs(grounded) do far = math.max(far, root(k.cell)) end
 
   local grow = spec.grow and spec.grow < 1 and math.max(0, spec.grow) or nil
   -- On a dark ground the pattern is painted as it is on any backdrop
@@ -588,9 +601,6 @@ function M.paint(spec, pt)
     pt.metal = pt.metal - 1
     if not ok then error(err, 0) end
   end
-  local grounded = {}
-  for _, k in ipairs(kept) do grounded[#grounded + 1] = k end
-  for _, k in ipairs(bare) do grounded[#grounded + 1] = k end
   for _, k in ipairs(grounded) do
     -- The construction lines lie under the finished cell's bands, so a
     -- page painted at once and the last frame of its growth are the same.
@@ -622,7 +632,7 @@ function M.paint(spec, pt)
     for _, k in ipairs(grounded) do
       local c = k.cell
       local under = c.under or (c.tile and K.path(c.tile))
-      if under then plate(c, k, under, inks(base, k.a).ground)
+      if under then plate(c, k, under, M.cell_inks(base, k.a).ground)
       elseif not c.rests then holes = holes + 1 end
     end
   end
@@ -630,12 +640,12 @@ function M.paint(spec, pt)
   if not base.lines then
     for _, k in ipairs(kept) do
       for _, pl in ipairs(k.cell.plates or {}) do
-        plate(k.cell, k, pl[1], inks(base, k.a).fill[pl[2] == "b" and 2 or 1])
+        plate(k.cell, k, pl[1], M.cell_inks(base, k.a).fill[pl[2] == "b" and 2 or 1])
       end
     end
   end
   for _, k in ipairs(kept) do
-    local c, ink = k.cell, band_ink(inks(base, k.a), p, spec, k_scale)
+    local c, ink = k.cell, band_ink(M.cell_inks(base, k.a), p, spec, k_scale)
     local birth, painted = k.birth, k.painted
     if grow then
       -- A "watch it grow" frame (spec.grow, tools/grow-frame.sh) shows a
@@ -665,15 +675,15 @@ function M.paint(spec, pt)
         function() lit(function() c.paint(pt, c, ink) end) end, nil, c.sweep and { sweep = c.sweep } or nil)
     end
   end
-  if hero then M.paint_hero(pt, hero, band_ink(inks(base, 1, true), p, spec, k_scale), grow) end
+  if hero then M.paint_hero(pt, hero, band_ink(M.cell_inks(base, 1, true), p, spec, k_scale), grow) end
   if edge == "guilloche" and (not grow or grow >= 0.1) then
-    local ink = band_ink(inks(base, 1, true), p, spec, k_scale)
+    local ink = band_ink(M.cell_inks(base, 1, true), p, spec, k_scale)
     Progression.part(pt, "pattern_border", { text.x0, text.y0 }, 0, 0.2, function()
       require("flora.pattern_hero").paint_band(pt, text, gap / 2, 4, ink)
     end)
   end
   if edge == "border" and (not grow or grow >= 0.1) then
-    local ink = inks(base, 1, true)
+    local ink = M.cell_inks(base, 1, true)
     local o = gap / 2
     local frame = { { "m", text.x0 - o, text.y0 - o }, { "l", text.x1 + o, text.y0 - o },
       { "l", text.x1 + o, text.y1 + o }, { "l", text.x0 - o, text.y1 + o }, { "z" } }
