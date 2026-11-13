@@ -48,7 +48,8 @@ M.about = {
     "What paints each part of a pattern: an ink group, one iroshizuku ink by name (as ink:L or ink:L:share with its lightness and chroma kept), paper or gold, and for the ground also none. A colourway sets them all; a role left out takes its colour from the palette's flora parts." },
   { "saturation", "0 to 1", "How much of its inks' colour a pattern's fields and ground keep: 0.5 (the default) mutes them as tiles and mosaics are, 1 keeps the ink's full colour." },
   { "finish", "filled, lines", "How a pattern is drawn: filled (the default), with its fields and ground, or lines, its bands and outlines alone with nothing filled." },
-  { "bands", "auto, strap, line", "How a pattern's bands are drawn: auto (the default), each pattern's own; strap, a broad band with a fine contour and a light core; or line, one thin line." },
+  { "bands", "auto, line, strap", "How a pattern's bands are drawn: auto (the default), each pattern's own; line, one thin line; or strap, a broad band with a fine contour and a light core." },
+  { "ground", "off, on", "Whether a pattern that has a ground (asanoha, sikku_kolam, rosette_lattice) lays it under its cells: off (the default) leaves the paper, on paints the palette's ground role." },
   { "bandwidth", "0.25 to 4", "The width of a pattern's bands and lines, as a factor of its own." },
   { "cache", "true, false",
     "true (the default) keeps each page's flora in a folder <jobname>-flora beside the PDF, so a later compile reuses it; false grows every page afresh." },
@@ -217,6 +218,11 @@ end)
 M.define("bands", function(v)
   if v == "auto" or require("flora.pattern").band_kinds[v] then return v end
   return nil, "bands must be auto, strap or line"
+end)
+
+M.define("ground", function(v)
+  if v == "off" or v == "on" then return v end
+  return nil, "ground must be off or on"
 end)
 
 M.define("bandwidth", function(v)
@@ -518,7 +524,7 @@ M.SPEC = {
   gilt = "gilt", giltdpi = "gilt_dpi", giltenv = "gilt_env", giltlook = "gilt_look", backdrop = "backdrop",
   pattern = "pattern", edge = "pattern_edge", outer = "pattern_outer", scale = "pattern_scale",
   hero = "pattern_hero", patternpalette = "patternpalette", saturation = "pattern_saturation",
-  finish = "pattern_finish", bands = "pattern_bands", bandwidth = "pattern_bandwidth",
+  finish = "pattern_finish", bands = "pattern_bands", bandwidth = "pattern_bandwidth", ground = "pattern_ground",
 }
 -- The pattern keys besides `pattern` itself, by key -> default. A mixer's
 -- pattern state, its \florasetup line and the preview's spec all carry
@@ -528,7 +534,7 @@ M.SPEC = {
 -- pattern.lua reads its defaults from here too. patternpalette is a
 -- palette, set role by role as palette is, so it is not one of them.
 M.PATTERN = { edge = "dissolve", hero = "none", outer = "bleed", scale = 1,
-  saturation = 0.5, finish = "filled", bands = "auto", bandwidth = 1 }
+  saturation = 0.5, finish = "filled", bands = "auto", bandwidth = 1, ground = "off" }
 M.OWN = { layout = true, header = true, seed = true, cache = true, density = true, visitors = true, colourway = true }
 
 -- What a "fresh" restyle (tools/preview.lua, the site's mixer) drops of a

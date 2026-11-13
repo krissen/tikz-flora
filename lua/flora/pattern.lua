@@ -196,9 +196,9 @@ end
 -- paints only with them; it never picks an ink itself.
 --
 --   ground  a surface under the cells, cell by cell: the cell's `under`
---           path, else its tile. Painted for the patterns that list it,
---           at the module's own lightness (its `ground`), unless the
---           palette sets ground=none.
+--           path, else its tile. Painted under ground=on for the patterns
+--           that list it, at the module's own lightness (its `ground`),
+--           unless the palette sets ground=none.
 --   band    the strapwork and line work
 --   core    the light line down a band's middle
 --   a, b    the two fields (ink.fill[1], ink.fill[2])
@@ -341,7 +341,7 @@ function M.role_inks(rng, p, spec)
   base.dark = role("ground", math.min(R.ground.L, DARK - 0.05)) or role("band", 0.30)
   local has = false
   for _, r in ipairs(p.roles or {}) do if r == "ground" then has = true end end
-  if has and not lines and p.ground then
+  if has and not lines and p.ground and key(spec, "ground") == "on" then
     base.ground = role("ground", R.ground.on and R.ground.on[p.name] or p.ground)
     base.lit = base.ground and Color.lightness(base.ground) < DARK
   end

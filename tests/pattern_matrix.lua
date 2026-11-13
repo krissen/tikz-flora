@@ -1,5 +1,5 @@
 -- The pattern colour invariants, cell by cell over pattern x colourway x
--- backdrop x finish (tests/test_pattern_matrix.lua runs it; the floors are
+-- ground (off, on) x backdrop x finish (tests/test_pattern_matrix.lua runs it; the floors are
 -- set there). Each cell paints a small page and records every fill and
 -- stroke inside the pattern's group, with the colour a module asked for
 -- (before a dark backdrop repaints it).
@@ -103,18 +103,19 @@ local ROLE_OF = { band = "band", band0 = "band", line = "band", line0 = "band", 
 function M.run(floors, filter)
   local cells, failures = {}, {}
   local function fail(c, what, msg)
-    failures[#failures + 1] = string.format("%s %s %s %s: %s: %s", c.pattern, c.colourway, c.backdrop, c.finish, what, msg)
+    failures[#failures + 1] = string.format("%s %s ground=%s %s %s: %s: %s", c.pattern, c.colourway, c.ground, c.backdrop, c.finish, what, msg)
   end
   for _, p in ipairs(Patterns.list) do
     for _, cw in ipairs(Inks.colourway_order) do
+      for _, ground in ipairs({ "off", "on" }) do
       for _, finish in ipairs({ "filled", "lines" }) do
         if not filter or filter(p.name, cw, finish) then
           local seen = {}
           for _, bd in ipairs({ "light", "dark" }) do
-            local spec = page(p.name, "colourway=" .. cw .. ", finish=" .. finish .. ", backdrop=" .. bd)
+            local spec = page(p.name, "colourway=" .. cw .. ", finish=" .. finish .. ", ground=" .. ground .. ", backdrop=" .. bd)
             local rec = paint(spec)
             local base = rec.pt.pattern.inks
-            local c = { pattern = p.name, colourway = cw, backdrop = bd, finish = finish }
+            local c = { pattern = p.name, colourway = cw, backdrop = bd, finish = finish, ground = ground }
             cells[#cells + 1] = c
             local roles = role_colours(base)
             -- The page's own colour, for a halo that parts two strands.
@@ -199,6 +200,7 @@ function M.run(floors, filter)
             end
           end
         end
+      end
       end
     end
   end

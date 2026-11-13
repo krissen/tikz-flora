@@ -8,14 +8,14 @@ local Pattern = require("flora.pattern")
 
 -- The floors, set after measuring the colourways (geo-roles3 report). The
 -- band stands 0.18 to 0.76 off its surface in OKLab L; the lowest is
--- fresco's, whose soft contour is the mocks' own (0.25 off their ochre,
+-- tsuki-mi's, whose soft contour is the mocks' own (0.25 off their ochre,
 -- 0.11 off their green). The fields lie 0.15 to 0.22 apart in OKLab. The
 -- floors sit below both and catch a band or a field that loses itself.
 local FLOORS = { band = 0.15, fields = 0.06 }
 
 local cells, failures = M.run(FLOORS)
 if os.getenv("FLORA_MATRIX_VERBOSE") then print(string.format("matrix: %d cells, %d failures", #cells, #failures)) end
-H.check(#cells == #Patterns.list * #require("flora.inks").colourway_order * 2 * 2, "matrix cells: " .. #cells)
+H.check(#cells == #Patterns.list * #require("flora.inks").colourway_order * 2 * 2 * 2, "matrix cells: " .. #cells)
 for _, f in ipairs(failures) do H.check(false, f) end
 
 -- Each mutation breaks one invariant; the matrix must say so.
