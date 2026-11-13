@@ -4,7 +4,7 @@
 --
 --   texlua tools/mock_match.lua OUTDIR SETUP
 --
--- SETUP is a \florasetup key list (colourway=fresco). Writes
+-- SETUP is a \florasetup key list (colourway=tsuki-mi). Writes
 -- OUTDIR/<mock>.pdf for each mock in MOCKS below.
 
 package.path = "./lua/?.lua;" .. package.path

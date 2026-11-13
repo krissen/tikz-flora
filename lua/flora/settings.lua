@@ -25,7 +25,7 @@ M.about = {
   { "visitors", "0 to 10", "The weight of every visitor at once: bees, butterflies, birds and snails. mix={bee=0} after it still turns one off." },
   { "palette", "{part=ink, ...}",
     "What paints each part: look (the original blue gradients), an ink group, one iroshizuku ink by name, or random for one ink picked per page." },
-  { "colourway", "original, spring, summer, autumn (or fall), winter, ember, plum, rose, charcoal, fresco",
+  { "colourway", "original, spring, summer, autumn (or fall), winter, ember, plum, rose, usu-zumi, tsuki-mi",
     "A whole palette at once, for flora and for patterns (patternpalette). A palette={...} or patternpalette={...} after it changes single parts." },
   { "spin", "a whole number", "Picks the random inks again. The shapes stay where they are." },
   { "ornaments", "{kind=weight, ...}, weights 0 to 10",

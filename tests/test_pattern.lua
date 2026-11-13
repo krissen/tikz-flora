@@ -811,4 +811,25 @@ do
   end
 end
 
+-- Every colourway names its pattern roles and describes itself, and the
+-- catalog carries both.
+do
+  local Inks = require("flora.inks")
+  local listed = {}
+  for _, c in ipairs(require("flora.catalog").build().colourways) do listed[c.name] = c end
+  for _, name in ipairs(Inks.colourway_order) do
+    local c = listed[name]
+    H.check(c and c.about and #c.about > 20, name .. ": no description in the catalog")
+    H.check(c and c.pattern and c.pattern.band and c.pattern.fielda and c.pattern.fieldb, name .. ": no pattern roles in the catalog")
+  end
+end
+
+-- The ground is painted only when asked for.
+do
+  local off = page({ pattern = { asanoha = 1 }, pattern_palette = nil })
+  local on = page({ pattern = { asanoha = 1 }, pattern_ground = "on" })
+  H.check(off.pattern.inks.ground == nil, "asanoha painted a ground with ground unset")
+  H.check(on.pattern.inks.ground ~= nil and on.pattern.grounded > 0, "ground=on painted no ground")
+end
+
 H.done("pattern")

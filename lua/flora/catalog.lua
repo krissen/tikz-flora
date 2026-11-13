@@ -90,7 +90,8 @@ function M.build()
   c.inks = Inks.order
   c.colourways = {}
   for _, name in ipairs(Inks.colourway_order) do
-    c.colourways[#c.colourways + 1] = { name = name, inks = Inks.colourways[name] or {}, pattern = Inks.pattern_palette(name) }
+    c.colourways[#c.colourways + 1] = { name = name, inks = Inks.colourways[name] or {}, pattern = Inks.pattern_palette(name),
+      about = Inks.colourway_about[name] }
   end
 
   local keys = {}
