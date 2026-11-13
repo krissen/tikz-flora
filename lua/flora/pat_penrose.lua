@@ -7,8 +7,8 @@ local sqrt, cos, sin, pi = math.sqrt, math.cos, math.sin, math.pi
 local PHI = (1 + sqrt(5)) / 2
 
 local function paint(pt, c, ink)
-  pt:fill(c.path, ink.fill[c.thick and 1 or 2], 1)
-  pt:stroke(c.path, ink.band, ink.width, 1)
+  K.fill(pt, c.path, ink.fill[c.thick and 1 or 2], ink)
+  K.band(pt, c.path, ink, { core = false })
 end
 
 local function construct(pt, c, ink)
@@ -22,8 +22,10 @@ return {
   name = "penrose_rhombs",
   title = "Penrose rhombs (P3), thick and thin rhombs in a tiling that never repeats",
   tags = { "aperiodic", "rhombs" },
+  roles = { "band", "a", "b" },
+  surface = true,
   scale = 16,
-  width = 1.1,
+  width = 1.1, bands = "strap",
   cells = function(env)
     local cx, cy = (env.x0 + env.x1) / 2, (env.y0 + env.y1) / 2
     -- Each deflation divides the edge by PHI, so a wheel of radius

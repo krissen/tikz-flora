@@ -25,8 +25,8 @@ M.about = {
   { "visitors", "0 to 10", "The weight of every visitor at once: bees, butterflies, birds and snails. mix={bee=0} after it still turns one off." },
   { "palette", "{part=ink, ...}",
     "What paints each part: look (the original blue gradients), an ink group, one iroshizuku ink by name, or random for one ink picked per page." },
-  { "colourway", "original, spring, summer, autumn (or fall), winter, ember, plum, rose",
-    "A whole palette at once. A palette={...} after it changes single parts." },
+  { "colourway", "original, spring, summer, autumn (or fall), winter, ember, plum, rose, usu-zumi, tsuki-mi",
+    "A whole palette at once, for flora and for patterns (patternpalette). A palette={...} or patternpalette={...} after it changes single parts; a colourway after them sets every part and role again." },
   { "spin", "a whole number", "Picks the random inks again. The shapes stay where they are." },
   { "ornaments", "{kind=weight, ...}, weights 0 to 10",
     "How often each ornament kind is picked for its place on the page, against the other kinds for that place: 0 never." },
@@ -44,6 +44,13 @@ M.about = {
     "One large radial motif at a top corner of a pattern page, which the cells give way to: rings of petals, seeds set as a sunflower sets them, a rose window, or guilloche rings. It sits in the top corner of the pattern's side (top right for right, top left for left; top right for layouts with both sides or the whole page): centred on the paper's corner and running off it under outer=bleed, a whole disc inside the margin under outer=margin. It grows ring by ring from its centre. none (the default) paints none." },
   { "outer", "bleed, margin", "How a pattern meets the paper's edge: running off the page (the default), or whole cells, and a whole hero, inside a small margin." },
   { "scale", "0.25 to 4", "The size of a pattern's cells, as a factor of its own." },
+  { "patternpalette", "{role=ink, ...} for the roles band, core, fielda, fieldb, ground, accent",
+    "What paints each part of a pattern: an ink group, one iroshizuku ink by name (as ink:L or ink:L:share with its lightness and chroma kept), paper or gold, and for the ground also none. A colourway sets them all; a role left out takes its colour from the palette's flora parts. An ink without a lightness takes the role's own, and for core and accent, which have none, the ink's richest (most chromatic) shade." },
+  { "saturation", "0 to 1", "How much of its inks' colour a pattern's fields and ground keep: 0.5 (the default) mutes them as tiles and mosaics are, 1 keeps the ink's full colour. A share patternpalette gives a field or the ground (ink:L:share) is the one it keeps at 0.5, and other values scale it." },
+  { "finish", "filled, lines", "How a pattern is drawn: filled (the default), with its fields and ground, or lines, its bands and outlines alone with nothing filled." },
+  { "bands", "auto, line, strap", "How a pattern's bands are drawn: auto (the default), each pattern's own; line, one thin line; or strap, a broad band with a fine contour and a light core." },
+  { "ground", "off, on", "Whether a pattern that has a ground (asanoha, sikku_kolam, rosette_lattice) lays it under its cells: off (the default) leaves the paper, on paints the palette's ground role." },
+  { "bandwidth", "0.25 to 4", "The width of a pattern's bands and lines, as a factor of its own." },
   { "cache", "true, false",
     "true (the default) keeps each page's flora in a folder <jobname>-flora beside the PDF, so a later compile reuses it; false grows every page afresh." },
 }
@@ -171,6 +178,72 @@ M.define("scale", function(v)
   local n = tonumber(v)
   if n and n >= 0.25 and n <= 4 then return n end
   return nil, "scale must be a number from 0.25 to 4"
+end)
+
+-- A pattern palette value split into its name and the rest, when it has
+-- one of the forms patternpalette takes: name, name:L, name:L:share or
+-- name::share, with L and share numbers from 0 to 1. The rest is "" for a
+-- bare name, the suffix when it is well formed, and nil when it is not;
+-- the name is nil when there is none.
+local function palette_form(v)
+  local name, rest = tostring(v):match("^([^:]+)(.*)$")
+  if not name then return nil end
+  if rest == "" then return name, rest end
+  local function unit(s) local n = tonumber(s); return n and n >= 0 and n <= 1 end
+  local L = rest:match("^:([^:]+)$")
+  if L then return name, unit(L) and rest or nil end
+  local L2, share = rest:match("^:([^:]*):([^:]+)$")
+  if share and (L2 == "" or unit(L2)) and unit(share) then return name, rest end
+  return name, nil
+end
+
+M.define("patternpalette", function(v)
+  local Pattern = require("flora.pattern")
+  local roles = {}
+  for _, r in ipairs(Pattern.ROLE_KEYS) do roles[r.key] = true end
+  local t = {}
+  for _, kv in ipairs(M.parse_list(v)) do
+    local role, ink = kv[1], kv[2]
+    if not roles[role] then
+      local names = {}
+      for _, r in ipairs(Pattern.ROLE_KEYS) do names[#names + 1] = r.key end
+      return nil, "no pattern role \"" .. role .. "\" (roles: " .. table.concat(names, ", ") .. ")"
+    end
+    local name, rest = palette_form(ink)
+    if not (name and ((name == "paper" or name == "gold" or (name == "none" and role == "ground")) and rest == ""
+        or (Inks.groups[name] or Inks.ramps[name]) and rest ~= nil)) then
+      return nil, "\"" .. tostring(ink) .. "\" is not paper, gold, an ink group or an ink name (with :L or :L:share from 0 to 1)" .. (role == "ground" and ", or none" or "")
+    end
+    t[role] = ink
+  end
+  return t
+end)
+
+M.define("saturation", function(v)
+  local n = tonumber(v)
+  if n and n >= 0 and n <= 1 then return n end
+  return nil, "saturation must be a number from 0 to 1"
+end)
+
+M.define("finish", function(v)
+  if require("flora.pattern").finishes[v] then return v end
+  return nil, "finish must be filled or lines"
+end)
+
+M.define("bands", function(v)
+  if v == "auto" or require("flora.pattern").band_kinds[v] then return v end
+  return nil, "bands must be auto, strap or line"
+end)
+
+M.define("ground", function(v)
+  if v == "off" or v == "on" then return v end
+  return nil, "ground must be off or on"
+end)
+
+M.define("bandwidth", function(v)
+  local n = tonumber(v)
+  if n and n >= 0.25 and n <= 4 then return n end
+  return nil, "bandwidth must be a number from 0.25 to 4"
 end)
 
 M.define("cache", function(v)
@@ -422,6 +495,14 @@ function M.parse(s)
       t.mix = M.merge({ mix = t.mix }, { mix = { density = val } }).mix
     elseif k == "colourway" then
       t.palette = M.merge({ palette = t.palette }, { palette = val }).palette
+      -- A colourway sets its pattern roles too (inks.lua), every one of
+      -- them: a role it leaves out goes back to its derived colour (false),
+      -- so what a colourway paints does not depend on an earlier colourway
+      -- or patternpalette. A patternpalette after it still changes one role.
+      local roles = {}
+      for _, r in ipairs(require("flora.pattern").ROLE_KEYS) do roles[r.key] = false end
+      for role, ink in pairs(Inks.pattern_palette(Inks.colourway_alias[v] or v)) do roles[role] = ink end
+      t.patternpalette = M.merge({ patternpalette = t.patternpalette }, { patternpalette = roles }).patternpalette
     elseif k == "visitors" then
       local m = {}
       for _, name in ipairs(Mix.visitors) do m[name] = val end
@@ -462,26 +543,46 @@ M.SPEC = {
   mix = "mix", ornaments = "ornaments", palette = "palette", spin = "spin", tune = "tune",
   gilt = "gilt", giltdpi = "gilt_dpi", giltenv = "gilt_env", giltlook = "gilt_look", backdrop = "backdrop",
   pattern = "pattern", edge = "pattern_edge", outer = "pattern_outer", scale = "pattern_scale",
-  hero = "pattern_hero",
+  hero = "pattern_hero", patternpalette = "patternpalette", saturation = "pattern_saturation",
+  finish = "pattern_finish", bands = "pattern_bands", bandwidth = "pattern_bandwidth", ground = "pattern_ground",
 }
 -- The pattern keys besides `pattern` itself, by key -> default. A mixer's
 -- pattern state, its \florasetup line and the preview's spec all carry
 -- exactly these (catalog.lua lists them as pattern_keys), and
 -- tests/test_settings.lua holds every M.SPEC key naming a pattern_* field
 -- to this table, so a new pattern key cannot be left out of one of them.
-M.PATTERN = { edge = "dissolve", hero = "none", outer = "bleed", scale = 1 }
+-- pattern.lua reads its defaults from here too. patternpalette is a
+-- palette, set role by role as palette is, so it is not one of them.
+M.PATTERN = { edge = "dissolve", hero = "none", outer = "bleed", scale = 1,
+  saturation = 0.5, finish = "filled", bands = "auto", bandwidth = 1, ground = "off" }
 M.OWN = { layout = true, header = true, seed = true, cache = true, density = true, visitors = true, colourway = true }
 
 -- What a "fresh" restyle (tools/preview.lua, the site's mixer) drops of a
 -- page's own settings: its growth mix, inks and tuning. Every other
 -- M.SPEC key is kept, so a new key is kept without being listed.
-M.FRESH_DROPS = { mix = true, palette = true, spin = true, tune = true }
+M.FRESH_DROPS = { mix = true, palette = true, patternpalette = true, spin = true, tune = true }
 
 -- The M.SPEC keys a fresh restyle keeps, for M.from_spec.
 function M.fresh_keys()
   local keys = {}
   for k in pairs(M.SPEC) do if not M.FRESH_DROPS[k] then keys[k] = true end end
   return keys
+end
+
+-- The mixer's preview of a page (site/src/lib/render.worker.js): its
+-- pattern keys and its colours from the very \florasetup parts its setup
+-- line writes (setup.js: patternParts, colourParts), parsed here as the
+-- document parses them, so the preview paints the roles the downloaded
+-- document does. "" leaves either out (flora; no colourway). Returns spec.
+function M.pattern_preview(spec, pattern, colours)
+  local cs = (colours and colours ~= "") and M.parse(colours) or {}
+  spec.patternpalette = cs.patternpalette
+  if pattern and pattern ~= "" then
+    local ps = M.parse(pattern)
+    spec.pattern = ps.pattern
+    for k in pairs(M.PATTERN) do spec[M.SPEC[k]] = ps[k] end
+  end
+  return spec
 end
 
 -- Copy settings `set` onto `spec` (M.SPEC); returns spec.

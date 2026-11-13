@@ -15,8 +15,23 @@
 --          opt-in pattern is never picked through an ordinary group
 --          (square, star, triangular, ...): its weight is its own
 --          name's, else the weight given to the group `symbol`, else 0.
+--   surface  true for a pattern whose filled finish is a surface of
+--          fields (tiles, stars, petals) rather than line work: its bands
+--          lie on its fields (tests/pattern_matrix.lua measures them so).
+--   width, core, bands, line  its bands: full width in pt at scale=1, the
+--          core's share of it, "strap" or "line", and the line's width;
+--          lines_bands the character under the lines finish, if another
+--   ground  for a pattern listing the ground role, the ground's lightness
+--   roles  the colour roles it paints with (pattern.lua's M.roles: band,
+--          core, a, b, accent, ground, and paper for a halo the page's own
+--          colour); it paints with no other. A pattern listing ground
+--          gives each cell's piece of it, the cell's `under` path or its
+--          `tile`, which the field paints under every cell under
+--          ground=on. A cell that lies on its neighbours'
+--          pieces and has none of its own says `rests = true`. A cell's
+--          `plates`, {path, "a" or "b"} pairs, are fields that tile the
+--          plane, painted with the ground.
 --   scale  its cell size in pt at scale=1
---   width  its band width in pt at scale=1 (default: a sixth of scale)
 --   cells(env) -> list of cells covering env's box {x0, y0, x1, y1} at
 --          cell size env.size, drawing from env.rng. A cell is
 --          { x, y, verts, paint = fn(pt, cell, ink), construct = fn(pt,
@@ -27,7 +42,8 @@
 --          outline, and `pad` further where paint sticks out more. The
 --          field measures the whole outline against the page's edges
 --          and the text (pattern.lua). `ink` holds the colours, already
---          faded for the cell. A cell built on a tiling keeps its tile
+--          faded for the cell, and the band's character (pat_kit.lua's
+--          K.band and K.fill paint with it). A cell built on a tiling keeps its tile
 --          as `tile`; tiles meet edge to edge (tests/test_pattern.lua).
 --          A cell drawn with a compass may give `sweep = {x, y, a0,
 --          turn}`: the compass point and the angle (radians) it starts
@@ -41,6 +57,9 @@
 
 local M = { list = {}, by_name = {}, tags = {} }
 
+-- The roles a pattern may list.
+M.ROLES = { band = true, core = true, a = true, b = true, accent = true, ground = true, paper = true }
+
 local MODULES = {
   "flora.pat_stars", "flora.pat_asanoha", "flora.pat_kikko", "flora.pat_shippo", "flora.pat_seigaiha", "flora.pat_kolam", "flora.pat_circles", "flora.pat_truchet", "flora.pat_penrose", "flora.pat_celtic", "flora.pat_celtic_panels",
   "flora.pat_hexagram", "flora.pat_khatam", "flora.pat_crosses",
@@ -48,7 +67,8 @@ local MODULES = {
 }
 
 function M.register(p)
-  assert(p.name and p.title and p.tags and p.scale and p.cells, "pattern needs name, title, tags, scale and cells")
+  assert(p.name and p.title and p.tags and p.scale and p.cells and p.roles, "pattern needs name, title, tags, roles, scale and cells")
+  for _, r in ipairs(p.roles) do assert(M.ROLES[r], p.name .. ": no role " .. tostring(r)) end
   assert(not M.by_name[p.name], "duplicate pattern " .. p.name)
   M.list[#M.list + 1] = p
   M.by_name[p.name] = p

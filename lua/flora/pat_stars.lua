@@ -55,10 +55,11 @@ local function path(pts)
   return c
 end
 
+local K = require("flora.pat_kit")
+
 local function paint(pt, c, ink)
-  pt:fill(c.path, c.kind == 8 and ink.fill[1] or ink.fill[2], 1)
-  pt:stroke(c.path, ink.band, ink.width, 1)
-  pt:stroke(c.path, ink.core, ink.width * 0.45, 1)
+  K.fill(pt, c.path, c.kind == 8 and ink.fill[1] or ink.fill[2], ink)
+  K.band(pt, c.path, ink)
 end
 
 local function construct(pt, c, ink)
@@ -69,8 +70,12 @@ return {
   name = "stars_8_4",
   title = "Eight- and four-pointed stars, by Hankin's method on the 4.8.8 tiling",
   tags = { "girih", "hankin", "star", "lattice" },
+  roles = { "band", "core", "a", "b" },
+  surface = true,
   scale = 9,
-  width = 1.5,
+  -- Broad light straps with a fine contour between the stars, as in the
+  -- mock (t-03).
+  width = 2.6, core = 0.7, bands = "strap", lines_bands = "line",
   cells = function(env)
     local s = env.size
     local a = s * (1 + sqrt(2))

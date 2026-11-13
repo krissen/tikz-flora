@@ -14,8 +14,8 @@ local SHAPE = {
 
 local function paint(pt, c, ink)
   local fills = { ink.fill[1], ink.fill[2], ink.accent, ink.core }
-  pt:fill(c.path, fills[c.tone], 1)
-  pt:stroke(c.path, ink.band, ink.width, 1)
+  K.fill(pt, c.path, fills[c.tone], ink)
+  K.band(pt, c.path, ink, { core = false })
 end
 
 local function construct(pt, c, ink)
@@ -26,9 +26,11 @@ return {
   name = "greek_crosses",
   title = "Greek crosses tiling the plane edge to edge, in four colours",
   tags = { "symbol", "cross", "square", "tiling" },
+  roles = { "band", "a", "b", "accent", "core" },
+  surface = true,
   opt_in = true,
   scale = 36,
-  width = 1.2,
+  width = 1.2, bands = "strap",
   cells = function(env)
     local u = env.size / 3
     local lo_i, hi_i, lo_j, hi_j = math.huge, -math.huge, math.huge, -math.huge

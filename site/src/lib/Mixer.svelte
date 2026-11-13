@@ -1,7 +1,7 @@
 <script>
   import { onMount } from "svelte";
   import { meta as loadMeta, render, show, px, drawnBy } from "./render.js";
-  import { setupLine, documentFor, patternDefaults, patternParts, patternFromQuery, TITLE_PAGES, ARCHES } from "./setup.js";
+  import { setupLine, colourParts, documentFor, patternDefaults, patternParts, patternFromQuery, TITLE_PAGES, ARCHES } from "./setup.js";
   import InkPicker from "./InkPicker.svelte";
   import COLOURWAYS from "./colourways.json";
   import { face } from "./ink.js";
@@ -135,7 +135,7 @@
     status = "Growing…";
     progress = 0;
     try {
-      const job = { spec: await spec(variant), layout: pg.layout, seed, page: pg.page, mix: $state.snapshot(mix), ornaments: $state.snapshot(ornaments), palette: $state.snapshot(palette), spin, px: px(frame.clientWidth), gilt, giltenv, giltlook: lookLine, backdrop, pattern: patternParts(pattern, meta).join(", ") };
+      const job = { spec: await spec(variant), layout: pg.layout, seed, page: pg.page, mix: $state.snapshot(mix), ornaments: $state.snapshot(ornaments), palette: $state.snapshot(palette), spin, px: px(frame.clientWidth), gilt, giltenv, giltlook: lookLine, backdrop, pattern: patternParts(pattern, meta).join(", "), colours: colourParts($state.snapshot(palette), meta).join(", ") };
       const out = await render(job, (f) => { progress = Math.max(progress, f); });
       await show(out, canvas, frame.clientWidth);
       progress = 1;
