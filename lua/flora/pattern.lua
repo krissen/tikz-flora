@@ -903,12 +903,27 @@ function M.paint(spec, pt)
   -- A cell's plates: fields that tile the plane, painted with the ground.
   if not base.lines then
     local filled = false
+    -- A plate that lies between cells (pl.between, their positions) is
+    -- laid only when every one of them is kept (pl.need = "all") or any
+    -- of them (pl.need = "any"), so the field ends along the cells' own
+    -- outline rather than in squares.
+    local keptat = {}
+    for _, k in ipairs(kept) do keptat[M.cell_key(k.cell)] = true end
+    local function between_ok(pl)
+      if not pl.between then return true end
+      local n = 0
+      for _, q in ipairs(pl.between) do
+        if keptat[M.cell_key({ x = q[1], y = q[2] })] then n = n + 1 end
+      end
+      if pl.need == "any" then return n > 0 end
+      return n == #pl.between
+    end
     for _, k in ipairs(kept) do
       for _, pl in ipairs(k.cell.plates or {}) do
         local colour = M.cell_inks(base, k.a).fill[pl[2] == "b" and 2 or 1]
         if fpieces.panel then
           if not filled then plate(k.cell, k, fpieces.panel, colour); filled = true end
-        else
+        elseif between_ok(pl) then
           local path, col = fpieces.piece(k, pl[1], colour)
           if path then plate(k.cell, k, path, col) end
         end
