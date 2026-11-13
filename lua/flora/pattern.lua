@@ -252,8 +252,9 @@ end
 --
 --   ground  a surface under the cells, cell by cell: the cell's `under`
 --           path, else its tile. Painted under ground=on for the patterns
---           that list it, at the module's own lightness (its `ground`),
---           unless the palette sets ground=none.
+--           that list it, at the lightness the palette gives it, else
+--           the module's own (its `ground`), unless the palette sets
+--           ground=none.
 --   band    the strapwork and line work
 --   core    the light line down a band's middle
 --   a, b    the two fields (ink.fill[1], ink.fill[2])
@@ -280,9 +281,11 @@ end
 --
 -- On a dark backdrop every ink is repainted as flora's are, and the
 -- pattern's paper follows the page: it turns to the page's own dark. A
--- ground darker than DARK lights the bands on it (Color.on_ground, as a
--- dark backdrop would) and is painted as it is on either backdrop, so it
--- stays darker than its bands on paper and on a dark page alike.
+-- ground darker than DARK lights the bands that lie on it (Color.on_ground,
+-- as a dark backdrop would; a surface's bands lie on its fields and keep
+-- their lightness) and is painted as it is on either backdrop, so it
+-- stays darker than a line pattern's bands on paper and on a dark page
+-- alike.
 M.roles = {
   ground = { part = "leaves", L = 0.30, sat = 0.4, fallback = "ink", relight = true },
   band = { part = "leaves", L = 0.22, share = 1, fallback = "ink" },
@@ -374,14 +377,16 @@ function M.role_inks(rng, p, spec)
   local R = M.role_spec(spec.pattern_roles)
   local given = spec.patternpalette or {}
   local sat = key(spec, "saturation")
-  local function role(name, L)
+  local function role(name, L, default)
     local r = R[name]
     -- false (a colourway's reset, settings.lua) is a role left out.
     local v, vL, vs = given[USER[name]] or nil, nil, nil
     if v then v, vL, vs = M.palette_value(v) end
     -- A lightness the palette gives holds unless the caller asks for one
-    -- (the ground's own, the dark disc's).
-    L = L or vL
+    -- (the dark disc's), and wins over the caller's `default` (a
+    -- pattern's own ground lightness), which holds when the palette gives
+    -- none.
+    L = L or vL or default
     local share = M.role_share(r, vs, sat)
     if v == "paper" or (v == nil and r.paper) then return pal.paper end
     if v == "gold" or (v == nil and r.gold) then return pal.gold end
@@ -411,7 +416,7 @@ function M.role_inks(rng, p, spec)
   local has = false
   for _, r in ipairs(p.roles or {}) do if r == "ground" then has = true end end
   if has and not lines and p.ground and key(spec, "ground") == "on" then
-    base.ground = role("ground", R.ground.on and R.ground.on[p.name] or p.ground)
+    base.ground = role("ground", R.ground.on and R.ground.on[p.name], p.ground)
     base.lit = base.ground and Color.lightness(base.ground) < DARK
   end
   -- What a cell fades toward: the paper, which a dark backdrop repaints
@@ -423,7 +428,10 @@ function M.role_inks(rng, p, spec)
   base.band0 = base.band
   base.line0 = Paint.mix(base.band, pal.paper, R.line.mix)
   base.line = base.line0
-  if base.ground and Color.lightness(base.ground) < DARK then
+  -- A band's lightness is set against the surface it lies on: a dark
+  -- ground lights the bands of a line pattern, which lie on it, but not a
+  -- surface's (p.surface), whose bands lie on its fields.
+  if base.ground and Color.lightness(base.ground) < DARK and not p.surface then
     base.band = Color.on_ground(base.band, base.ground, pal.paper)
     base.line = Paint.mix(base.band, base.ground, R.line.mix)
   end

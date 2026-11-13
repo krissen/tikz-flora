@@ -135,4 +135,24 @@ caught("saturation", "kikko", function()
   Pattern.role_share = function(r, vs, sat) return vs or role_share(r, nil, sat) end
 end, function() Pattern.role_share = role_share end)
 
+-- A band lit on a surface's dark ground, as before a band's lightness was
+-- set against the surface it lies on: on the rosette lattice in tsuki-mi
+-- it lands on the ochre field's lightness. Put back into pattern.lua's
+-- source; both band floors must catch it.
+for _, what in ipairs({ "contrast", "vanish" }) do
+  local real = package.loaded["flora.pattern"]
+  caught(what, "rosette_lattice", function()
+    local f = io.open("lua/flora/pattern.lua")
+    local src = f:read("a")
+    f:close()
+    local old = "Color.lightness(base.ground) < DARK and not p.surface then"
+    local i, j = src:find(old, 1, true)
+    H.check(i ~= nil, "mutation: the surface rule is gone from pattern.lua")
+    if i then
+      package.loaded["flora.pattern"] = assert(load(src:sub(1, i - 1) .. "Color.lightness(base.ground) < DARK then" .. src:sub(j + 1),
+        "@pattern.lua (mutated)"))()
+    end
+  end, function() package.loaded["flora.pattern"] = real end)
+end
+
 H.done("pattern matrix")
