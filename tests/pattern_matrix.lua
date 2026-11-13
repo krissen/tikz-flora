@@ -22,6 +22,8 @@
 --             give the colours patterns had before roles
 --   ground    every cell that lays the ground has its piece of it
 --   nofill    the lines finish fills nothing
+--   saturation  saturation 0 greys the fields and the ground in every
+--             colourway, and more saturation never takes chroma away
 
 local Paint = require("flora.paint")
 local Compose = require("flora.compose")
@@ -222,6 +224,37 @@ function M.run(floors, filter)
       end
     end)
   end
+  -- saturation: in every colourway the fields and the ground (and the
+  -- dark ground it gives a motif) lose their chroma at saturation 0 and
+  -- gain it monotonically from 0 through the default to 1, whatever share
+  -- the colourway's palette gives them.
+  local ROLES = { fill1 = "field A", fill2 = "field B", ground = "ground", dark = "dark ground" }
+  local sat_cells = 0
+  for _, cw in ipairs(Inks.colourway_order) do
+    local by = {}
+    for _, s in ipairs({ 0, 0.5, 1 }) do
+      local spec = page("rosette_lattice", "colourway=" .. cw .. ", ground=on, saturation=" .. s)
+      require("flora.mix").with_palette(spec.palette, function()
+        by[s] = Pattern.role_inks(Rng.new(5):fork("pattern inks"), Patterns.by_name.rosette_lattice, spec)
+      end)
+    end
+    for k, label in pairs(ROLES) do
+      local c0, ch, c1 = by[0][k], by[0.5][k], by[1][k]
+      sat_cells = sat_cells + 1
+      if c0 and ch and c1 then
+        local _, C0 = Color.lch(c0)
+        local _, Ch = Color.lch(ch)
+        local _, C1 = Color.lch(c1)
+        if C0 > 2e-3 then failures[#failures + 1] = string.format("%s: saturation: %s keeps chroma %.4f at saturation 0", cw, label, C0) end
+        if not (C0 <= Ch + 1e-6 and Ch <= C1 + 1e-6 and C1 > C0) then
+          failures[#failures + 1] = string.format("%s: saturation: %s chroma %.4f, %.4f, %.4f at 0, 0.5, 1 is not monotone", cw, label, C0, Ch, C1)
+        end
+      else
+        failures[#failures + 1] = string.format("%s: saturation: %s missing", cw, label)
+      end
+    end
+  end
+  M.saturation_cells = sat_cells
   return cells, failures
 end
 

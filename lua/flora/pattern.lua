@@ -267,7 +267,9 @@ end
 -- ink group (one of its inks for the whole page, so a flat field does not
 -- turn patchy), paper, gold, or for the ground none. An ink or group may
 -- carry its lightness and chroma share, ink:L or ink:L:share (an empty L
--- keeps the role's), which a colourway composed for patterns uses. A role the palette
+-- keeps the role's), which a colourway composed for patterns uses; for a
+-- field or the ground the share is the one it takes at the default
+-- saturation, and other saturations scale it. A role the palette
 -- leaves out is derived from the flora's palette parts, as M.roles says:
 -- { part = palette part, L = lightness, share = chroma kept, sat = chroma
 -- kept as a share of the page's saturation, fallback = the Paint.palette
@@ -343,6 +345,18 @@ function M.role_spec(over)
   return out
 end
 
+-- The chroma share role `r` (M.role_spec's) takes at saturation `sat`,
+-- given the share `vs` its palette value carries, if any. A field or the
+-- ground follows the page's saturation whatever ink it takes: a share the
+-- palette gives is the one it takes at the default saturation, which so
+-- leaves it as it was composed, and saturation 0 greys it.
+function M.role_share(r, vs, sat)
+  if vs then
+    return r.sat and math.min(1, vs * sat / require("flora.settings").PATTERN.saturation) or vs
+  end
+  return r.share or (r.sat and r.sat * sat) or 1
+end
+
 -- `rgb` with its chroma scaled by `share`.
 local function muted(rgb, share)
   if not share or share == 1 then return rgb end
@@ -362,13 +376,12 @@ function M.role_inks(rng, p, spec)
   local sat = key(spec, "saturation")
   local function role(name, L)
     local r = R[name]
-    local share = r.share or (r.sat and r.sat * sat) or 1
     local v, vL, vs = given[USER[name]], nil, nil
     if v then v, vL, vs = M.palette_value(v) end
     -- A lightness the palette gives holds unless the caller asks for one
     -- (the ground's own, the dark disc's).
     L = L or vL
-    share = vs or share
+    local share = M.role_share(r, vs, sat)
     if v == "paper" or (v == nil and r.paper) then return pal.paper end
     if v == "gold" or (v == nil and r.gold) then return pal.gold end
     if v == "none" then return nil end

@@ -14,7 +14,8 @@ local Pattern = require("flora.pattern")
 local FLOORS = { band = 0.15, fields = 0.06 }
 
 local cells, failures = M.run(FLOORS)
-if os.getenv("FLORA_MATRIX_VERBOSE") then print(string.format("matrix: %d cells, %d failures", #cells, #failures)) end
+if os.getenv("FLORA_MATRIX_VERBOSE") then print(string.format("matrix: %d cells, %d saturation cells, %d failures", #cells, M.saturation_cells, #failures)) end
+H.check(M.saturation_cells == #require("flora.inks").colourway_order * 4, "saturation cells: " .. tostring(M.saturation_cells))
 H.check(#cells == #Patterns.list * #require("flora.inks").colourway_order * 2 * 2 * 2, "matrix cells: " .. #cells)
 for _, f in ipairs(failures) do H.check(false, f) end
 
@@ -95,5 +96,12 @@ caught("contrast", "truchet", function()
     return base
   end
 end, function() Pattern.role_inks = role_inks end)
+
+-- A share the palette gives replacing the saturation's, as it did before
+-- saturation scaled it (tsuki-mi's and usu-zumi's fields stay coloured).
+local role_share = Pattern.role_share
+caught("saturation", "kikko", function()
+  Pattern.role_share = function(r, vs, sat) return vs or role_share(r, nil, sat) end
+end, function() Pattern.role_share = role_share end)
 
 H.done("pattern matrix")
