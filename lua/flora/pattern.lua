@@ -377,7 +377,18 @@ function M.role_inks(rng, p, spec)
   local R = M.role_spec(spec.pattern_roles)
   local given = spec.patternpalette or {}
   local sat = key(spec, "saturation")
+  local lighten = key(spec, "lighten")
+  local role0
+  -- The fields lightened toward the paper by the lighten key.
   local function role(name, L, default)
+    local c = role0(name, L, default)
+    if c and lighten > 0 and (name == "a" or name == "b") then
+      local cl, ch, h = Color.lch(c)
+      c = Color.oklch(cl + (0.95 - cl) * lighten, ch, h)
+    end
+    return c
+  end
+  function role0(name, L, default)
     local r = R[name]
     -- false (a colourway's reset, settings.lua) is a role left out.
     local v, vL, vs = given[USER[name]] or nil, nil, nil
@@ -415,7 +426,12 @@ function M.role_inks(rng, p, spec)
   base.dark = role("ground", math.min(R.ground.L, DARK - 0.05)) or role("band", 0.30)
   local has = false
   for _, r in ipairs(p.roles or {}) do if r == "ground" then has = true end end
-  if has and not lines and p.ground and key(spec, "ground") == "on" then
+  -- The ground key: auto lays it on a dark backdrop only.
+  local gmode = key(spec, "ground")
+  local bd = spec.backdrop
+  if type(bd) ~= "table" then bd = Color.backdrop(bd) end
+  local wants = gmode ~= "off" and not (gmode == "auto" and not bd)
+  if has and not lines and p.ground and wants then
     base.ground = role("ground", R.ground.on and R.ground.on[p.name], p.ground)
     base.lit = base.ground and Color.lightness(base.ground) < DARK
   end
@@ -661,7 +677,20 @@ function M.paint(spec, pt)
   -- ends (ground_edge), and whether the cells fall away as the pattern's
   -- own units (units) or the field closes its strands at its edge
   -- (reweave). See M.edge_pieces below.
-  local opts = spec.pattern_opts or {}
+  local opts = {}
+  for k, v in pairs(spec.pattern_opts or {}) do opts[k] = v end
+  -- The ends and panels keys (Settings.PATTERN), each pattern's own under
+  -- auto: closed lines reweave the field at its edge, whole lines fall
+  -- away with their group, and kolam's panels are symmetric.
+  local ends = key(spec, "ends")
+  if ends == "auto" then ends = p.ends or "cut" end
+  if opts.reweave == nil then opts.reweave = ends == "closed" end
+  if opts.units == nil then opts.units = ends == "whole" end
+  local panels = key(spec, "panels")
+  if panels == "auto" then panels = p.panels or "off" end
+  if opts.symmetric == nil then opts.symmetric = panels == "on" end
+  local ground_edges = { auto = "panel", panel = "panel", motif = "shape", round = "discs", cells = "cells" }
+  if opts.ground_edge == nil then opts.ground_edge = ground_edges[key(spec, "ground")] or "cells" end
   local env = { x0 = 0, y0 = 0, x1 = W, y1 = H, size = size, rng = rng:fork("cells"), opts = opts }
   local cells = p.cells(env)
   local fall = rng:fork("dissolve")
@@ -683,10 +712,16 @@ function M.paint(spec, pt)
       if outer == "margin" and not within(s, page, OUTER_MARGIN + reach) then placed = false end
     end
     if outer ~= "margin" then placed = placed and M.clearance(c, page) <= reach end
-    if not placed then return false, 0, false end
     local d = math.huge
     for _, rc in ipairs(keep_rects) do
       for _, s in ipairs(shapes) do d = math.min(d, M.clearance(s, rc) - reach) end
+    end
+    -- The last value: clear of the text and the hero, on the page, on
+    -- whichever side (a reweave's turns, below).
+    if not placed then
+      local free = onpage[c] and dens > 0 and d >= gap and not (hero and M.disc_clearance(c, hero) - reach < GAP)
+        and (outer ~= "margin" or within(c, page, OUTER_MARGIN + reach))
+      return false, 0, false, free
     end
     local a = 0
     if dens > 0 and d >= gap then
@@ -696,7 +731,7 @@ function M.paint(spec, pt)
       else a = t >= 0.35 and 1 or 0
       end
     end
-    return true, a, dens > 0 and d >= gap and edge == "dissolve"
+    return true, a, dens > 0 and d >= gap and edge == "dissolve", dens > 0 and d >= gap
   end
   local function choose(list)
     kept, offered, bare = {}, 0, {}
@@ -742,21 +777,38 @@ function M.paint(spec, pt)
   -- kept.
   if opts.reweave and p.reweave then
     local keep = {}
-    for _, k in ipairs(kept) do keep[M.cell_key(k.cell)] = true end
+    for _, k in ipairs(kept) do keep[M.cell_key(k.cell)] = k.cell end
     env.blocked = function(x, y) return not keep[M.cell_key({ x = x, y = y })] end
-    -- The same draws as the first drawing, so only the edge changes.
-    env.rng = rng:fork("cells")
-    cells = p.cells(env)
-    local list = {}
-    for _, c in ipairs(cells) do list[#list + 1] = c end
-    kept, offered, bare = {}, 0, {}
-    for _, c in ipairs(list) do
-      local placed = judge(c, 0)
-      if placed then
-        offered = offered + 1
-        kept[#kept + 1] = { cell = c, a = 1, jitter = stagger:next() }
+    -- A line turning back at the edge draws its turn in the cell beyond
+    -- it. Where that cell may not be painted (too near the text) the kept
+    -- cells round it are walled in as well and the field is drawn again,
+    -- until every cell of the drawing on the page may be painted.
+    local list
+    for _ = 1, 6 do
+      -- The same draws as the first drawing, so only the edge changes.
+      env.rng = rng:fork("cells")
+      cells = p.cells(env)
+      list = {}
+      local failed = {}
+      for _, c in ipairs(cells) do
+        -- A turn may lie where the edge mode would leave no cell (edge=cell's
+        -- margin): it is painted so long as it keeps clear of the text.
+        local placed, a, _, clear = judge(c, 0)
+        if (placed and a > 0) or clear then list[#list + 1] = c
+        elseif onpage[c] then
+          failed[#failed + 1] = c
+        end
+      end
+      if #failed == 0 then break end
+      local r2 = (0.75 * size) ^ 2
+      for key, o in pairs(keep) do
+        for _, c in ipairs(failed) do
+          if (o.x - c.x) ^ 2 + (o.y - c.y) ^ 2 < r2 then keep[key] = nil; break end
+        end
       end
     end
+    kept, offered, bare = {}, #list, {}
+    for _, c in ipairs(list) do kept[#kept + 1] = { cell = c, a = 1, jitter = stagger:next() } end
   end
 
   -- Growth starts at the page's outer edge, away from the text. A cell
@@ -812,7 +864,7 @@ function M.paint(spec, pt)
   end
   local holes = 0
   local ge = opts.ground_edge or "cells"
-  -- A1: the ground only on a dark backdrop.
+  -- A1 (a prototype's dark): the ground only on a dark backdrop.
   if ge == "dark" and not pt.backdrop then base.ground = nil end
   -- The field's edge is measured only where something follows it.
   local need = base.ground or opts.measure

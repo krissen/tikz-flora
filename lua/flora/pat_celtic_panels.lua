@@ -64,5 +64,5 @@ return {
     for _, c in ipairs(out) do c.group = math.floor(c.x / w + 1e-3) .. "," .. math.floor(c.y / w + 1e-3) end
     return out
   end,
-  reweave = true,
+  reweave = true, ends = "closed",
 }

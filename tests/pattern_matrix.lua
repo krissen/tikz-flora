@@ -40,6 +40,17 @@ local Inks = require("flora.inks")
 local Rng = require("flora.rng")
 
 local M = {}
+local Units = dofile("tests/pattern_units.lua")
+
+-- How many of the kept cells have no kept cell near them: nearer than
+-- 1.6 times the usual distance to a cell's nearest kept neighbour.
+function M.isolated(kept)
+  local cells = {}
+  for _, k in ipairs(kept) do cells[#cells + 1] = k.cell end
+  if #cells < 2 then return 0 end
+  local info = Pattern.field_edges(cells, kept, {})
+  return info.isolated
+end
 
 local function key(c) return string.format("%.4f,%.4f,%.4f", c[1], c[2], c[3]) end
 
@@ -114,7 +125,7 @@ function M.run(floors, filter)
   end
   for _, p in ipairs(Patterns.list) do
     for _, cw in ipairs(Inks.colourway_order) do
-      for _, ground in ipairs({ "off", "on" }) do
+      for _, ground in ipairs({ "auto", "panel", "cells" }) do
       for _, finish in ipairs({ "filled", "lines" }) do
         if not filter or filter(p.name, cw, finish) then
           local seen = {}
@@ -123,6 +134,7 @@ function M.run(floors, filter)
             local rec = paint(spec)
             local base = rec.pt.pattern.inks
             local c = { pattern = p.name, colourway = cw, backdrop = bd, finish = finish, ground = ground }
+            c.kept = #rec.pt.pattern.kept
             cells[#cells + 1] = c
             local roles = role_colours(base)
             -- The page's own colour, for a halo that parts two strands.
@@ -167,6 +179,33 @@ function M.run(floors, filter)
             if finish == "lines" and #rec.fills > 0 then fail(c, "nofill", #rec.fills .. " fills under the lines finish") end
             -- ground
             if (rec.pt.pattern.holes or 0) > 0 then fail(c, "ground", rec.pt.pattern.holes .. " cells without their piece of the ground") end
+            -- edge: the ground ends as its key says: none on paper under
+            -- auto, one panel under panel (and auto on a dark backdrop).
+            local gfills = 0
+            if base.ground then for _, x in ipairs(rec.fills) do if key(x) == key(base.ground) then gfills = gfills + 1 end end end
+            local has_ground = false
+            for _, r in ipairs(p.roles) do if r == "ground" then has_ground = true end end
+            if has_ground and finish == "filled" then
+              if ground == "auto" and bd == "light" and base.ground then fail(c, "edge", "a ground on paper under ground=auto") end
+              if (ground == "panel" or (ground == "auto" and bd == "dark")) and gfills ~= 1 then
+                fail(c, "edge", gfills .. " pieces of ground where one panel belongs")
+              end
+            end
+            -- units: no kolam dot without its loop, no celtic strand ending
+            -- loose inside the page (truchet's tiles are not closed, and
+            -- not held to it).
+            if p.name == "sikku_kolam" or p.name:match("^celtic") then
+              local lone, open = Units.count(rec.pt.pattern.kept, { 3, 3, spec.width - 3, spec.height - 3 })
+              c.lone, c.open = lone, open
+              if lone > 0 then fail(c, "units", lone .. " dots without their loop") end
+              if open > 0 then fail(c, "units", open .. " line ends meeting no other") end
+            end
+            -- fragments: kept cells with no kept neighbour.
+            local iso = M.isolated(rec.pt.pattern.kept)
+            c.isolated = #rec.pt.pattern.kept > 0 and iso / #rec.pt.pattern.kept or 0
+            if floors.isolated and c.isolated > floors.isolated then
+              fail(c, "fragments", string.format("%.1f %% of the cells stand alone", 100 * c.isolated))
+            end
             -- contrast: the band against what it lies on, as shown
             local back = Color.backdrop(spec.backdrop)
             local function shown(rgb)

@@ -49,7 +49,10 @@ M.about = {
   { "saturation", "0 to 1", "How much of its inks' colour a pattern's fields and ground keep: 0.5 (the default) mutes them as tiles and mosaics are, 1 keeps the ink's full colour. A share patternpalette gives a field or the ground (ink:L:share) is the one it keeps at 0.5, and other values scale it." },
   { "finish", "filled, lines", "How a pattern is drawn: filled (the default), with its fields and ground, or lines, its bands and outlines alone with nothing filled." },
   { "bands", "auto, line, strap", "How a pattern's bands are drawn: auto (the default), each pattern's own; line, one thin line; or strap, a broad band with a fine contour and a light core." },
-  { "ground", "off, on", "Whether a pattern that has a ground (asanoha, sikku_kolam, rosette_lattice) lays it under its cells: off (the default) leaves the paper, on paints the palette's ground role." },
+  { "ground", "auto, off, panel, motif, round, cells", "Whether a pattern that has a ground (asanoha, sikku_kolam, rosette_lattice) lays it under its cells, and how it ends toward the text: auto (the default) leaves the paper on light paper and lays a panel on a dark backdrop; off leaves the page; panel lays one panel with a straight edge; motif ends it along the pattern's own motifs; round gives it a rounded edge; cells lays a piece under every cell. on is panel." },
+  { "ends", "auto, closed, whole, cut", "How a pattern's lines end where the field ends (sikku_kolam, celtic_knot, celtic_panels): auto (the default), each pattern's own, closed; closed turns every line back at the field's edge, so none ends loose; whole lets each line fall away whole with its dots or its panel; cut cuts the lines cell by cell." },
+  { "panels", "auto, on, off", "Whether sikku_kolam is laid out in symmetric panels, each walled in and the same under turns and reflections: auto (the default) and on do, off draws one free kolam over the field." },
+  { "lighten", "0 to 1", "Lightens a pattern's fields toward the paper: 0 (the default) keeps their inks' lightness, 1 makes them nearly the paper." },
   { "bandwidth", "0.25 to 4", "The width of a pattern's bands and lines, as a factor of its own." },
   { "cache", "true, false",
     "true (the default) keeps each page's flora in a folder <jobname>-flora beside the PDF, so a later compile reuses it; false grows every page afresh." },
@@ -236,8 +239,25 @@ M.define("bands", function(v)
 end)
 
 M.define("ground", function(v)
-  if v == "off" or v == "on" then return v end
-  return nil, "ground must be off or on"
+  if v == "on" then return "panel" end
+  for _, m in ipairs({ "auto", "off", "panel", "motif", "round", "cells" }) do if v == m then return v end end
+  return nil, "ground must be auto, off, panel, motif, round or cells"
+end)
+
+M.define("ends", function(v)
+  for _, m in ipairs({ "auto", "closed", "whole", "cut" }) do if v == m then return v end end
+  return nil, "ends must be auto, closed, whole or cut"
+end)
+
+M.define("panels", function(v)
+  if v == "auto" or v == "on" or v == "off" then return v end
+  return nil, "panels must be auto, on or off"
+end)
+
+M.define("lighten", function(v)
+  local n = tonumber(v)
+  if n and n >= 0 and n <= 1 then return n end
+  return nil, "lighten must be a number from 0 to 1"
 end)
 
 M.define("bandwidth", function(v)
@@ -545,6 +565,7 @@ M.SPEC = {
   pattern = "pattern", edge = "pattern_edge", outer = "pattern_outer", scale = "pattern_scale",
   hero = "pattern_hero", patternpalette = "patternpalette", saturation = "pattern_saturation",
   finish = "pattern_finish", bands = "pattern_bands", bandwidth = "pattern_bandwidth", ground = "pattern_ground",
+  ends = "pattern_ends", panels = "pattern_panels", lighten = "pattern_lighten",
 }
 -- The pattern keys besides `pattern` itself, by key -> default. A mixer's
 -- pattern state, its \florasetup line and the preview's spec all carry
@@ -554,7 +575,8 @@ M.SPEC = {
 -- pattern.lua reads its defaults from here too. patternpalette is a
 -- palette, set role by role as palette is, so it is not one of them.
 M.PATTERN = { edge = "dissolve", hero = "none", outer = "bleed", scale = 1,
-  saturation = 0.5, finish = "filled", bands = "auto", bandwidth = 1, ground = "off" }
+  saturation = 0.5, finish = "filled", bands = "auto", bandwidth = 1, ground = "auto",
+  ends = "auto", panels = "auto", lighten = 0 }
 M.OWN = { layout = true, header = true, seed = true, cache = true, density = true, visitors = true, colourway = true }
 
 -- What a "fresh" restyle (tools/preview.lua, the site's mixer) drops of a

@@ -231,7 +231,8 @@ return {
   scale = SCALE,
   width = WIDTH, core = 0.4, bands = "strap",
   cells = function(env) return M.cells_with(env, nil) end,
-  -- It can be drawn again with the field's edge as a wall (pattern.lua).
-  reweave = true,
+  -- It can be drawn again with the field's edge as a wall (pattern.lua),
+  -- and by default is (the ends key).
+  reweave = true, ends = "closed",
   engine = M,
 }

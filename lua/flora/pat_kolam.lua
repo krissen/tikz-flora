@@ -47,8 +47,9 @@ return {
   ground = 0.31,
   scale = 14,
   width = 1.6, core = 0.45, bands = "strap",
-  -- It can be drawn again with the field's edge as a wall (pattern.lua).
-  reweave = true,
+  -- It can be drawn again with the field's edge as a wall (pattern.lua),
+  -- and by default is, in symmetric panels (the ends and panels keys).
+  reweave = true, ends = "closed", panels = "on",
   cells = function(env)
     local a = env.size
     local gx, gy = math.floor(env.x0 / a) - 1, math.floor(env.y0 / a) - 1

@@ -16,12 +16,14 @@ local Pattern = require("flora.pattern")
 -- band lit on a dark ground onto the ochre field of the rosette lattice)
 -- and clear below the lowest composition approved as seen (0.105,
 -- tsuki-mi's contour on its green field on the dark backdrop).
-local FLOORS = { band = 0.15, fields = 0.06, band_any = 0.08 }
+-- No kept cell stands alone in any cell of the matrix (measured: 0 % for
+-- every pattern, ORDER #10 of the geometry work), so none may.
+local FLOORS = { band = 0.15, fields = 0.06, band_any = 0.08, isolated = 0 }
 
 local cells, failures = M.run(FLOORS)
 if os.getenv("FLORA_MATRIX_VERBOSE") then print(string.format("matrix: %d cells, %d saturation cells, %d failures", #cells, M.saturation_cells, #failures)) end
 H.check(M.saturation_cells == #require("flora.inks").colourway_order * 4, "saturation cells: " .. tostring(M.saturation_cells))
-H.check(#cells == #Patterns.list * #require("flora.inks").colourway_order * 2 * 2 * 2, "matrix cells: " .. #cells)
+H.check(#cells == #Patterns.list * #require("flora.inks").colourway_order * 3 * 2 * 2, "matrix cells: " .. #cells)
 for _, f in ipairs(failures) do H.check(false, f) end
 
 -- The band's distance from every surface it lies on, by colourway and
@@ -154,5 +156,32 @@ for _, what in ipairs({ "contrast", "vanish" }) do
     end
   end, function() package.loaded["flora.pattern"] = real end)
 end
+
+-- The ground's edge: a ground on paper under ground=auto.
+caught("edge", "rosette_lattice", function()
+  Pattern.role_inks = function(rng, p, spec)
+    local base = role_inks(rng, p, spec)
+    base.ground = base.ground or require("flora.paint").palette.gold
+    return base
+  end
+end, function() Pattern.role_inks = role_inks end)
+
+-- A kolam dot left without its loop, and a strand ending loose: the
+-- lines cut cell by cell again.
+local kolam = Patterns.by_name.sikku_kolam
+caught("units", "sikku_kolam", function() kolam.ends, kolam.panels = "cut", "off" end,
+  function() kolam.ends, kolam.panels = "closed", "on" end)
+local knot = Patterns.by_name.celtic_knot
+caught("units", "celtic_knot", function() knot.ends = "cut" end, function() knot.ends = "closed" end)
+
+-- Cells standing alone: one cell in 23 kept.
+local kikko_cells2 = kikko.cells
+caught("fragments", "kikko", function()
+  kikko.cells = function(env)
+    local out, sparse = kikko_cells2(env), {}
+    for i, c in ipairs(out) do if i % 23 == 0 then sparse[#sparse + 1] = c end end
+    return sparse
+  end
+end, function() kikko.cells = kikko_cells2 end)
 
 H.done("pattern matrix")

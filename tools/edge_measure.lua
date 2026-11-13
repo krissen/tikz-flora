@@ -24,7 +24,7 @@ assert(specdir and out, "usage: edge_measure.lua SPECDIR OUTDIR [SETUP]")
 local tsv = assert(io.open(out .. "/cells.tsv", "w"))
 tsv:write("pattern\tground\tedge\tkept\tedge_cells\tisolated\ttext_x0\twidth\theight\tsize\n")
 for _, p in ipairs(Patterns.list) do
-  for _, ground in ipairs({ "off", "on" }) do
+  for _, ground in ipairs({ "off", "panel" }) do
     for _, edge in ipairs({ "dissolve", "cell", "fade", "border" }) do
       local f = assert(io.open(specdir .. "/spec-4.lua"))
       local spec = Serial.decode(f:read("a"))
