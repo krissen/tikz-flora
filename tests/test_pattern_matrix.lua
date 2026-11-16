@@ -295,6 +295,24 @@ do
     if out ~= spec and not w then out.pattern_ground = "panel" end
     return out, w
   end, "sikku_kolam")
+  -- The band fitted to the dark ground again, a colour made from the gold
+  -- rather than the gold ink: put back into pattern.lua's source.
+  do
+    local real = package.loaded["flora.pattern"]
+    local f = io.open("lua/flora/pattern.lua")
+    local src = f:read("a")
+    f:close()
+    local old = "if base.band ~= pal.gold then base.band = Color.on_ground"
+    local i, j = src:find(old, 1, true)
+    H.check(i ~= nil, "mutation: the gold rule is gone from pattern.lua")
+    if i then
+      package.loaded["flora.pattern"] = assert(load(src:sub(1, i - 1) .. "if true then base.band = Color.on_ground" .. src:sub(j + 1), "@pattern.lua (mutated)"))()
+      local _, fs = M.lacquer(function(n) return n == "asanoha" or n == "sikku_kolam" end)
+      package.loaded["flora.pattern"] = real
+      H.check(#fs > 0, "the lacquer check missed a band fitted to the ground")
+      if os.getenv("FLORA_MATRIX_VERBOSE") then print(string.format("mutation lacquer band fitted to the ground: %d failures", #fs)) end
+    end
+  end
   -- The rosette lattice claiming lacquer again: its page is no longer the
   -- filled one.
   do
@@ -313,24 +331,6 @@ do
   end, "kikko")
 end
 
--- An alias paints as the pattern it is kept for, byte for byte, named in
--- a spec and in a setup line; and the check fails when the field stops
--- reading the alias (patterns.lua's weight).
-local ALIASES = { celtic_panels = "celtic_knot" }
-do
-  local n, bad = M.aliases(ALIASES)
-  H.check(n == 4, "alias pages compared: " .. n)
-  for _, b in ipairs(bad) do H.check(false, "alias: " .. b) end
-  if os.getenv("FLORA_MATRIX_VERBOSE") then print(string.format("aliases: %d pages, %d differ", n, #bad)) end
-  local weight = Patterns.weight
-  Patterns.weight = function(weights, p)
-    if weights[p.name] ~= nil then return weights[p.name] end
-    return weight(setmetatable({}, { __index = function(_, k) if not ALIASES[k] then return weights[k] end end }), p)
-  end
-  local _, bad2 = M.aliases(ALIASES)
-  Patterns.weight = weight
-  H.check(#bad2 > 0, "the alias check missed an alias the field no longer reads")
-  if os.getenv("FLORA_MATRIX_VERBOSE") then print(string.format("mutation alias: %d of 4 pages differ", #bad2)) end
 -- density=0 paints nothing of the pattern; and the check fails when a
 -- placed panel's cells (celtic_knot's) or the ground's panel paint anyway,
 -- the faults put back into pattern.lua's source.
@@ -359,6 +359,24 @@ do
   end
 end
 
+-- An alias paints as the pattern it is kept for, byte for byte, named in
+-- a spec and in a setup line; and the check fails when the field stops
+-- reading the alias (patterns.lua's weight).
+local ALIASES = { celtic_panels = "celtic_knot" }
+do
+  local n, bad = M.aliases(ALIASES)
+  H.check(n == 4, "alias pages compared: " .. n)
+  for _, b in ipairs(bad) do H.check(false, "alias: " .. b) end
+  if os.getenv("FLORA_MATRIX_VERBOSE") then print(string.format("aliases: %d pages, %d differ", n, #bad)) end
+  local weight = Patterns.weight
+  Patterns.weight = function(weights, p)
+    if weights[p.name] ~= nil then return weights[p.name] end
+    return weight(setmetatable({}, { __index = function(_, k) if not ALIASES[k] then return weights[k] end end }), p)
+  end
+  local _, bad2 = M.aliases(ALIASES)
+  Patterns.weight = weight
+  H.check(#bad2 > 0, "the alias check missed an alias the field no longer reads")
+  if os.getenv("FLORA_MATRIX_VERBOSE") then print(string.format("mutation alias: %d of 4 pages differ", #bad2)) end
 end
 
 -- Cells standing alone: one cell in 23 kept.

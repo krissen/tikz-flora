@@ -546,7 +546,7 @@ end
 -- usu-zumi) x backdrop, against the patterns meant to take it (M.LACQUER,
 -- named here and not read from the modules, so a module that claims it
 -- wrongly is caught). On those: the ground is one panel (one fill of the
--- ground's colour), the band is gold (before a dark ground lights it), the
+-- ground's colour), the bands are painted in the gold ink itself, the
 -- bands are lines at half width, and a ground the page sets itself goes
 -- before the panel. On any other: the page is the filled page byte for
 -- byte, and it says why. Returns cells, failures.
@@ -571,7 +571,15 @@ function M.lacquer(filter)
             local gf = 0
             if base.ground then for _, x in ipairs(rec.fills) do if key(x) == key(base.ground) then gf = gf + 1 end end end
             if not base.ground or gf ~= 1 then failures[#failures + 1] = where .. ": lacquer: " .. gf .. " ground fills where one panel belongs" end
-            if key(base.band0) ~= key(Paint.palette.gold) then failures[#failures + 1] = where .. ": lacquer: the band is not gold" end
+            -- The bands as painted are the gold ink itself (the one Paint:stroke
+            -- gilds), not a colour made from it.
+            local gold, lit = 0, 0
+            for _, x in ipairs(rec.strokes) do
+              if x == Paint.palette.gold then gold = gold + 1 elseif x == base.band then lit = lit + 1 end
+            end
+            if base.band ~= Paint.palette.gold or gold == 0 or lit > 0 then
+              failures[#failures + 1] = string.format("%s: lacquer: the bands are painted in %d gold and %d other strokes, not the gold ink", where, gold, lit)
+            end
             if eff.pattern_bands ~= "line" or eff.pattern_bandwidth ~= 0.5 then failures[#failures + 1] = where .. ": lacquer: the bands are not lines at half width" end
             if info.warnings then failures[#failures + 1] = where .. ": lacquer: a warning on a pattern with a ground" end
             -- A ground the page sets goes before the panel.
@@ -592,14 +600,6 @@ function M.lacquer(filter)
   return cells, failures
 end
 
--- Each alias of `expect` (alias -> pattern) against its pattern, on the
--- matrix's page, light and dark, named in the spec's pattern weights and in
--- a setup line. Returns the pages compared and those that differ.
-function M.aliases(expect)
-  local n, bad = 0, {}
-  for alias, target in pairs(expect) do
-    for _, bd in ipairs({ "light", "dark" }) do
-      local want = paint(page(target, "colourway=tsuki-mi, backdrop=" .. bd)).pt:body()
 -- density=0 paints nothing of the pattern: no cell and no ground, over
 -- every pattern x ground (auto, panel, cells) x ends (closed, bleed) x
 -- backdrop x finish it takes. Returns the pages, and the failures.
@@ -628,6 +628,14 @@ function M.density0(filter)
   return pages, failures
 end
 
+-- Each alias of `expect` (alias -> pattern) against its pattern, on the
+-- matrix's page, light and dark, named in the spec's pattern weights and in
+-- a setup line. Returns the pages compared and those that differ.
+function M.aliases(expect)
+  local n, bad = 0, {}
+  for alias, target in pairs(expect) do
+    for _, bd in ipairs({ "light", "dark" }) do
+      local want = paint(page(target, "colourway=tsuki-mi, backdrop=" .. bd)).pt:body()
       local raw = paint(page(alias, "colourway=tsuki-mi, backdrop=" .. bd)).pt:body()
       local line = paint(page(target, "pattern=" .. alias .. ", colourway=tsuki-mi, backdrop=" .. bd)).pt:body()
       for _, got in ipairs({ { "spec", raw }, { "setup line", line } }) do
