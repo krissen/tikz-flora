@@ -174,6 +174,62 @@ caught("units", "sikku_kolam", function() kolam.ends, kolam.panels = "cut", "off
 local knot = Patterns.by_name.celtic_knot
 caught("units", "celtic_knot", function() knot.ends = "cut" end, function() knot.ends = "closed" end)
 
+-- khatam's stars back at their old size, alone on the lattice: the stars
+-- and crosses no longer fill the plane.
+local khatam = Patterns.by_name.khatam
+local khatam_cells = khatam.cells
+caught("tiling", "khatam", function()
+  khatam.cells = function(env)
+    local out = khatam_cells(env)
+    for _, c in ipairs(out) do
+      local P = khatam.star(c.x, c.y, env.size * 0.39)
+      c.star = require("flora.pat_kit").path(P)
+    end
+    return out
+  end
+end, function() khatam.cells = khatam_cells end)
+
+-- hexagram's star in two colours again: the up triangle in one field, the
+-- down triangle over it in the other.
+local hexagram = Patterns.by_name.hexagram_lattice
+local hexagram_cells = hexagram.cells
+caught("onecolour", "hexagram_lattice", function()
+  hexagram.cells = function(env)
+    local out = hexagram_cells(env)
+    for _, c in ipairs(out) do
+      local K = require("flora.pat_kit")
+      c.paint = function(pt, cell, ink)
+        K.fill(pt, cell.up, ink.fill[1], ink)
+        K.fill(pt, cell.down, ink.fill[2], ink)
+        K.band(pt, cell.star, ink, { core = false, w = 0.6 })
+      end
+    end
+    return out
+  end
+end, function() hexagram.cells = hexagram_cells end)
+
+-- The knot field (a study): no strand ends loose in any layout.
+local kcells, kfails = M.knot()
+if os.getenv("FLORA_MATRIX_VERBOSE") then print(string.format("knot field: %d cells, %d failures", #kcells, #kfails)) end
+H.check(#kcells == 2 * 4 * 2 * 2, "knot field cells: " .. #kcells)
+for _, f in ipairs(kfails) do H.check(false, f) end
+-- Its cells thinned out toward the text again, as an ordinary field's:
+-- the strands end loose where cells fall away.
+do
+  local mutated = 0
+  local knot_cells = knot.cells
+  knot.cells = function(env)
+    local out = knot_cells(env)
+    for _, c in ipairs(out) do c.fixed = nil end
+    return out
+  end
+  local _, fs = M.knot(function(n, layout) return n == "celtic_knot" and layout == "surround" end)
+  knot.cells = knot_cells
+  for _, f in ipairs(fs) do if f:find(": units:", 1, true) then mutated = mutated + 1 end end
+  H.check(mutated > 0, "the knot field missed strands ending loose")
+  if os.getenv("FLORA_MATRIX_VERBOSE") then print(string.format("mutation units on the knot field: %d of %d failures", mutated, #fs)) end
+end
+
 -- Cells standing alone: one cell in 23 kept.
 local kikko_cells2 = kikko.cells
 caught("fragments", "kikko", function()

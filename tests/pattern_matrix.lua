@@ -29,6 +29,14 @@
 --   nofill    the lines finish fills nothing
 --   saturation  saturation 0 greys the fields and the ground in every
 --             colourway, and more saturation never takes chroma away
+--   tiling    khatam's stars meet tip to tip and the crosses fill the rest
+--             of the plane, measured on the cells' own outlines
+--   onecolour no hexagram star is painted in two colours: every fill that
+--             lies inside a star has that star's one colour
+--
+-- M.knot(filter) runs the knot field (pat_celtic.lua's bleed and inset)
+-- over both knot patterns x layout x mode x backdrop, holding it to
+--   units     no strand ending loose inside the page
 
 local Paint = require("flora.paint")
 local Compose = require("flora.compose")
@@ -83,10 +91,13 @@ end
 
 -- Paint one page, recording the pattern group's paint calls.
 local function paint(spec)
-  local rec = { fills = {}, strokes = {} }
+  local rec = { fills = {}, strokes = {}, fillpaths = {} }
   local fill, stroke = Paint.fill, Paint.stroke
   Paint.fill = function(self, cmds, rgb, ...)
-    if self.group and self.group.tag == "pattern" then rec.fills[#rec.fills + 1] = rgb end
+    if self.group and self.group.tag == "pattern" then
+      rec.fills[#rec.fills + 1] = rgb
+      rec.fillpaths[#rec.fillpaths + 1] = { cmds = cmds, rgb = rgb }
+    end
     return fill(self, cmds, rgb, ...)
   end
   Paint.stroke = function(self, cmds, rgb, ...)
@@ -101,9 +112,9 @@ local function paint(spec)
   return rec
 end
 
-local function page(name, setup)
+local function page(name, setup, layout)
   local spec = { width = 300, height = 240, text = { x0 = 130, y0 = 30, x1 = 280, y1 = 210 }, seed = 7,
-    layout = "left", pattern = { [name] = 1 }, pattern_edge = "cell" }
+    layout = layout or "left", pattern = { [name] = 1 }, pattern_edge = "cell" }
   Settings.to_spec(Settings.merge(Settings.from_spec(spec), Settings.parse(setup)), spec)
   return spec
 end
@@ -117,6 +128,88 @@ end
 
 local ROLE_OF = { band = "band", band0 = "band", line = "band", line0 = "band", core = "core", a = "a", b = "b",
   accent = "accent", ground = "ground", dark = "ground", paper = "paper", page = "paper" }
+
+-- The points of a path of moves and lines (K.path's).
+local function points(cmds)
+  local P = {}
+  for _, c in ipairs(cmds) do
+    if c[1] == "m" or c[1] == "l" then P[#P + 1] = { c[2], c[3] } end
+  end
+  return P
+end
+local function area(P)
+  local s = 0
+  for i = 1, #P do
+    local p, q = P[i], P[i % #P + 1]
+    s = s + p[1] * q[2] - q[1] * p[2]
+  end
+  return math.abs(s) / 2
+end
+local function inside(P, x, y)
+  local hit = false
+  for i = 1, #P do
+    local p, q = P[i], P[i % #P + 1]
+    if (p[2] > y) ~= (q[2] > y) and x < p[1] + (y - p[2]) / (q[2] - p[2]) * (q[1] - p[1]) then hit = not hit end
+  end
+  return hit
+end
+
+-- khatam's tiling, on its own cells: four stars about a cross, and the
+-- cross between them. The stars and the cross fill the period's square
+-- exactly (their areas sum to a squared, as they cannot overlap where
+-- every cross corner is a star's corner), and each star's tip is its
+-- neighbour's.
+function M.tiling(p, a)
+  a = a or 28
+  local cells = p.cells({ x0 = 0, y0 = 0, x1 = 3 * a, y1 = 3 * a, size = a, style = {} })
+  local at = {}
+  for _, c in ipairs(cells) do at[string.format("%.3f,%.3f", c.x, c.y)] = c end
+  local function cell(x, y) return at[string.format("%.3f,%.3f", x, y)] end
+  local c00, c10, c01, c11 = cell(a, a), cell(2 * a, a), cell(a, 2 * a), cell(2 * a, 2 * a)
+  if not (c00 and c10 and c01 and c11) then return "the cells do not stand on the lattice" end
+  local cross
+  for _, pl in ipairs(c00.plates or {}) do if pl.between then cross = points(pl[1]) end end
+  if not cross then return "no cross between the stars" end
+  local star = points(c00.star)
+  local sum = area(star) + area(cross)
+  if math.abs(sum - a * a) > 1e-6 * a * a then
+    return string.format("a star and a cross cover %.4f of the period's square", sum / (a * a))
+  end
+  local corners = {}
+  for _, c in ipairs({ c00, c10, c01, c11 }) do for _, q in ipairs(points(c.star)) do corners[#corners + 1] = q end end
+  for _, q in ipairs(cross) do
+    local near = math.huge
+    for _, r in ipairs(corners) do near = math.min(near, math.sqrt((q[1] - r[1]) ^ 2 + (q[2] - r[2]) ^ 2)) end
+    if near > 1e-6 * a then return string.format("a corner of the cross lies %.3f pt from every star", near) end
+  end
+  local tip = { a + a / 2, a }
+  local function has(c) for _, q in ipairs(points(c.star)) do if math.abs(q[1] - tip[1]) + math.abs(q[2] - tip[2]) < 1e-6 * a then return true end end end
+  if not (has(c00) and has(c10)) then return "two neighbouring stars do not meet tip to tip" end
+  return nil
+end
+
+-- Fills inside each kept star of more than one colour (hexagram).
+local function colours_per_star(kept, fillpaths)
+  local bad = 0
+  for _, k in ipairs(kept) do
+    local P = k.cell.verts
+    local seen, n = {}, 0
+    for _, f in ipairs(fillpaths) do
+      local Q = points(f.cmds)
+      if #Q > 0 then
+        local cx, cy = 0, 0
+        for _, q in ipairs(Q) do cx, cy = cx + q[1], cy + q[2] end
+        cx, cy = cx / #Q, cy / #Q
+        if inside(P, cx, cy) then
+          local kk = key(f.rgb)
+          if not seen[kk] then seen[kk] = true; n = n + 1 end
+        end
+      end
+    end
+    if n > 1 then bad = bad + 1 end
+  end
+  return bad
+end
 
 function M.run(floors, filter)
   local cells, failures = {}, {}
@@ -177,6 +270,16 @@ function M.run(floors, filter)
             end
             -- nofill
             if finish == "lines" and #rec.fills > 0 then fail(c, "nofill", #rec.fills .. " fills under the lines finish") end
+            -- tiling
+            if p.name == "khatam" then
+              local why = M.tiling(p)
+              if why then fail(c, "tiling", why) end
+            end
+            -- onecolour
+            if p.name == "hexagram_lattice" and finish == "filled" then
+              local bad = colours_per_star(rec.pt.pattern.kept, rec.fillpaths)
+              if bad > 0 then fail(c, "onecolour", bad .. " stars painted in more than one colour") end
+            end
             -- ground
             if (rec.pt.pattern.holes or 0) > 0 then fail(c, "ground", rec.pt.pattern.holes .. " cells without their piece of the ground") end
             -- edge: the ground ends as its key says: none on paper under
@@ -315,6 +418,35 @@ function M.run(floors, filter)
     end
   end
   M.saturation_cells = sat_cells
+  return cells, failures
+end
+
+-- The knot field (pat_celtic.lua's bleed and inset, a study): no strand
+-- ends loose inside the page, in any layout.
+function M.knot(filter)
+  local cells, failures = {}, {}
+  for _, name in ipairs({ "celtic_knot", "celtic_panels" }) do
+    for _, layout in ipairs({ "left", "right", "centered", "surround" }) do
+      for _, mode in ipairs({ "bleed", "inset" }) do
+        for _, bd in ipairs({ "light", "dark" }) do
+          if not filter or filter(name, layout, mode) then
+            local spec = page(name, "colourway=tsuki-mi, backdrop=" .. bd, layout)
+            spec.pattern_opts = { knot = mode, reweave = false }
+            local rec = paint(spec)
+            local lone, open = Units.count(rec.pt.pattern.kept, { 3, 3, spec.width - 3, spec.height - 3 })
+            local c = { pattern = name, layout = layout, mode = mode, backdrop = bd, kept = #rec.pt.pattern.kept, open = open }
+            cells[#cells + 1] = c
+            if open > 0 or lone > 0 then
+              failures[#failures + 1] = string.format("%s %s %s %s: units: %d line ends meeting no other", name, layout, mode, bd, open)
+            end
+            if c.kept == 0 and layout ~= "right" then
+              failures[#failures + 1] = string.format("%s %s %s %s: units: no cell kept", name, layout, mode, bd)
+            end
+          end
+        end
+      end
+    end
+  end
   return cells, failures
 end
 
