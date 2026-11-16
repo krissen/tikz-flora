@@ -20,6 +20,6 @@ for _, layout in ipairs({ "left", "right", "centered", "surround" }) do
   end
 end
 for _, cw in ipairs({ "tsuki-mi", "ember", "usu-zumi" }) do
-  add("l18__" .. cw, "colourway=" .. cw .. ", finish=lacquer", GROUND)
+  add("l18__" .. cw, "colourway=" .. cw .. ", finish=lacquer", { "sikku_kolam", "asanoha" })
 end
 return { variants = variants }

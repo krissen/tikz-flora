@@ -154,7 +154,7 @@ rows=""
 n=0
 for cw in tsuki-mi ember usu-zumi; do
   set --
-  for p in sikku_kolam asanoha rosette_lattice; do
+  for p in sikku_kolam asanoha; do
     for bd in light dark; do set -- "$@" "l18__$cw|$bd|slide-$p|$p, finish=lacquer ($cw, $bd)"; done
   done
   n=$((n + 1)); row "$T/l$n.png" 170 "$@"
