@@ -1007,11 +1007,17 @@ function M.paint(spec, pt)
     if outer ~= "margin" then placed = placed and M.clearance(c, page) <= reach end
     -- The last value: clear of the text and the hero, on the page, on
     -- whichever side (a reweave's turns, below).
+    -- The share a cell clear of the text takes where the edge mode's own
+    -- choice does not decide it (a reweave's turn, below): edge=fade's
+    -- paling by its distance, without the cut-off that drops the palest;
+    -- every other mode paints its cells whole.
+    local share = 1
+    if edge == "fade" and d >= gap then share = smooth((d - gap) / ramp) end
     if not placed then
       -- Clear for everything the cell paints, as a placed cell is, and on
       -- the field's side and its panel.
       local free = in_side and on_panel and onpage[c] and dens > 0 and ok and d >= gap
-      return false, 0, false, free
+      return false, 0, false, free, share
     end
     local a = 0
     -- A cell of a layout that places itself (c.fixed) is kept whenever it
@@ -1019,7 +1025,7 @@ function M.paint(spec, pt)
     -- thin out toward the text.
     if c.fixed then
       local ok = dens > 0 and d >= gap
-      return true, ok and 1 or 0, false, ok
+      return true, ok and 1 or 0, false, ok, 1
     end
     if dens > 0 and d >= gap then
       local t = (d - gap) / ramp
@@ -1028,7 +1034,7 @@ function M.paint(spec, pt)
       else a = t >= 0.35 and 1 or 0
       end
     end
-    return true, a, dens > 0 and d >= gap and edge == "dissolve", dens > 0 and d >= gap
+    return true, a, dens > 0 and d >= gap and edge == "dissolve", dens > 0 and d >= gap, share
   end
   local function choose(list)
     kept, offered, bare = {}, 0, {}
@@ -1071,7 +1077,9 @@ function M.paint(spec, pt)
   -- Reweave: the pattern is drawn again with the field's edge as its own
   -- border (pat_celtic.lua, pat_kolam.lua close their lines there), so no
   -- line ends loose; every cell of the second drawing that is placed is
-  -- kept.
+  -- kept, with the share judge gives it, as any cell keeps (edge=fade
+  -- pales it toward the text). A turn the edge mode would leave out takes
+  -- judge's share without that choice.
   if opts.reweave and p.reweave then
     local keep = {}
     for _, k in ipairs(kept) do keep[M.cell_key(k.cell)] = k.cell end
@@ -1090,8 +1098,9 @@ function M.paint(spec, pt)
       for _, c in ipairs(cells) do
         -- A turn may lie where the edge mode would leave no cell (edge=cell's
         -- margin): it is painted so long as it keeps clear of the text.
-        local placed, a, _, clear = judge(c, 0)
-        if (placed and a > 0) or clear then list[#list + 1] = c
+        local placed, a, _, clear, share = judge(c, 0)
+        if placed and a > 0 then list[#list + 1] = { c = c, a = a }
+        elseif clear then list[#list + 1] = { c = c, a = share, turn = true }
         elseif onpage[c] then
           failed[#failed + 1] = c
         end
@@ -1105,7 +1114,7 @@ function M.paint(spec, pt)
       end
     end
     kept, offered, bare = {}, #list, {}
-    for _, c in ipairs(list) do kept[#kept + 1] = { cell = c, a = 1, jitter = stagger:next() } end
+    for _, v in ipairs(list) do kept[#kept + 1] = { cell = v.c, a = v.a, turn = v.turn, jitter = stagger:next() } end
   end
 
   -- Growth starts at the page's outer edge, away from the text. A cell
