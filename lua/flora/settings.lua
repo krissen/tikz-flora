@@ -151,9 +151,11 @@ M.define("pattern", function(v)
   local ok = {}
   for _, n in ipairs(names) do ok[n] = true end
   for _, n in ipairs(tags) do ok[n] = true end
+  for alias in pairs(P.aliases) do ok[alias] = true end
   local t = {}
   for _, kv in ipairs(M.parse_list(v)) do
-    local k, w = kv[1], kv[2] == nil and 1 or weight(kv[2])
+    -- An alias (patterns.lua) is read as the pattern it names.
+    local k, w = P.canonical(kv[1]), kv[2] == nil and 1 or weight(kv[2])
     if not ok[k] then
       return nil, "no pattern or group \"" .. k .. "\" (patterns: " .. table.concat(names, ", ")
         .. "; groups: " .. table.concat(tags, ", ") .. ")"
