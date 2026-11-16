@@ -15,7 +15,8 @@ MOCKS=${2:-}
 FONT=${PATTERN_AUDIT_FONT:-/System/Library/Fonts/Supplemental/Arial.ttf}
 DARK="#0a1014"
 # RENDER and SHEETS (folders under OUT) default to render and sheets; with
-# EDGE_SHEETS_LIB set only the functions are defined (tools/edge10-sheets.sh).
+# EDGE_SHEETS_LIB set only the functions are defined, for a later order's own
+# sheet script to call.
 RENDER=${RENDER:-render}
 SHEETS=${SHEETS:-sheets}
 mkdir -p "$OUT/$SHEETS" "$OUT/tmp" "$OUT/tiles"

@@ -35,20 +35,17 @@ local MOCKS = {
   { "t-06", "truchet", 126 }, { "t-10", "sikku_kolam", 150 }, { "t-11", "asanoha", 117 },
   { "t-07", "hero=phyllotaxis", 200 }, { "t-08", "hero=rosette", 200 }, { "t-09", "hero=guilloche", 200 },
   { "t-13", "hero=rose", 200 },
-  { "y-02", "hexagram_lattice", 184 }, { "y-02__measured", "hexagram_lattice", 184, { hexagram = "measured" } },
+  { "y-02", "hexagram_lattice", 184 },
   { "y-03", "khatam", 172 },
-  { "y-03__two", "khatam", 172, { khatam = "two" } }, { "y-03__one", "khatam", 172, { khatam = "one" } },
-  { "y-03__paper", "khatam", 172, { khatam = "paper" } }, { "y-03__dot", "khatam", 172, { khatam = "dot" } },
+  { "y-03__split", "khatam", 172, nil, "figure=split" }, { "y-03__paper", "khatam", 172, nil, "gaps=paper" },
   { "y-04", "greek_crosses", 176 }, { "y-06", "celtic_panels", 129 }, { "y-08", "celtic_knot", 129 },
   { "f-14", "rosette_lattice", 87 },
-  -- ORDER #12. Hexagram in a large crop, three periods across, every star
-  -- one colour.
+  -- Hexagram in a large crop, three periods across, and its keys.
   { "y-02__big", "hexagram_lattice", 90 },
-  { "y-02__big-star-thin", "hexagram_lattice", 90, { hexagram = "star-thin" } },
-  { "y-02__big-plain", "hexagram_lattice", 90, { hexagram = "plain" } },
-  { "y-02__big-rows", "hexagram_lattice", 90, { hexagram = "rows" } },
-  { "y-02__big-three", "hexagram_lattice", 90, { hexagram = "three" } },
-  { "y-02__big-lines", "hexagram_lattice", 90, { hexagram = "plain" }, "finish=lines" },
+  { "y-02__big-paper", "hexagram_lattice", 90, nil, "gaps=paper" },
+  { "y-02__big-rows", "hexagram_lattice", 90, nil, "alternate=rows" },
+  { "y-02__big-three", "hexagram_lattice", 90, nil, "alternate=three" },
+  { "y-02__big-lines", "hexagram_lattice", 90, nil, "finish=lines" },
   -- The knot panels: y-06 and y-08 are 278 px, 8.97 of their 31 px units.
   { "y-06__panel", "celtic_panels", 144 }, { "y-08__panel", "celtic_knot", 144 },
   { "y-06__one", "celtic_panels", 144, { knot = "one", reweave = false, units = true } },
