@@ -1,7 +1,8 @@
 -- A cell that lays only its piece of the ground takes part in everything
 -- a cell does: its growth time and its fading.
 --
--- growth  pattern x ground (off, on) x edge x density (0.02, where
+-- growth  pattern x ground (off, cells, panel: a piece under every cell,
+--         or one panel) x edge x density (0.02, where
 --         dissolve keeps no cell and only ground is laid, 0.3, 3) x
 --         backdrop: every part a cell paints is born inside the growth
 --         interval, [0, 1], and ends by 1.01 (END), and the last frame of growth (spec.grow just
@@ -76,6 +77,9 @@ local function paint(spec)
 end
 
 local EDGES = { "dissolve", "cell", "fade", "border", "guilloche" }
+-- The ground off, a piece under every cell (each with its own growth time
+-- and fading) and one panel.
+local GROUNDS = { "off", "cells", "panel" }
 local DENSITIES = { 0.02, 0.3, 3 }
 -- The latest a cell part may end: the latest birth (0.88), the step to
 -- its painting (0.05) and the painting itself (0.08), pattern.lua. The
@@ -87,7 +91,7 @@ local function growth(filter)
   local cells, failures, ground_only, latest = 0, {}, 0, 0
   for _, p in ipairs(Patterns.list) do
     if not filter or filter(p.name) then
-      for _, ground in ipairs({ "off", "on" }) do
+      for _, ground in ipairs(GROUNDS) do
         for _, edge in ipairs(EDGES) do
           for _, dens in ipairs(DENSITIES) do
             for _, bd in ipairs({ "light", "dark" }) do
@@ -118,7 +122,7 @@ local function fade(filter)
   local Pattern = require("flora.pattern")
   for _, p in ipairs(Patterns.list) do
     if not filter or filter(p.name) then
-      for _, ground in ipairs({ "off", "on" }) do
+      for _, ground in ipairs(GROUNDS) do
         for _, bd in ipairs({ "light", "dark" }) do
           cells = cells + 1
           local setup = string.format("ground=%s, edge=fade, density=2, backdrop=%s", ground, bd)
@@ -165,11 +169,11 @@ local function fade(filter)
 end
 
 local gc, gf, ground_only, latest = growth()
-H.check(gc == #Patterns.list * 2 * #EDGES * #DENSITIES * 2, "growth cells: " .. gc)
+H.check(gc == #Patterns.list * #GROUNDS * #EDGES * #DENSITIES * 2, "growth cells: " .. gc)
 H.check(ground_only > 0, "no growth cell lays ground with no cell kept")
 for _, f in ipairs(gf) do H.check(false, f) end
 local fc, fp, ff = fade()
-H.check(fc == #Patterns.list * 2 * 2, "fade cells: " .. fc)
+H.check(fc == #Patterns.list * #GROUNDS * 2, "fade cells: " .. fc)
 H.check(fp > 0, "no faded colours were compared")
 for _, f in ipairs(ff) do H.check(false, f) end
 if verbose then
