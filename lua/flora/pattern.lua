@@ -182,16 +182,24 @@ end
 
 -- Everything cell `c` paints, as shapes the field measures its clearance
 -- by: the cell's outline, and the pieces it lays beyond it, its piece of
--- the ground when the page has one (`base.ground`: its `under` path, else
--- its tile) and its plates unless the page is painted as lines. A ground
--- square round a small dot reaches far past the dot.
+-- the ground when the page lays the ground cell by cell (`base.ground`, and
+-- not as one panel, `base.ground_panel`: its `under` path, else its tile)
+-- and its own plates unless the page is painted as lines. A ground square
+-- round a small dot reaches far past the dot. A plate that lies between
+-- cells (`between`) is not the cell's alone: it is laid only when every
+-- cell it lies between is kept, and its outline runs along theirs
+-- (tests/pattern_matrix.lua holds it to that), so it is never nearer the
+-- text, the hero or the margin than they are, and it does not count here.
+-- The ground's panel keeps its own gaps (M.panel_path).
 function M.footprint(c, base)
   local out = { c }
-  if base.ground then
+  if base.ground and not base.ground_panel then
     if c.under then path_shapes(c.under, out) elseif c.tile then out[#out + 1] = { verts = c.tile } end
   end
   if not base.lines then
-    for _, pl in ipairs(c.plates or {}) do path_shapes(pl[1], out) end
+    for _, pl in ipairs(c.plates or {}) do
+      if not pl.between then path_shapes(pl[1], out) end
+    end
   end
   return out
 end
@@ -766,6 +774,8 @@ function M.paint(spec, pt)
   if opts.symmetric == nil then opts.symmetric = panels == "on" end
   local ground_edges = { auto = "panel", panel = "panel", motif = "shape", round = "discs", cells = "cells" }
   if opts.ground_edge == nil then opts.ground_edge = ground_edges[M.ground_mode(spec)] or "cells" end
+  -- Laid as one panel, the ground is no cell's piece (M.footprint).
+  base.ground_panel = opts.ground_edge == "panel" or nil
   -- The room the field has (for a layout that places its own panels in
   -- it, pat_celtic.lua's knot study): the text block, the gap kept from
   -- it, the sides the field takes, the page and its painted top, the reach
