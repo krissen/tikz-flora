@@ -88,21 +88,21 @@ echo "sheet: $SH/flata__kant.png"
 set --
 for cw in tsuki-mi ember; do
   for bd in light dark; do
-    set -- "$@" "s13-default__$cw|$bd|slide-khatam|khatam default ($cw, $bd)" "s13-split__$cw|$bd|slide-khatam|figure=split" \
-      "s13-paper__$cw|$bd|slide-khatam|gaps=paper"
+    set -- "$@" "s13-default__$cw|$bd|slide-khatam|khatam default ($cw, $bd)" "s13-split__$cw|$bd|slide-khatam|starfill=split" \
+      "s13-paper__$cw|$bd|slide-khatam|gapfill=paper"
   done
 done
 row "$OUT/tmp13/sk.png" 150 "$@"
 set --
 for cw in tsuki-mi ember; do
   for bd in light dark; do
-    set -- "$@" "s13-default__$cw|$bd|slide-hexagram_lattice|hexagram default ($cw, $bd)" "s13-paper__$cw|$bd|slide-hexagram_lattice|gaps=paper" \
+    set -- "$@" "s13-default__$cw|$bd|slide-hexagram_lattice|hexagram default ($cw, $bd)" "s13-paper__$cw|$bd|slide-hexagram_lattice|gapfill=paper" \
       "s13-rows__$cw|$bd|slide-hexagram_lattice|alternate=rows" "s13-three__$cw|$bd|slide-hexagram_lattice|alternate=three"
   done
 done
 row "$OUT/tmp13/sh.png" 150 "$@"
 magick "$OUT/tmp13/sk.png" "$OUT/tmp13/sh.png" -background "$BG" -gravity northwest -splice 0x8 -append +repage "$SH/stjarnor.png"
-title "$SH/stjarnor.png" "khatam and hexagram_lattice: the new defaults and the keys figure, gaps and alternate"
+title "$SH/stjarnor.png" "khatam and hexagram_lattice: the new defaults and the keys starfill, gapfill and alternate"
 echo "sheet: $SH/stjarnor.png"
 
 # --- farg: gold on a ground, the proposed finish.

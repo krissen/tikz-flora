@@ -18,8 +18,8 @@ for _, cw in ipairs({ "tsuki-mi", "ember" }) do
     end
   end
   add("s13-default__" .. cw, c, {}, { "khatam", "hexagram_lattice" })
-  add("s13-split__" .. cw, c .. ", figure=split", {}, { "khatam" })
-  add("s13-paper__" .. cw, c .. ", gaps=paper", {}, { "khatam", "hexagram_lattice" })
+  add("s13-split__" .. cw, c .. ", starfill=split", {}, { "khatam" })
+  add("s13-paper__" .. cw, c .. ", gapfill=paper", {}, { "khatam", "hexagram_lattice" })
   add("s13-rows__" .. cw, c .. ", alternate=rows", {}, { "hexagram_lattice" })
   add("s13-three__" .. cw, c .. ", alternate=three", {}, { "hexagram_lattice" })
   add("e13-gold__" .. cw, c .. ", ground=panel, bands=line, bandwidth=0.5, patternpalette={band=gold}", {},

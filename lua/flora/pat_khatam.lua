@@ -34,13 +34,13 @@
 -- The star is the cell; a cross lies between four stars and is laid only
 -- when all four are kept (pattern.lua's plates, `between`), so the field
 -- ends along the stars' own outline. Thin dark lines throughout. The
--- figure and gaps keys (Settings.PATTERN) choose the colours:
---   figure=whole (the default)  the whole star in the first field
---   figure=split                the square on its point in the first field
+-- starfill and gapfill keys (Settings.PATTERN) choose the colours:
+--   starfill=whole (default)    the whole star in the first field
+--   starfill=split              the square on its point in the first field
 --                               and the other square's corners in the
 --                               second; the crosses the paper
---   gaps=field (the default)    the crosses in the second field
---   gaps=paper                  the crosses the paper
+--   gapfill=field (default)     the crosses in the second field
+--   gapfill=paper               the crosses the paper
 
 local K = require("flora.pat_kit")
 local cos, sin, rad, sqrt = math.cos, math.sin, math.rad, math.sqrt
@@ -107,7 +107,7 @@ local M = {
   opt_in = true,
   scale = 28,
   width = 1.2, bands = "strap",
-  figure = "whole", gaps = "field",
+  starfill = "whole", gapfill = "field",
 }
 
 -- The outlines, for tests/pattern_matrix.lua's tiling check.
@@ -116,8 +116,8 @@ M.star, M.cross = star, cross
 function M.cells(env)
   local a = env.size
   local style = env.style or {}
-  local split = style.figure == "split"
-  local crosses = not split and style.gaps ~= "paper"
+  local split = style.starfill == "split"
+  local crosses = not split and style.gapfill ~= "paper"
   local r = a / 2
   local q = r / sqrt(2)
   local out = {}

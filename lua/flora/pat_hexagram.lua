@@ -10,10 +10,10 @@ local sqrt, cos, sin, rad = math.sqrt, math.cos, math.sin, math.rad
 -- alike, outlined in a thin dark line (ORDER #13). The rhombs between the
 -- stars (each two triangles, one from each star's hexagon) lie between two
 -- stars and are laid only when both are kept (pattern.lua's plates,
--- `between`), so the field ends along the stars' outline. The gaps and
+-- `between`), so the field ends along the stars' outline. The gapfill and
 -- alternate keys (Settings.PATTERN) choose the colours:
---   gaps=field (the default)   the rhombs in the second field
---   gaps=paper                 the rhombs the paper
+--   gapfill=field (the default) the rhombs in the second field
+--   gapfill=paper              the rhombs the paper
 --   alternate=off (the default) every star in the first field
 --   alternate=rows             the first field and the second, row by row
 --                              (two colours cannot keep every pair of
@@ -52,7 +52,7 @@ return {
   opt_in = true,
   scale = 30,
   width = 1.2, bands = "strap",
-  gaps = "field", alternate = "off",
+  gapfill = "field", alternate = "off",
   -- The accent is painted only when the stars take turns in three colours.
   role_setup = { accent = "alternate=three" },
   cells = function(env)
@@ -61,7 +61,7 @@ return {
     local R = d / sqrt(3)
     local style = env.style or {}
     local alt = style.alternate or "off"
-    local rhombs = style.gaps ~= "paper" and alt == "off"
+    local rhombs = style.gapfill ~= "paper" and alt == "off"
     local out = {}
     for j = math.floor(env.y0 / h) - 1, math.ceil(env.y1 / h) + 1 do
       for i = math.floor(env.x0 / d) - 2, math.ceil(env.x1 / d) + 2 do

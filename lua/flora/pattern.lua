@@ -771,10 +771,10 @@ function M.paint(spec, pt)
   -- of a band, what the field keeps clear of, the hero and the outer key.
   local field_room = { text = text, gap = gap, side = side, W = W, H = H, top = top, reach = width / 2,
     avoid = keep_rects, hero = hero, outer = outer }
-  -- The star patterns' own choices (figure, gaps, alternate; Settings.PATTERN),
+  -- The star patterns' own choices (starfill, gapfill, alternate; Settings.PATTERN),
   -- each pattern's own under auto.
   local style = {}
-  for _, k in ipairs({ "figure", "gaps", "alternate" }) do
+  for _, k in ipairs({ "starfill", "gapfill", "alternate" }) do
     local v = key(spec, k)
     if v == "auto" then v = p[k] end
     style[k] = v

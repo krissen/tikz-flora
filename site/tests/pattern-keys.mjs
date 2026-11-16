@@ -85,7 +85,7 @@ check(patternParts({ name: "", hero: "rose" }, meta).length === 0, "flora has pa
 // is rosette_lattice, which has fields, a ground and straps, so that every
 // key (saturation, ground and bands among them) changes what it paints;
 // the star patterns' own keys are tried on the star pattern they belong to.
-const PAGE = { figure: "khatam", gaps: "khatam", alternate: "hexagram_lattice" };
+const PAGE = { starfill: "khatam", gapfill: "khatam", alternate: "hexagram_lattice" };
 if (!existsSync(join(SITE, "dist/mixer/index.html"))) check(false, "site/dist is not built (npm run build in site/)");
 else {
   const PORT = process.env.PATTERN_KEYS_PORT || "4318";
