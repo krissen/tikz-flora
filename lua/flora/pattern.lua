@@ -741,8 +741,12 @@ function M.paint(spec, pt)
     -- The last value: clear of the text and the hero, on the page, on
     -- whichever side (a reweave's turns, below).
     if not placed then
-      local free = onpage[c] and dens > 0 and d >= gap and not (hero and M.disc_clearance(c, hero) - reach < GAP)
-        and (outer ~= "margin" or within(c, page, OUTER_MARGIN + reach))
+      -- Clear for everything the cell paints, as a placed cell is.
+      local free = onpage[c] and dens > 0 and d >= gap
+      for _, s in ipairs(shapes) do
+        if hero and M.disc_clearance(s, hero) - reach < GAP then free = false end
+        if outer == "margin" and not within(s, page, OUTER_MARGIN + reach) then free = false end
+      end
       return false, 0, false, free
     end
     local a = 0
