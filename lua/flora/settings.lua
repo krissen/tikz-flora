@@ -50,7 +50,7 @@ M.about = {
   { "finish", "filled, lines", "How a pattern is drawn: filled (the default), with its fields and ground, or lines, its bands and outlines alone with nothing filled." },
   { "bands", "auto, line, strap", "How a pattern's bands are drawn: auto (the default), each pattern's own; line, one thin line; or strap, a broad band with a fine contour and a light core." },
   { "ground", "auto, off, panel, motif, round, cells", "Whether a pattern that has a ground (asanoha, sikku_kolam, rosette_lattice) lays it under its cells, and how it ends toward the text: auto (the default) leaves the paper on light paper and lays a panel on a dark backdrop; off leaves the page; panel lays one panel with a straight edge; motif ends it along the pattern's own motifs; round gives it a rounded edge; cells lays a piece under every cell. on is panel." },
-  { "ends", "auto, closed, whole, cut", "How a pattern's lines end where the field ends (sikku_kolam, celtic_knot, celtic_panels): auto (the default), each pattern's own, closed; closed turns every line back at the field's edge, so none ends loose; whole lets each line fall away whole with its dots or its panel; cut cuts the lines cell by cell." },
+  { "ends", "auto, closed, bleed, whole, cut", "How a pattern's lines end where the field ends (sikku_kolam, celtic_knot): auto (the default), each pattern's own, closed; closed turns every line back at the field's edge, so none ends loose, and lays celtic_knot as one closed panel filling the field, its loops turning back just inside the paper's edges; bleed lets celtic_knot's panel run off the paper's edges (under outer=margin it closes at the margin, as closed does) and is closed for the other patterns; whole lets each line fall away whole with its dots; cut cuts the lines cell by cell." },
   { "panels", "auto, on, off", "Whether sikku_kolam is laid out in symmetric panels, each walled in and the same under turns and reflections: auto (the default) and on do, off draws one free kolam over the field." },
   { "starfill", "auto, whole, split", "How a star pattern's star is coloured (khatam): auto (the default) and whole lay the whole star in the first field; split lays the star's two squares in the two fields, its square on its point in the first and the other's four corners in the second." },
   { "gapfill", "auto, field, paper", "What fills the space between a star pattern's stars (khatam's crosses, hexagram_lattice's rhombs): auto (the default) and field the second field, paper the paper. Under starfill=split khatam's crosses are always the paper." },
@@ -248,8 +248,8 @@ M.define("ground", function(v)
 end)
 
 M.define("ends", function(v)
-  for _, m in ipairs({ "auto", "closed", "whole", "cut" }) do if v == m then return v end end
-  return nil, "ends must be auto, closed, whole or cut"
+  for _, m in ipairs({ "auto", "closed", "bleed", "whole", "cut" }) do if v == m then return v end end
+  return nil, "ends must be auto, closed, bleed, whole or cut"
 end)
 
 M.define("panels", function(v)

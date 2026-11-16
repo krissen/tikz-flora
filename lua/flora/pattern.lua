@@ -790,7 +790,8 @@ function M.paint(spec, pt)
     if v == "auto" then v = p[k] end
     style[k] = v
   end
-  local env = { x0 = 0, y0 = 0, x1 = W, y1 = H, size = size, rng = rng:fork("cells"), opts = opts, room = field_room, style = style }
+  local env = { x0 = 0, y0 = 0, x1 = W, y1 = H, size = size, rng = rng:fork("cells"), opts = opts, room = field_room, style = style,
+    field_panel = field_panel }
   local cells = p.cells(env)
   local fall = rng:fork("dissolve")
   local stagger = rng:fork("growth")
@@ -817,6 +818,17 @@ function M.paint(spec, pt)
     end
     -- The last value: clear of the text and the hero, on the page, on
     -- whichever side (a reweave's turns, below).
+  -- A pattern laid as one closed panel over its field (p.field_panel,
+  -- celtic_knot) is that panel under closed and bleed: closed turns its
+  -- lines back inside the paper's edges as at the text, bleed lets them run
+  -- off the paper. Any other pattern reads bleed as closed.
+  local field_panel
+  if p.field_panel and (ends == "closed" or ends == "bleed") then
+    field_panel = ends == "bleed" and "bleed" or "inset"
+    ends = "panel"
+  elseif ends == "bleed" then
+    ends = "closed"
+  end
     if not placed then
       -- Clear for everything the cell paints, as a placed cell is.
       local free = onpage[c] and dens > 0 and d >= gap

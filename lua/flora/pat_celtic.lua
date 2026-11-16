@@ -16,8 +16,8 @@
 -- a paper-coloured halo that cuts the under strand where they cross.
 --
 -- This module is the weave: no mirrors inside the field, so the strands
--- run straight and plait over the whole page. pat_celtic_panels.lua uses
--- the same engine with mirrors laid out as knot panels.
+-- run straight and plait over the page, or (the field's panel, below)
+-- over the field as one closed panel.
 
 local K = require("flora.pat_kit")
 local Paint = require("flora.paint")
@@ -236,91 +236,24 @@ function M.cells_with(env, make_inner)
   return out
 end
 
--- ------------------------------------------------------------ Panels
--- Closed knot panels laid out in the field's own room (pattern_opts.knot,
--- a study, ORDER #12, after the sketches y-06 and y-08): each panel a
--- rectangle of whole grid units whose border is all mirrors, so its
--- strands close into a finished edge all round, and a plain plait inside.
---   one       one panel per side the field takes, as large as the room
---             beside the text allows
---   several   square panels of n units (opts.knot_n, default 7, as the
---             sketches measure) side by side, a unit of paper between
---             them, as many as fit
---   bleed     (ORDER #13) the whole field one panel, out to the paper's
---             edges where the field reaches them: the plait runs off the
---             paper there and turns back only at the text, the hero and
---             whatever else the field keeps clear of
---   inset     the same, but turning back half a unit inside the paper's
---             edges too, a finished panel filling the field
--- The panels' cells keep clear of the text without thinning toward it and
--- fall away a panel at a time (the field's panel, under bleed and inset,
--- is never cut).
-function M.panel_rects(env, mode, n)
-  local a, room = env.size, env.room
-  if not room then return {} end
-  local t, gap, side = room.text, room.gap, room.side
-  -- The loops' turns stand out about a quarter unit past the border, plus
-  -- the band's reach; half a unit of paper is kept from the page's edge.
-  local over = 0.25 + (room.reach + 1) / a
-  local strips = {}
-  local y0 = math.ceil(0.5 + over)
-  local y1 = math.floor(room.top / a - 0.5 - over)
-  if not side or side.left then strips[#strips + 1] = { math.ceil(0.5 + over), math.floor((t.x0 - gap) / a - over) } end
-  if not side or side.right then strips[#strips + 1] = { math.ceil((t.x1 + gap) / a + over), math.floor(room.W / a - 0.5 - over) } end
-  local rects = {}
-  for _, st in ipairs(strips) do
-    local x0, x1 = st[1], st[2]
-    if mode == "one" then
-      if x1 - x0 >= 2 and y1 - y0 >= 2 then rects[#rects + 1] = { x0, y0, x1, y1 } end
-    else
-      local cols = math.floor((x1 - x0 + 1) / (n + 1))
-      local rows = math.floor((y1 - y0 + 1) / (n + 1))
-      if cols >= 1 and rows >= 1 then
-        -- Centred in the strip, on whole units.
-        local sx = x0 + math.floor(((x1 - x0) - (cols * (n + 1) - 1)) / 2)
-        local sy = y0 + math.floor(((y1 - y0) - (rows * (n + 1) - 1)) / 2)
-        for i = 0, cols - 1 do
-          for j = 0, rows - 1 do
-            local px, py = sx + i * (n + 1), sy + j * (n + 1)
-            rects[#rects + 1] = { px, py, px + n, py + n }
-          end
-        end
-      end
-    end
-  end
-  return rects
-end
+-- ------------------------------------------------------------ The field's panel
+-- The knot as one closed panel filling the field (the geometry work's
+-- ORDERs #13 and #18, after the sketches y-06 and y-08): the field is
+-- taken as whole grid squares, every edge between a square of the field
+-- and one outside it is a mirror, so the strands turn back in loops there
+-- and none ends loose, and inside the plait runs plain. The ends key
+-- (pattern.lua sets env.field_panel) says where the field ends:
+--   closed (the default)  the panel turns back half a unit inside the
+--                         paper's edges as well as at the text: a
+--                         finished panel filling the field
+--   bleed                 the panel runs a unit past the paper's edges,
+--                         so the plait is cut by the paper there and turns
+--                         back only at the text, the hero and whatever
+--                         else the field keeps clear of (under
+--                         outer=margin the same as closed, at the margin)
+-- The panel's cells keep clear of the text without thinning toward it.
 
-function M.panels_inner(env, mode, n)
-  local rects = M.panel_rects(env, mode, n)
-  return function(gx, gy)
-    local function where(X, Y)
-      local x, y = gx + X / 2, gy + Y / 2
-      for k, r in ipairs(rects) do
-        if x >= r[1] and x <= r[3] and y >= r[2] and y <= r[4] then
-          local edge = (X % 2 == 0 and (x == r[1] or x == r[3])) or (Y % 2 == 0 and (y == r[2] or y == r[4]))
-          return k, edge
-        end
-      end
-      return nil
-    end
-    local function inner(X, Y)
-      local k, edge = where(X, Y)
-      return not k or edge
-    end
-    local function alive(X, Y)
-      local k, edge = where(X, Y)
-      return k ~= nil and not edge
-    end
-    local function group(X, Y)
-      local k = where(X, Y)
-      return "panel " .. tostring(k)
-    end
-    return inner, alive, group
-  end
-end
-
--- The field as whole grid squares (bleed and inset): a square belongs to
+-- The field as whole grid squares: a square belongs to
 -- it when it lies on the field's side, inside the paper (or a unit past
 -- its edges under bleed, half a unit inside them under inset) and far
 -- enough from everything the field keeps clear of that a strand turning
@@ -398,12 +331,9 @@ function M.field_inner(env, mode)
 end
 
 function M.cells(env)
-  local mode = env.opts and env.opts.knot
+  local mode = env.field_panel
   if mode == "bleed" or mode == "inset" then
     return M.cells_with(env, M.field_inner(env, mode))
-  end
-  if mode == "one" or mode == "several" then
-    return M.cells_with(env, M.panels_inner(env, mode, env.opts.knot_n or 7))
   end
   return M.cells_with(env, nil)
 end
@@ -411,13 +341,15 @@ end
 return {
   name = "celtic_knot",
   title = "Celtic knotwork, mirror curves with alternating over/under crossings",
-  tags = { "celtic", "insular", "interlace", "knot" },
+  tags = { "celtic", "insular", "interlace", "knot", "panel" },
   roles = { "band", "accent", "paper" },
   scale = SCALE,
   width = WIDTH, core = 0.4, bands = "strap",
   cells = function(env) return M.cells(env) end,
-  -- It can be drawn again with the field's edge as a wall (pattern.lua),
-  -- and by default is (the ends key).
-  reweave = true, ends = "closed",
+  -- The field is one closed panel under ends=closed (the default) and
+  -- bleed (pattern.lua's field_panel); under whole and cut the plait runs
+  -- over the field and falls away cell by cell, cut where it ends, and it
+  -- can be drawn again with the field's edge as a wall (reweave).
+  field_panel = true, reweave = true, ends = "closed",
   engine = M,
 }
