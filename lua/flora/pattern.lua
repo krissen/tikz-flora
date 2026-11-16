@@ -701,9 +701,10 @@ function M.paint(spec, pt)
   if opts.ground_edge == nil then opts.ground_edge = ground_edges[key(spec, "ground")] or "cells" end
   -- The room the field has (for a layout that places its own panels in
   -- it, pat_celtic.lua's knot study): the text block, the gap kept from
-  -- it, the sides the field takes, the page's painted top and the reach of
-  -- a band.
-  local field_room = { text = text, gap = gap, side = side, W = W, top = top, reach = width / 2 }
+  -- it, the sides the field takes, the page and its painted top, the reach
+  -- of a band, what the field keeps clear of, the hero and the outer key.
+  local field_room = { text = text, gap = gap, side = side, W = W, H = H, top = top, reach = width / 2,
+    avoid = keep_rects, hero = hero, outer = outer }
   -- The star patterns' own choices (figure, gaps, alternate; Settings.PATTERN),
   -- each pattern's own under auto.
   local style = {}

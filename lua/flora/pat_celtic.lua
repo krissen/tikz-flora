@@ -244,10 +244,17 @@ end
 --   one       one panel per side the field takes, as large as the room
 --             beside the text allows
 --   several   square panels of n units (opts.knot_n, default 7, as the
---             sketches measure) side by
---             side, a unit of paper between them, as many as fit
+--             sketches measure) side by side, a unit of paper between
+--             them, as many as fit
+--   bleed     (ORDER #13) the whole field one panel, out to the paper's
+--             edges where the field reaches them: the plait runs off the
+--             paper there and turns back only at the text, the hero and
+--             whatever else the field keeps clear of
+--   inset     the same, but turning back half a unit inside the paper's
+--             edges too, a finished panel filling the field
 -- The panels' cells keep clear of the text without thinning toward it and
--- fall away a panel at a time.
+-- fall away a panel at a time (the field's panel, under bleed and inset,
+-- is never cut).
 function M.panel_rects(env, mode, n)
   local a, room = env.size, env.room
   if not room then return {} end
@@ -313,8 +320,88 @@ function M.panels_inner(env, mode, n)
   end
 end
 
+-- The field as whole grid squares (bleed and inset): a square belongs to
+-- it when it lies on the field's side, inside the paper (or a unit past
+-- its edges under bleed, half a unit inside them under inset) and far
+-- enough from everything the field keeps clear of that a strand turning
+-- back at its edge stays clear too.
+function M.field_inner(env, mode)
+  local a, room = env.size, env.room
+  return function(gx, gy)
+    local function inside(i, j)
+      if not room then return false end
+      local x0, y0, x1, y1 = i * a, j * a, (i + 1) * a, (j + 1) * a
+      -- A turn stands out a quarter unit past the square's edge, the cell
+      -- round it a quarter more, and the band reaches past that.
+      local clear = room.gap + room.reach + 0.6 * a + 0.5
+      local t, side = room.text, room.side
+      if side and side.left and not side.right and x1 > t.x0 - clear then return false end
+      if side and side.right and not side.left and x0 < t.x1 + clear then return false end
+      if side and side.left and side.right and x1 > t.x0 - clear and x0 < t.x1 + clear then return false end
+      local bleed = mode == "bleed" and room.outer ~= "margin"
+      local m = bleed and -a or (room.outer == "margin" and 4 or 0) + room.reach + 0.6 * a
+      if x0 < m or x1 > room.W - m or y0 < m then return false end
+      -- The page's painted top is a content edge (a header) unless it is
+      -- the paper's own.
+      local mt = (bleed and room.top >= room.H) and -a or room.reach + 0.6 * a + (room.top < room.H and room.gap or 0)
+      if y1 > room.top - mt then return false end
+      for _, r in ipairs(room.avoid or {}) do
+        if x1 > r[1] - clear and x0 < r[3] + clear and y1 > r[2] - clear and y0 < r[4] + clear then return false end
+      end
+      local h = room.hero
+      if h then
+        local dx = math.max(x0 - h[1], 0, h[1] - x1)
+        local dy = math.max(y0 - h[2], 0, h[2] - y1)
+        if math.sqrt(dx * dx + dy * dy) < h[3] + clear then return false end
+      end
+      return true
+    end
+    local memo, memo2 = {}, {}
+    local function raw(i, j)
+      local k = i * 100003 + j
+      if memo[k] == nil then memo[k] = inside(i, j) end
+      return memo[k]
+    end
+    -- Only squares in some two-by-two block of the field: a strip one unit
+    -- wide (beside a short line of text, say) would be a lone rope, not
+    -- plait.
+    local function sq(i, j)
+      local k = i * 100003 + j
+      if memo2[k] == nil then
+        local ok = false
+        if raw(i, j) then
+          for _, d in ipairs({ { 0, 0 }, { -1, 0 }, { 0, -1 }, { -1, -1 } }) do
+            local a0, b0 = i + d[1], j + d[2]
+            if raw(a0, b0) and raw(a0 + 1, b0) and raw(a0, b0 + 1) and raw(a0 + 1, b0 + 1) then ok = true end
+          end
+        end
+        memo2[k] = ok
+      end
+      return memo2[k]
+    end
+    -- Doubled coordinates: an edge midpoint between two squares of the
+    -- field is a crossing; every other one is a mirror.
+    local function both(X, Y)
+      local x, y = gx + X / 2, gy + Y / 2
+      if X % 2 == 0 then
+        local j = math.floor(y)
+        return sq(x - 1, j) and sq(x, j)
+      end
+      local i = math.floor(x)
+      return sq(i, y - 1) and sq(i, y)
+    end
+    local function inner(X, Y) return not both(X, Y) end
+    local function alive(X, Y) return both(X, Y) end
+    local function group() return "field" end
+    return inner, alive, group
+  end
+end
+
 function M.cells(env)
   local mode = env.opts and env.opts.knot
+  if mode == "bleed" or mode == "inset" then
+    return M.cells_with(env, M.field_inner(env, mode))
+  end
   if mode == "one" or mode == "several" then
     return M.cells_with(env, M.panels_inner(env, mode, env.opts.knot_n or 7))
   end
