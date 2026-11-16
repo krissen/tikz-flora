@@ -225,7 +225,7 @@ Each `pattern` setting replaces the one before it, and
   every six grid units and symmetric inner mirrors in each panel. Groups
   as `celtic_knot`, and `panel`.
 - `hexagram_lattice`: hexagrams on a triangular lattice, tips touching, each star whole in one colour with a thin outline, the rhombs between them in the second field. Opt-in. Groups: `symbol`, `hexagram`, `triangular`, `star`.
-- `khatam`: the regular eight-pointed star of two squares (a khatem, as B. Wichmann names it; the sources are in `lua/flora/pat_khatam.lua`), tiling the plane with the crosses between the stars: the stars in the first field, the crosses in the second, thin outlines. Opt-in. Groups: `symbol`, `khatam`, `star`, `square`.
+- `khatam`: eight-pointed stars, each of two equal squares, meeting tip to tip on a square lattice, with crosses in the spaces between them (the Star and Cross pattern; the sources are in `lua/flora/pat_khatam.lua`): the stars in the first field, the crosses in the second, thin outlines. Opt-in. Groups: `symbol`, `khatam`, `star`, `square`.
 - `greek_crosses`: Greek crosses that tile the plane by themselves, in
   four colours. Opt-in. Groups: `symbol`, `cross`, `square`, `tiling`.
 - `overlapping_circles`: circles on a triangular grid, each through its

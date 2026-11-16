@@ -4,11 +4,19 @@
 -- arms between them. An emblem pattern: opt-in (patterns.lua), picked only
 -- by its own name or by the group `symbol`.
 --
--- Sources (ORDER #12 of the geometry work, read 2026-11-13):
---   The regular eight-pointed star, sixteen equal sides and a right angle
---   at every tip, is called a khatem: B. Wichmann, the introduction to
---   the Tiling Search database (2021), https://tilingsearch.mit.edu/intro.pdf,
---   p. 1.
+-- Sources (the geometry work's ORDERs #12 and #14, read 2026-11-13 and
+-- 2026-11-16):
+--   The tiling is the Star and Cross pattern: "formed from 8-pointed
+--   regular star polygons of type {8/2} arranged on a square grid. The
+--   interstitial spaces between the stars form crosses." P. R. Cromwell,
+--   "A modular design system based on the Star and Cross pattern",
+--   Journal of Mathematics and the Arts 6 (2012), 29-42, p. 29,
+--   doi:10.1080/17513472.2012.678269. Cromwell does not use the word
+--   khatam.
+--   The name khatem for the regular eight-pointed star itself (sixteen
+--   equal sides, a right angle at every tip) rests on one source only:
+--   B. Wichmann, the introduction to the Tiling Search database (2021),
+--   https://tilingsearch.mit.edu/intro.pdf, p. 1.
 --   Repeated, the star in its square brings out the cross between, and
 --   either may be the foreground: D. Wade, "Pattern No 6 (Commentary): One
 --   Common Motif", https://geometricdesign.co.uk/is6_fr2.htm; and "The 8
