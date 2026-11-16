@@ -33,6 +33,9 @@
 --          tile the plane, painted with the ground. A plate that lies
 --          between cells names their centres in `between`, and is laid
 --          only when all of them are kept.
+--   role_setup  optional: for a role that only one of the pattern's own
+--          looks paints, the settings that give that look (the accent of
+--          hexagram_lattice under alternate=three)
 --   scale  its cell size in pt at scale=1
 --   cells(env) -> list of cells covering env's box {x0, y0, x1, y1} at
 --          cell size env.size, drawing from env.rng. A cell is

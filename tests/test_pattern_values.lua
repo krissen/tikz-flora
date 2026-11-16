@@ -112,8 +112,11 @@ local function parts(Settings, filter)
       for _, r in ipairs(p.roles) do
         local k = KEY_OF[r]
         if k and (r ~= "ground" or p.ground) then
+          -- A role only one of the pattern's own looks paints is tried in
+          -- that look (the module's role_setup).
+          local extra = p.role_setup and p.role_setup[r] and (", " .. p.role_setup[r]) or ""
           local function page(v)
-            local spec = Settings.to_spec(Settings.parse("pattern=" .. p.name .. ", ground=on, edge=cell, density=3, scale=2, patternpalette={"
+            local spec = Settings.to_spec(Settings.parse("pattern=" .. p.name .. ", ground=on, edge=cell, density=3, scale=2" .. extra .. ", patternpalette={"
               .. k .. "=" .. v .. "}"), { width = 300, height = 240, text = { x0 = 130, y0 = 30, x1 = 280, y1 = 210 }, seed = 7, layout = "left" })
             Paint.reset_resources()
             local pt = Compose.page(spec)

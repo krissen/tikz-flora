@@ -53,6 +53,8 @@ return {
   scale = 30,
   width = 1.2, bands = "strap",
   gaps = "field", alternate = "off",
+  -- The accent is painted only when the stars take turns in three colours.
+  role_setup = { accent = "alternate=three" },
   cells = function(env)
     local d = env.size
     local h = d * sqrt(3) / 2
