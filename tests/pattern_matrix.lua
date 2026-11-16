@@ -33,6 +33,9 @@
 --             of the plane, measured on the cells' own outlines
 --   onecolour no hexagram star is painted in two colours: every fill that
 --             lies inside a star has that star's one colour
+--   holes     no cell the field leaves out has every neighbour kept (the
+--             page's edge is hard, edge=cell)
+--   between   a plate that lies between cells runs along their outlines
 --
 -- M.knot(filter) runs the knot field (pat_celtic.lua's bleed and inset)
 -- over both knot patterns x layout x mode x backdrop, holding it to
@@ -188,6 +191,70 @@ function M.tiling(p, a)
   return nil
 end
 
+-- The cells of the drawing the field left out though every neighbour of
+-- theirs is kept, on the page. Neighbours are as M.isolated's.
+function M.holes(info)
+  local all, keptat = info.all or {}, {}
+  for _, k in ipairs(info.kept) do keptat[k.cell] = true end
+  if #all < 2 then return 0 end
+  local nd = Pattern.field_edges(all, {}, {}).nd
+  local n = 0
+  for _, c in ipairs(all) do
+    if not keptat[c] and info.onpage and info.onpage[c] then
+      local nb, kept = 0, 0
+      for _, o in ipairs(all) do
+        if o ~= c and (o.x - c.x) ^ 2 + (o.y - c.y) ^ 2 <= nd * nd then
+          nb = nb + 1
+          if keptat[o] then kept = kept + 1 end
+        end
+      end
+      if nb >= 3 and kept == nb then n = n + 1 end
+    end
+  end
+  return n
+end
+
+-- The plates laid between cells whose edges do not each lie on an edge of
+-- one of the cells they lie between.
+local function on_segment(q, a, b, eps)
+  local dx, dy = b[1] - a[1], b[2] - a[2]
+  local L2 = dx * dx + dy * dy
+  local t = L2 > 0 and ((q[1] - a[1]) * dx + (q[2] - a[2]) * dy) / L2 or 0
+  if t < -eps or t > 1 + eps then return false end
+  local px, py = a[1] + t * dx, a[2] + t * dy
+  return (q[1] - px) ^ 2 + (q[2] - py) ^ 2 <= eps * eps
+end
+function M.between(info)
+  local at = {}
+  for _, k in ipairs(info.kept) do at[Pattern.cell_key(k.cell)] = k.cell end
+  local bad = 0
+  for _, k in ipairs(info.kept) do
+    for _, pl in ipairs(k.cell.plates or {}) do
+      local cells = {}
+      for _, q in ipairs(pl.between or {}) do cells[#cells + 1] = at[Pattern.cell_key({ x = q[1], y = q[2] })] end
+      -- Only the plates the field lays: every cell they lie between kept.
+      if pl.between and #cells == #pl.between then
+        local P = points(pl[1])
+        local ok = true
+        for i = 1, #P do
+          local p1, p2 = P[i], P[i % #P + 1]
+          local found = false
+          for _, c in ipairs(cells) do
+            local V = c.verts
+            for j = 1, #V do
+              local a, b = V[j], V[j % #V + 1]
+              if on_segment(p1, a, b, 1e-6) and on_segment(p2, a, b, 1e-6) then found = true end
+            end
+          end
+          if not found then ok = false end
+        end
+        if not ok then bad = bad + 1 end
+      end
+    end
+  end
+  return bad
+end
+
 -- Fills inside each kept star of more than one colour (hexagram).
 local function colours_per_star(kept, fillpaths)
   local bad = 0
@@ -303,6 +370,20 @@ function M.run(floors, filter)
               if lone > 0 then fail(c, "units", lone .. " dots without their loop") end
               if open > 0 then fail(c, "units", open .. " line ends meeting no other") end
             end
+            -- holes: a cell the field left out with every neighbour kept.
+            -- The matrix's page has a hard edge (edge=cell), where only the
+            -- text, the hero and the page leave cells out, and none of those
+            -- leaves out a cell whose neighbours all stand.
+            if finish == "filled" then
+              local h = M.holes(rec.pt.pattern)
+              c.holes = h
+              if h > 0 then fail(c, "holes", h .. " cells left out with every neighbour kept") end
+            end
+            -- between: a plate that lies between cells runs along their
+            -- outlines, so it is never nearer anything than they are
+            -- (pattern.lua's footprint leaves it out).
+            local bad_between = M.between(rec.pt.pattern)
+            if bad_between > 0 then fail(c, "between", bad_between .. " plates between cells that leave their outlines") end
             -- fragments: kept cells with no kept neighbour.
             local iso = M.isolated(rec.pt.pattern.kept)
             c.isolated = #rec.pt.pattern.kept > 0 and iso / #rec.pt.pattern.kept or 0

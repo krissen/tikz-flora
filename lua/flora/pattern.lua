@@ -1069,6 +1069,9 @@ function M.paint(spec, pt)
   pt:end_group()
   pt.coverage = offered > 0 and #kept / offered or 0
   pt.pattern = { name = p.name, cells = #kept, offered = offered, kept = kept, avoid = keep_rects, reach = width / 2, gap = gap, hero = hero, inks = base,
+    -- Every cell of the drawing, kept or not, and which lie on the page
+    -- (for tests/pattern_matrix.lua's holes).
+    all = cells, onpage = onpage,
     -- Cells that should lay a piece of the ground and have none.
     holes = holes, grounded = base.ground and #grounded or 0,
     -- The field's edge (M.field_edges): cells with no grounded neighbour, and

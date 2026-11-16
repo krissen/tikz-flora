@@ -208,6 +208,36 @@ caught("onecolour", "hexagram_lattice", function()
   end
 end, function() hexagram.cells = hexagram_cells end)
 
+-- A hole in the field: one hexagram star in eleven placed as though it
+-- reached into the text, its neighbours kept round it.
+local hex_cells2 = hexagram.cells
+caught("holes", "hexagram_lattice", function()
+  hexagram.cells = function(env)
+    local out = hex_cells2(env)
+    for i, c in ipairs(out) do if i % 11 == 0 then c.pad = 1000 end end
+    return out
+  end
+end, function() hexagram.cells = hex_cells2 end)
+
+-- A rhomb between two stars drawn a fifth larger than the gap it fills,
+-- out past the stars' outlines.
+caught("between", "hexagram_lattice", function()
+  hexagram.cells = function(env)
+    local out = hex_cells2(env)
+    local K = require("flora.pat_kit")
+    for _, c in ipairs(out) do
+      for _, pl in ipairs(c.plates or {}) do
+        local P = {}
+        for _, q in ipairs(pl[1]) do if q[1] == "m" or q[1] == "l" then P[#P + 1] = { q[2], q[3] } end end
+        local cx, cy = 0, 0
+        for _, q in ipairs(P) do cx, cy = cx + q[1] / #P, cy + q[2] / #P end
+        pl[1] = K.path(K.scaled(P, cx, cy, 1.2))
+      end
+    end
+    return out
+  end
+end, function() hexagram.cells = hex_cells2 end)
+
 -- The knot field (a study): no strand ends loose in any layout.
 local kcells, kfails = M.knot()
 if os.getenv("FLORA_MATRIX_VERBOSE") then print(string.format("knot field: %d cells, %d failures", #kcells, #kfails)) end
