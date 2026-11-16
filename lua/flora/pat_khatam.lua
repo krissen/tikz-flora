@@ -19,10 +19,11 @@
 --   https://tilingsearch.mit.edu/intro.pdf, p. 1.
 --   Repeated, the star in its square brings out the cross between, and
 --   either may be the foreground: D. Wade, "Pattern No 6 (Commentary): One
---   Common Motif", https://geometricdesign.co.uk/is6_fr2.htm; and "The 8
---   pointed star when tessellated produces a pattern of stars and
---   crosses": Museum of Design Excellence, Mumbai, "Erogenius Eight Pointed
---   Star", Google Arts & Culture.
+--   Common Motif" (archived 2003-03-25),
+--   https://web.archive.org/web/20030325175840/https://geometricdesign.co.uk/is6_fr2.htm;
+--   and "The 8 pointed star when tessellated produces a pattern of stars
+--   and crosses": Museum of Design Excellence, Mumbai, "Erogenius Eight
+--   Pointed Star", Google Arts & Culture.
 --
 -- The geometry. Two equal squares of circumradius r about one centre, one
 -- on its point and one square to the page: a corner of the one stands out
