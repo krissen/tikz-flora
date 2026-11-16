@@ -359,6 +359,30 @@ do
   end
 end
 
+-- A field woven again at its edge keeps the edge's treatment, and the
+-- check fails when the woven cells are all painted whole again.
+do
+  local pages, compared, fs = M.reweave()
+  H.check(pages == 480, "reweave pages: " .. pages)
+  H.check(compared > 0, "reweave compared no cells")
+  for _, f in ipairs(fs) do H.check(false, f) end
+  if os.getenv("FLORA_MATRIX_VERBOSE") then print(string.format("reweave: %d pages, %d cells compared, %d failures", pages, compared, #fs)) end
+  local real = package.loaded["flora.pattern"]
+  local f = io.open("lua/flora/pattern.lua")
+  local src = f:read("a")
+  f:close()
+  local line = "kept[#kept + 1] = { cell = v.c, a = v.a,"
+  local i, j = src:find(line, 1, true)
+  H.check(i ~= nil, "mutation: the line is gone from pattern.lua: " .. line)
+  if i then
+    package.loaded["flora.pattern"] = assert(load(src:sub(1, i - 1) .. "kept[#kept + 1] = { cell = v.c, a = 1," .. src:sub(j + 1), "@pattern.lua (mutated)"))()
+    local _, _, mf = M.reweave(function(n) return n == "sikku_kolam" end)
+    package.loaded["flora.pattern"] = real
+    H.check(#mf > 0, "the reweave check missed woven cells painted whole")
+    if os.getenv("FLORA_MATRIX_VERBOSE") then print(string.format("mutation reweave a = 1: %d failures", #mf)) end
+  end
+end
+
 -- An alias paints as the pattern it is kept for, byte for byte, named in
 -- a spec and in a setup line; and the check fails when the field stops
 -- reading the alias (patterns.lua's weight).

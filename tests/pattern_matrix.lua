@@ -43,6 +43,12 @@
 -- M.knot(filter) runs the knot field (pat_celtic.lua's bleed and inset)
 -- over both knot patterns x layout x mode x backdrop, holding it to
 --   units     no strand ending loose inside the page
+--
+-- M.reweave(filter) runs every pattern that reweaves its field's edge x
+-- edge x ground x layout x backdrop, holding it to
+--   reweave   the drawing woven again keeps the edge's treatment: every
+--             cell of it that the first drawing kept, other than a turn,
+--             has the share that drawing gave it (edge=fade's paling)
 
 local Paint = require("flora.paint")
 local Compose = require("flora.compose")
@@ -601,6 +607,52 @@ function M.lacquer(filter)
     end
   end
   return cells, failures
+end
+
+-- The pages of M.reweave: the field drawn once (pattern_opts.reweave =
+-- false) and woven again, kolam by its closed ends, celtic_knot (whose
+-- closed ends are its field panel) by pattern_opts. Returns the pages, the
+-- cells compared and the failures.
+M.EDGES = { "dissolve", "cell", "fade", "border", "guilloche" }
+function M.reweave(filter)
+  local pages, compared, failures = 0, 0, {}
+  local function shares(name, setup, layout, opts)
+    local spec = page(name, setup, layout)
+    spec.pattern_opts = opts
+    local by = {}
+    for _, k in ipairs(paint(spec).pt.pattern.kept) do by[Pattern.cell_key(k.cell)] = k end
+    return by
+  end
+  for _, p in ipairs(Patterns.list) do
+    if p.reweave and (not filter or filter(p.name)) then
+      local ends = p.field_panel and "cut" or "closed"
+      local woven = p.field_panel and { reweave = true } or nil
+      for _, edge in ipairs(M.EDGES) do
+        for _, ground in ipairs({ "auto", "off", "panel", "motif", "round", "cells" }) do
+          for _, layout in ipairs({ "left", "right", "centered", "surround" }) do
+            for _, bd in ipairs({ "light", "dark" }) do
+              local setup = "colourway=tsuki-mi, edge=" .. edge .. ", ground=" .. ground .. ", ends=" .. ends .. ", backdrop=" .. bd
+              local first = shares(p.name, setup, layout, { reweave = false })
+              local again = shares(p.name, setup, layout, woven)
+              pages = pages + 1
+              local bad = 0
+              for key, k in pairs(again) do
+                local f = first[key]
+                if f and not k.turn then
+                  compared = compared + 1
+                  if math.abs(f.a - k.a) > 1e-9 then bad = bad + 1 end
+                end
+              end
+              if bad > 0 then
+                failures[#failures + 1] = string.format("%s edge=%s ground=%s %s %s: reweave: %d cells lose their share", p.name, edge, ground, layout, bd, bad)
+              end
+            end
+          end
+        end
+      end
+    end
+  end
+  return pages, compared, failures
 end
 
 -- density=0 paints nothing of the pattern: no cell and no ground, over
