@@ -32,7 +32,7 @@
 --          `plates`, {path, "a", "b" or "accent"} pairs, are fields that
 --          tile the plane, painted with the ground. A plate that lies
 --          between cells names their centres in `between`, and is laid
---          only when all of them are kept (or, with need = "any", one).
+--          only when all of them are kept.
 --   scale  its cell size in pt at scale=1
 --   cells(env) -> list of cells covering env's box {x0, y0, x1, y1} at
 --          cell size env.size, drawing from env.rng. A cell is

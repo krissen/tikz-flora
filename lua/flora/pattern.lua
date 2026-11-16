@@ -704,7 +704,15 @@ function M.paint(spec, pt)
   -- it, the sides the field takes, the page's painted top and the reach of
   -- a band.
   local field_room = { text = text, gap = gap, side = side, W = W, top = top, reach = width / 2 }
-  local env = { x0 = 0, y0 = 0, x1 = W, y1 = H, size = size, rng = rng:fork("cells"), opts = opts, room = field_room }
+  -- The star patterns' own choices (figure, gaps, alternate; Settings.PATTERN),
+  -- each pattern's own under auto.
+  local style = {}
+  for _, k in ipairs({ "figure", "gaps", "alternate" }) do
+    local v = key(spec, k)
+    if v == "auto" then v = p[k] end
+    style[k] = v
+  end
+  local env = { x0 = 0, y0 = 0, x1 = W, y1 = H, size = size, rng = rng:fork("cells"), opts = opts, room = field_room, style = style }
   local cells = p.cells(env)
   local fall = rng:fork("dissolve")
   local stagger = rng:fork("growth")
@@ -890,11 +898,6 @@ function M.paint(spec, pt)
   local edgeinfo = need and M.field_edges(cells, grounded, onpage) or { share = {}, depth = {}, isolated = 0, edge = 0, nd = size }
   local fr = { text = text, gap = gap, side = side, W = W, top = top, ramp = ramp }
   local pieces = M.edge_pieces(ge, fr, edgeinfo)
-  -- The fields' plates end cell by cell, whatever the ground does, unless
-  -- a prototype asks otherwise (pattern_opts.field_edge).
-  -- Plates belong to the kept cells only, so their edge is the kept cells'.
-  local fe = opts.field_edge or "cells"
-  local fpieces = M.edge_pieces(fe, fr, fe ~= "cells" and fe ~= "panel" and M.field_edges(cells, kept, onpage) or edgeinfo)
   if base.ground then
     local K = require("flora.pat_kit")
     if pieces.panel then
@@ -909,12 +912,12 @@ function M.paint(spec, pt)
     end
   end
   -- A cell's plates: fields that tile the plane, painted with the ground.
+  -- They belong to the kept cells only, so their edge is the kept cells',
+  -- whatever the ground does.
   if not base.lines then
-    local filled = false
     -- A plate that lies between cells (pl.between, their positions) is
-    -- laid only when every one of them is kept (pl.need = "all") or any
-    -- of them (pl.need = "any"), so the field ends along the cells' own
-    -- outline rather than in squares.
+    -- laid only when every one of them is kept, so the field ends along
+    -- the cells' own outline rather than in squares.
     local keptat = {}
     for _, k in ipairs(kept) do keptat[M.cell_key(k.cell)] = true end
     local function between_ok(pl)
@@ -923,19 +926,13 @@ function M.paint(spec, pt)
       for _, q in ipairs(pl.between) do
         if keptat[M.cell_key({ x = q[1], y = q[2] })] then n = n + 1 end
       end
-      if pl.need == "any" then return n > 0 end
       return n == #pl.between
     end
     for _, k in ipairs(kept) do
       for _, pl in ipairs(k.cell.plates or {}) do
         local ik = M.cell_inks(base, k.a)
         local colour = pl[2] == "accent" and ik.accent or ik.fill[pl[2] == "b" and 2 or 1]
-        if fpieces.panel then
-          if not filled then plate(k.cell, k, fpieces.panel, colour); filled = true end
-        elseif between_ok(pl) then
-          local path, col = fpieces.piece(k, pl[1], colour)
-          if path then plate(k.cell, k, path, col) end
-        end
+        if between_ok(pl) then plate(k.cell, k, pl[1], colour) end
       end
     end
   end

@@ -6,91 +6,27 @@
 local K = require("flora.pat_kit")
 local sqrt, cos, sin, rad = math.sqrt, math.cos, math.sin, math.rad
 
--- How the star is built (pattern_opts.hexagram, a study, ORDER #10):
---   (nil)      the up triangle in the first field, the down triangle over
---              it in the second, so the middle and three tips are one
---              colour and the other three tips the other (today's)
---   star       the whole star in the first field, outlined once; the gaps
---              round it (triangles that pair up into rhombs across the
---              lattice) in the second
---   interlace  the two triangles as broad bands woven over and under at
---              their six crossings, the star's area in the first field
---   weave      the same bands alone, nothing filled
---   mock       as the geometry study's sketch (y-02): the whole star in the
---              first field, the rhombs between the stars light, and a small
---              triangle of the accent at each meeting of six tips
---   outline    the whole star in the first field, the gaps the paper
---   measured   as y-02 measures (ORDER #11): the up triangle in the first
---              field, then the down triangle whole over it in the second,
---              each outlined with a thin dark line as it is laid, so the
---              down triangle hides the up one's lines and shows as one
---              figure; the up triangle shows only as three tips, and the
---              rhombs between the stars are light
--- And with the star whole in one colour, tips and middle alike (ORDER #12),
--- thin dark lines:
---   star-thin  the star in the first field, the gaps in the second
---   plain      the star in the first field, the gaps the paper
---   rows       the stars row by row in the first field and the second, the
---              gaps the paper (two colours cannot keep every pair of
---              touching stars apart on this lattice; a row's stars touch)
---   three      the stars in the first field, the second and the accent,
---              so that no two touching stars share one; the gaps the paper
-local THIN = { ["star-thin"] = true, plain = true, rows = true, three = true }
+-- The whole star is one figure in one colour, its six tips and its middle
+-- alike, outlined in a thin dark line (ORDER #13). The rhombs between the
+-- stars (each two triangles, one from each star's hexagon) lie between two
+-- stars and are laid only when both are kept (pattern.lua's plates,
+-- `between`), so the field ends along the stars' outline. The gaps and
+-- alternate keys (Settings.PATTERN) choose the colours:
+--   gaps=field (the default)   the rhombs in the second field
+--   gaps=paper                 the rhombs the paper
+--   alternate=off (the default) every star in the first field
+--   alternate=rows             the first field and the second, row by row
+--                              (two colours cannot keep every pair of
+--                              touching stars apart on this lattice: a
+--                              row's stars touch)
+--   alternate=three            the first field, the second and the accent,
+--                              no two touching stars alike
+-- Under rows and three the rhombs are the paper, as a star in the second
+-- field would run into rhombs of its own colour.
 local function paint(pt, c, ink)
-  if THIN[c.form] then
-    local tones = { ink.fill[1], ink.fill[2], ink.accent }
-    if c.form == "star-thin" then
-      -- Stroked in their own colour too, so the two halves of a rhomb
-      -- leave no seam between them.
-      K.fill(pt, c.gaps, ink.fill[2], ink, { many = true })
-      if not ink.lines then pt:stroke(c.gaps, ink.fill[2], 0.6, 1, { many = true }) end
-    end
-    local t = 1
-    if c.form == "rows" then t = c.row % 2 + 1 elseif c.form == "three" then t = c.three + 1 end
-    K.fill(pt, c.star, tones[t], ink)
-    K.band(pt, c.star, ink, { core = false, w = 0.6 })
-    return
-  end
-  if c.form == "measured" then
-    K.fill(pt, c.gaps, ink.core, ink, { many = true })
-    K.fill(pt, c.up, ink.fill[1], ink)
-    K.band(pt, c.up, ink, { core = false, w = 0.6 })
-    K.fill(pt, c.down, ink.fill[2], ink)
-    K.band(pt, c.down, ink, { core = false, w = 0.6 })
-    return
-  end
-  local form = c.form
-  if form == "star" or form == "mock" or form == "outline" then
-    K.fill(pt, c.star, ink.fill[1], ink)
-    if form == "star" then K.fill(pt, c.gaps, ink.fill[2], ink, { many = true }) end
-    if form == "mock" then
-      K.fill(pt, c.gaps, ink.core, ink, { many = true })
-      K.fill(pt, c.tips, ink.accent, ink, { many = true })
-      K.band(pt, c.gaps, ink, { core = false, many = true, w = 0.6 })
-    end
-    K.band(pt, c.star, ink, { core = false })
-    return
-  end
-  if form == "interlace" or form == "weave" then
-    if form == "interlace" then K.fill(pt, c.star, ink.fill[1], ink) end
-    local w = 2.4
-    K.band(pt, c.down, ink, { w = w })
-    K.band(pt, c.up, ink, { w = w })
-    -- At every other crossing the down triangle passes over: drawn again
-    -- there, through a disc about the crossing.
-    for i, q in ipairs(c.crossings) do
-      if i % 2 == 0 then
-        pt:clip_begin({ { "o", q[1], q[2], ink.width * w * 1.3 } })
-        K.band(pt, c.down, ink, { w = w })
-        pt:clip_end()
-      end
-    end
-    return
-  end
-  K.fill(pt, c.up, ink.fill[1], ink)
-  K.fill(pt, c.down, ink.fill[2], ink)
-  K.band(pt, c.up, ink, { core = false })
-  K.band(pt, c.down, ink, { core = false })
+  local tones = { ink.fill[1], ink.fill[2], ink.accent }
+  K.fill(pt, c.star, tones[c.tone], ink)
+  K.band(pt, c.star, ink, { core = false, w = 0.6 })
 end
 
 local function construct(pt, c, ink)
@@ -109,17 +45,21 @@ end
 
 return {
   name = "hexagram_lattice",
-  title = "Hexagrams on a triangular lattice, tips touching",
+  title = "Hexagrams on a triangular lattice, tips touching, each star one colour",
   tags = { "symbol", "hexagram", "triangular", "star" },
-  roles = { "band", "a", "b", "core", "accent" },
+  roles = { "band", "a", "b", "accent" },
   surface = true,
   opt_in = true,
   scale = 30,
   width = 1.2, bands = "strap",
+  gaps = "field", alternate = "off",
   cells = function(env)
     local d = env.size
     local h = d * sqrt(3) / 2
     local R = d / sqrt(3)
+    local style = env.style or {}
+    local alt = style.alternate or "off"
+    local rhombs = style.gaps ~= "paper" and alt == "off"
     local out = {}
     for j = math.floor(env.y0 / h) - 1, math.ceil(env.y1 / h) + 1 do
       for i = math.floor(env.x0 / d) - 2, math.ceil(env.x1 / d) + 2 do
@@ -137,29 +77,30 @@ return {
           local a = rad(30 + 60 * k)
           hex[#hex + 1] = { x + R * cos(a), y + R * sin(a) }
         end
-        -- The gaps between the star and its hexagon, a triangle on each of
-        -- the hexagon's sides; the star's six crossings, its inner corners;
-        -- and small triangles about its tips, for the mock's form.
-        local gaps, crossings, tips = {}, {}, {}
-        for k = 0, 5 do
-          local v1, v2 = hex[k % 6 + 1], hex[(k + 1) % 6 + 1]
-          local m = rad(60 + 60 * k)
-          local inner = { x + R / sqrt(3) * cos(m), y + R / sqrt(3) * sin(m) }
-          gaps[#gaps + 1] = K.path({ v1, v2, inner })
-          crossings[#crossings + 1] = inner
-          local t, r = rad(30 + 60 * k), R * 0.16
-          local tip = { x + R * cos(t), y + R * sin(t) }
-          tips[#tips + 1] = K.path({ tip, { tip[1] - r * cos(t - rad(30)), tip[2] - r * sin(t - rad(30)) },
-            { tip[1] - r * cos(t + rad(30)), tip[2] - r * sin(t + rad(30)) } })
+        -- The rhombs on three of the hexagon's sides (the other three are
+        -- the neighbours'): the gap between this star and its hexagon on
+        -- that side and the neighbour's gap across it.
+        local plates = {}
+        if rhombs then
+          for k = 0, 2 do
+            local v1, v2 = hex[k % 6 + 1], hex[(k + 1) % 6 + 1]
+            local m = rad(60 + 60 * k)
+            local inner = { x + R / sqrt(3) * cos(m), y + R / sqrt(3) * sin(m) }
+            local mx, my = (v1[1] + v2[1]) / 2, (v1[2] + v2[2]) / 2
+            local other = { 2 * mx - inner[1], 2 * my - inner[2] }
+            plates[#plates + 1] = { K.path({ v1, inner, v2, other }), "b",
+              between = { { x, y }, { 2 * mx - x, 2 * my - y } } }
+          end
         end
-        out[#out + 1] = { x = x, y = y, verts = star, pad = d * 0.02, under = K.path(hex),
+        local tone = 1
+        if alt == "rows" then tone = j % 2 + 1
+        elseif alt == "three" then
+          -- The star's axial coordinates' difference, modulo 3.
+          tone = ((i - (j - j % 2) / 2) - j) % 3 + 1
+        end
+        out[#out + 1] = { x = x, y = y, verts = star, pad = d * 0.02, under = K.path(hex), plates = plates,
           up = K.path(triangle(x, y, R, 90)), down = K.path(triangle(x, y, R, 270)),
-          star = K.path(star), gaps = gaps, crossings = crossings, tips = tips,
-          form = env.opts and env.opts.hexagram, row = j,
-          -- A colour of three per star, no two touching stars alike: the
-          -- star's axial coordinates' difference, modulo 3.
-          three = ((i - (j - j % 2) / 2) - j) % 3,
-          paint = paint, construct = construct }
+          star = K.path(star), tone = tone, paint = paint, construct = construct }
       end
     end
     return out
