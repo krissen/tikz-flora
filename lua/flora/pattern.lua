@@ -194,7 +194,16 @@ end
 function M.footprint(c, base)
   local out = { c }
   if base.ground and not base.ground_panel then
-    if c.under then path_shapes(c.under, out) elseif c.tile then out[#out + 1] = { verts = c.tile } end
+    -- The piece as the ground's edge mode lays it (M.edge_pieces): a disc
+    -- about the cell under ground=round, the cell's own outline at the
+    -- field's edge under ground=motif (which may reach past its piece),
+    -- else its piece.
+    if base.ground_edge == "discs" then
+      out[#out + 1] = { circle = { c.x, c.y, 0.62 * base.ground_nd } }
+    else
+      if c.under then path_shapes(c.under, out) elseif c.tile then out[#out + 1] = { verts = c.tile } end
+      if base.ground_edge == "shape" and c.shape then path_shapes(c.shape, out) end
+    end
   end
   if not base.lines then
     for _, pl in ipairs(c.plates or {}) do
@@ -895,6 +904,9 @@ function M.paint(spec, pt)
   if opts.ground_edge == nil then opts.ground_edge = ground_edges[M.ground_mode(spec)] or "cells" end
   -- Laid as one panel, the ground is no cell's piece (M.footprint), and
   -- everything a cell paints lies on the panel: a cell whose paint would
+  -- How the ground's pieces are laid, for M.footprint: the edge mode and
+  -- the distance M.edge_pieces sizes a rounded piece by.
+  base.ground_edge = opts.ground_edge
   -- reach past it does not stand (the panel keeps its straight edge).
   base.ground_panel = opts.ground_edge == "panel" or nil
   local panel_rects
@@ -921,6 +933,7 @@ function M.paint(spec, pt)
   local cells = p.cells(env)
   local fall = rng:fork("dissolve")
   local stagger = rng:fork("growth")
+  if base.ground and opts.ground_edge == "discs" then base.ground_nd = M.field_edges(cells, {}, {}).nd end
   local kept, offered, bare = {}, 0, {}
   local onpage = {}
   -- Whether each cell is placed, and the share it keeps (0 drops it).
