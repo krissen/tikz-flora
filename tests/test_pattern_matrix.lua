@@ -331,6 +331,34 @@ do
   Patterns.weight = weight
   H.check(#bad2 > 0, "the alias check missed an alias the field no longer reads")
   if os.getenv("FLORA_MATRIX_VERBOSE") then print(string.format("mutation alias: %d of 4 pages differ", #bad2)) end
+-- density=0 paints nothing of the pattern; and the check fails when a
+-- placed panel's cells (celtic_knot's) or the ground's panel paint anyway,
+-- the faults put back into pattern.lua's source.
+do
+  local pages, fs = M.density0()
+  H.check(pages == 360, "density0 pages: " .. pages)
+  for _, f in ipairs(fs) do H.check(false, f) end
+  if os.getenv("FLORA_MATRIX_VERBOSE") then print(string.format("density0: %d pages, %d failures", pages, #fs)) end
+  local real = package.loaded["flora.pattern"]
+  local f = io.open("lua/flora/pattern.lua")
+  local src = f:read("a")
+  f:close()
+  for _, m in ipairs({
+    { "the knot's fixed cells", "local ok = dens > 0 and d >= gap", "local ok = d >= gap", "celtic_knot" },
+    { "an empty panel", "if #grounded > 0 then", "if true then", "asanoha" },
+  }) do
+    local i, j = src:find(m[2], 1, true)
+    H.check(i ~= nil, "mutation: the line is gone from pattern.lua: " .. m[2])
+    if i then
+      package.loaded["flora.pattern"] = assert(load(src:sub(1, i - 1) .. m[3] .. src:sub(j + 1), "@pattern.lua (mutated)"))()
+      local _, mf = M.density0(function(n) return n == m[4] end)
+      package.loaded["flora.pattern"] = real
+      H.check(#mf > 0, "the density0 check missed " .. m[1])
+      if os.getenv("FLORA_MATRIX_VERBOSE") then print(string.format("mutation density0 %s: %d failures", m[1], #mf)) end
+    end
+  end
+end
+
 end
 
 -- Cells standing alone: one cell in 23 kept.

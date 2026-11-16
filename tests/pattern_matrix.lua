@@ -600,6 +600,34 @@ function M.aliases(expect)
   for alias, target in pairs(expect) do
     for _, bd in ipairs({ "light", "dark" }) do
       local want = paint(page(target, "colourway=tsuki-mi, backdrop=" .. bd)).pt:body()
+-- density=0 paints nothing of the pattern: no cell and no ground, over
+-- every pattern x ground (auto, panel, cells) x ends (closed, bleed) x
+-- backdrop x finish it takes. Returns the pages, and the failures.
+function M.density0(filter)
+  local pages, failures = 0, {}
+  for _, p in ipairs(Patterns.list) do
+    if not filter or filter(p.name) then
+      for _, ground in ipairs({ "auto", "panel", "cells" }) do
+        for _, ends in ipairs({ "closed", "bleed" }) do
+          for _, bd in ipairs({ "light", "dark" }) do
+            for _, fin in ipairs(Pattern.finishes_of(p)) do
+              local spec = page(p.name, "colourway=tsuki-mi, ground=" .. ground .. ", ends=" .. ends .. ", finish=" .. fin .. ", backdrop=" .. bd)
+              spec.mix = { density = 0 }
+              local rec = paint(spec)
+              pages = pages + 1
+              local n = #rec.fills + #rec.strokes
+              if n > 0 then
+                failures[#failures + 1] = string.format("%s ground=%s ends=%s %s %s: density0: %d shapes painted", p.name, ground, ends, bd, fin, n)
+              end
+            end
+          end
+        end
+      end
+    end
+  end
+  return pages, failures
+end
+
       local raw = paint(page(alias, "colourway=tsuki-mi, backdrop=" .. bd)).pt:body()
       local line = paint(page(target, "pattern=" .. alias .. ", colourway=tsuki-mi, backdrop=" .. bd)).pt:body()
       for _, got in ipairs({ { "spec", raw }, { "setup line", line } }) do
