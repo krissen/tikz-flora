@@ -238,10 +238,10 @@ caught("between", "hexagram_lattice", function()
   end
 end, function() hexagram.cells = hex_cells2 end)
 
--- The knot field (a study): no strand ends loose in any layout.
+-- The knot's field panel: no strand ends loose in any layout.
 local kcells, kfails = M.knot()
 if os.getenv("FLORA_MATRIX_VERBOSE") then print(string.format("knot field: %d cells, %d failures", #kcells, #kfails)) end
-H.check(#kcells == 2 * 4 * 2 * 2, "knot field cells: " .. #kcells)
+H.check(#kcells == 1 * 4 * 2 * 2, "knot field cells: " .. #kcells)
 for _, f in ipairs(kfails) do H.check(false, f) end
 -- Its cells thinned out toward the text again, as an ordinary field's:
 -- the strands end loose where cells fall away.
@@ -258,6 +258,61 @@ do
   for _, f in ipairs(fs) do if f:find(": units:", 1, true) then mutated = mutated + 1 end end
   H.check(mutated > 0, "the knot field missed strands ending loose")
   if os.getenv("FLORA_MATRIX_VERBOSE") then print(string.format("mutation units on the knot field: %d of %d failures", mutated, #fs)) end
+end
+
+-- finish=lacquer: a panel, a gold line, keys set on the page first, and
+-- nothing changed on a pattern without a ground.
+do
+  local lc, lf = M.lacquer()
+  H.check(#lc == #Patterns.list * 3 * 2, "lacquer cells: " .. #lc)
+  for _, f in ipairs(lf) do H.check(false, f) end
+  if os.getenv("FLORA_MATRIX_VERBOSE") then print(string.format("lacquer: %d cells, %d failures", #lc, #lf)) end
+  local finish_spec = Pattern.finish_spec
+  local function mutant(name, fn, only)
+    Pattern.finish_spec = fn
+    local _, fs = M.lacquer(function(n) return n == only end)
+    Pattern.finish_spec = finish_spec
+    H.check(#fs > 0, "the lacquer check missed " .. name)
+    if os.getenv("FLORA_MATRIX_VERBOSE") then print(string.format("mutation lacquer %s: %d failures", name, #fs)) end
+  end
+  -- The ground left to the colourway's own edge, not laid as a panel.
+  mutant("a ground not laid as a panel", function(spec, p)
+    local out, w = finish_spec(spec, p)
+    if out ~= spec and not w then out.pattern_ground = "cells" end
+    return out, w
+  end, "asanoha")
+  -- A key set on the page overridden.
+  mutant("a page's own ground overridden", function(spec, p)
+    local out, w = finish_spec(spec, p)
+    if out ~= spec and not w then out.pattern_ground = "panel" end
+    return out, w
+  end, "rosette_lattice")
+  -- Lacquer's line work put on a pattern without a ground.
+  mutant("a half look on a pattern without a ground", function(spec, p)
+    local out, w = finish_spec(spec, p)
+    if w then out.pattern_bands, out.pattern_bandwidth = "line", 0.5 end
+    return out, w
+  end, "kikko")
+end
+
+-- An alias paints as the pattern it is kept for, byte for byte, named in
+-- a spec and in a setup line; and the check fails when the field stops
+-- reading the alias (patterns.lua's weight).
+local ALIASES = { celtic_panels = "celtic_knot" }
+do
+  local n, bad = M.aliases(ALIASES)
+  H.check(n == 4, "alias pages compared: " .. n)
+  for _, b in ipairs(bad) do H.check(false, "alias: " .. b) end
+  if os.getenv("FLORA_MATRIX_VERBOSE") then print(string.format("aliases: %d pages, %d differ", n, #bad)) end
+  local weight = Patterns.weight
+  Patterns.weight = function(weights, p)
+    if weights[p.name] ~= nil then return weights[p.name] end
+    return weight(setmetatable({}, { __index = function(_, k) if not ALIASES[k] then return weights[k] end end }), p)
+  end
+  local _, bad2 = M.aliases(ALIASES)
+  Patterns.weight = weight
+  H.check(#bad2 > 0, "the alias check missed an alias the field no longer reads")
+  if os.getenv("FLORA_MATRIX_VERBOSE") then print(string.format("mutation alias: %d of 4 pages differ", #bad2)) end
 end
 
 -- Cells standing alone: one cell in 23 kept.

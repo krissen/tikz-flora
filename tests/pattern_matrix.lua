@@ -502,17 +502,18 @@ function M.run(floors, filter)
   return cells, failures
 end
 
--- The knot field (pat_celtic.lua's bleed and inset, a study): no strand
--- ends loose inside the page, in any layout.
+-- The knot as one panel over its field (pat_celtic.lua's field panel,
+-- celtic_knot's default under ends=closed, and ends=bleed): no strand ends
+-- loose inside the page, in any layout. Under bleed the plait is cut by the
+-- paper's edge, which the count leaves out (3 pt of it).
 function M.knot(filter)
   local cells, failures = {}, {}
-  for _, name in ipairs({ "celtic_knot", "celtic_panels" }) do
+  for _, name in ipairs({ "celtic_knot" }) do
     for _, layout in ipairs({ "left", "right", "centered", "surround" }) do
-      for _, mode in ipairs({ "bleed", "inset" }) do
+      for _, mode in ipairs({ "closed", "bleed" }) do
         for _, bd in ipairs({ "light", "dark" }) do
           if not filter or filter(name, layout, mode) then
-            local spec = page(name, "colourway=tsuki-mi, backdrop=" .. bd, layout)
-            spec.pattern_opts = { knot = mode, reweave = false }
+            local spec = page(name, "colourway=tsuki-mi, ends=" .. mode .. ", backdrop=" .. bd, layout)
             local rec = paint(spec)
             local lone, open = Units.count(rec.pt.pattern.kept, { 3, 3, spec.width - 3, spec.height - 3 })
             local c = { pattern = name, layout = layout, mode = mode, backdrop = bd, kept = #rec.pt.pattern.kept, open = open }
@@ -529,6 +530,70 @@ function M.knot(filter)
     end
   end
   return cells, failures
+end
+
+-- finish=lacquer over every pattern x colourway (tsuki-mi, ember,
+-- usu-zumi) x backdrop. On a pattern with a ground: the ground is one
+-- panel (one fill of the ground's colour), the band is gold (before a dark
+-- ground lights it), the bands are lines at half width, and a ground the
+-- page sets itself goes before the panel. On a pattern without one: the
+-- page is the filled page byte for byte, and it says why. Returns cells,
+-- failures.
+function M.lacquer(filter)
+  local cells, failures = {}, {}
+  for _, p in ipairs(Patterns.list) do
+    if not filter or filter(p.name) then
+      for _, cw in ipairs({ "tsuki-mi", "ember", "usu-zumi" }) do
+        for _, bd in ipairs({ "light", "dark" }) do
+          local where = string.format("%s %s %s", p.name, cw, bd)
+          local spec = page(p.name, "colourway=" .. cw .. ", finish=lacquer, backdrop=" .. bd)
+          local rec = paint(spec)
+          local info = rec.pt.pattern
+          local base = info.inks
+          cells[#cells + 1] = { pattern = p.name, colourway = cw, backdrop = bd }
+          if Pattern.has_ground(p) then
+            local eff = Pattern.finish_spec(spec, p)
+            local gf = 0
+            if base.ground then for _, x in ipairs(rec.fills) do if key(x) == key(base.ground) then gf = gf + 1 end end end
+            if not base.ground or gf ~= 1 then failures[#failures + 1] = where .. ": lacquer: " .. gf .. " ground fills where one panel belongs" end
+            if key(base.band0) ~= key(Paint.palette.gold) then failures[#failures + 1] = where .. ": lacquer: the band is not gold" end
+            if eff.pattern_bands ~= "line" or eff.pattern_bandwidth ~= 0.5 then failures[#failures + 1] = where .. ": lacquer: the bands are not lines at half width" end
+            if info.warnings then failures[#failures + 1] = where .. ": lacquer: a warning on a pattern with a ground" end
+            -- A ground the page sets goes before the panel.
+            local own = paint(page(p.name, "colourway=" .. cw .. ", finish=lacquer, ground=cells, backdrop=" .. bd))
+            local gf2 = 0
+            local g2 = own.pt.pattern.inks.ground
+            if g2 then for _, x in ipairs(own.fills) do if key(x) == key(g2) then gf2 = gf2 + 1 end end end
+            if gf2 <= 1 then failures[#failures + 1] = where .. ": lacquer: ground=cells set on the page lost to the panel" end
+          else
+            local filled = paint(page(p.name, "colourway=" .. cw .. ", finish=filled, backdrop=" .. bd))
+            if rec.pt:body() ~= filled.pt:body() then failures[#failures + 1] = where .. ": lacquer: a pattern without a ground is not its filled page" end
+            if not (info.warnings and info.warnings[1]) then failures[#failures + 1] = where .. ": lacquer: no warning on a pattern without a ground" end
+          end
+        end
+      end
+    end
+  end
+  return cells, failures
+end
+
+-- Each alias of `expect` (alias -> pattern) against its pattern, on the
+-- matrix's page, light and dark, named in the spec's pattern weights and in
+-- a setup line. Returns the pages compared and those that differ.
+function M.aliases(expect)
+  local n, bad = 0, {}
+  for alias, target in pairs(expect) do
+    for _, bd in ipairs({ "light", "dark" }) do
+      local want = paint(page(target, "colourway=tsuki-mi, backdrop=" .. bd)).pt:body()
+      local raw = paint(page(alias, "colourway=tsuki-mi, backdrop=" .. bd)).pt:body()
+      local line = paint(page(target, "pattern=" .. alias .. ", colourway=tsuki-mi, backdrop=" .. bd)).pt:body()
+      for _, got in ipairs({ { "spec", raw }, { "setup line", line } }) do
+        n = n + 1
+        if got[2] ~= want then bad[#bad + 1] = string.format("%s (%s, %s) does not paint as %s", alias, got[1], bd, target) end
+      end
+    end
+  end
+  return n, bad
 end
 
 return M
