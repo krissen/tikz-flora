@@ -959,8 +959,12 @@ function M.paint(spec, pt)
     end
     local a = 0
     -- A cell of a layout that places itself (c.fixed) is kept whenever it
-    -- keeps clear of the text; it does not thin out toward it.
-    if c.fixed then return true, d >= gap and 1 or 0, false, d >= gap end
+    -- keeps clear of the text and the page has any density; it does not
+    -- thin out toward the text.
+    if c.fixed then
+      local ok = dens > 0 and d >= gap
+      return true, ok and 1 or 0, false, ok
+    end
     if dens > 0 and d >= gap then
       local t = (d - gap) / ramp
       if edge == "dissolve" then a = r < smooth(t) and 1 or 0
@@ -1114,7 +1118,10 @@ function M.paint(spec, pt)
   if base.ground then
     local K = require("flora.pat_kit")
     if pieces.panel then
-      plate(grounded[1] and grounded[1].cell or { x = 0, y = 0 }, grounded[1] or { painted = 0 }, pieces.panel, M.cell_inks(base, 1).ground)
+      -- The panel lies under the pattern's cells; with none (density=0)
+      -- there is no pattern, and no panel.
+      local first = grounded[1] or { cell = { x = 0, y = 0 }, painted = 0 }
+      if #grounded > 0 then plate(first.cell, first, pieces.panel, M.cell_inks(base, 1).ground) end
     else
       for _, k in ipairs(grounded) do
         local c = k.cell
