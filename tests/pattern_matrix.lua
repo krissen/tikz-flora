@@ -33,6 +33,8 @@
 --             of the plane, measured on the cells' own outlines
 --   onecolour no hexagram star is painted in two colours: every fill that
 --             lies inside a star has that star's one colour
+--   onpanel   when the ground is one panel, everything the cells paint on
+--             the paper lies on it
 --   holes     no cell the field leaves out has every neighbour kept (the
 --             page's edge is hard, edge=cell)
 --   between   a plate that lies between cells runs along their outlines
@@ -52,6 +54,7 @@ local Rng = require("flora.rng")
 
 local M = {}
 local Units = dofile("tests/pattern_units.lua")
+local Panel = dofile("tests/pattern_panel.lua")
 
 -- How many of the kept cells have no kept cell near them: nearer than
 -- 1.6 times the usual distance to a cell's nearest kept neighbour.
@@ -369,6 +372,13 @@ function M.run(floors, filter)
               c.lone, c.open = lone, open
               if lone > 0 then fail(c, "units", lone .. " dots without their loop") end
               if open > 0 then fail(c, "units", open .. " line ends meeting no other") end
+            end
+            -- onpanel: with the ground as one panel, all the cells paint
+            -- lies on it (as far as it lies on the paper).
+            if finish == "filled" and base.ground and (ground == "panel" or (ground == "auto" and bd == "dark")) then
+              local _, res = Panel.check_page(spec)
+              c.off_panel = res.worst
+              if res.cells > 0 then fail(c, "onpanel", string.format("%d cells paint up to %.2f pt off the panel", res.cells, res.worst)) end
             end
             -- holes: a cell the field left out with every neighbour kept.
             -- The matrix's page has a hard edge (edge=cell), where only the

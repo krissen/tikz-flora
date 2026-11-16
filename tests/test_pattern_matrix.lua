@@ -208,6 +208,14 @@ caught("onecolour", "hexagram_lattice", function()
   end
 end, function() hexagram.cells = hexagram_cells end)
 
+-- Cells standing off the ground's panel again: the field no longer holds
+-- a cell to the panel, nor a turn to the field's side.
+do
+  local on_panel = Pattern.on_panel
+  caught("onpanel", "sikku_kolam", function() Pattern.on_panel = function() return true end end,
+    function() Pattern.on_panel = on_panel end)
+end
+
 -- A hole in the field: one hexagram star in eleven placed as though it
 -- reached into the text, its neighbours kept round it.
 local hex_cells2 = hexagram.cells
