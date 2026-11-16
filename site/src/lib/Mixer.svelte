@@ -1,7 +1,7 @@
 <script>
   import { onMount } from "svelte";
   import { meta as loadMeta, render, show, px, drawnBy } from "./render.js";
-  import { setupLine, colourParts, documentFor, patternDefaults, patternParts, patternFromQuery, TITLE_PAGES, ARCHES } from "./setup.js";
+  import { setupLine, colourParts, documentFor, patternDefaults, patternParts, patternFromQuery, finishesFor, TITLE_PAGES, ARCHES } from "./setup.js";
   import InkPicker from "./InkPicker.svelte";
   import COLOURWAYS from "./colourways.json";
   import { face } from "./ink.js";
@@ -74,12 +74,7 @@
   // needs a ground, catalog.patterns[].finishes).
   let offered = $derived.by(() => {
     const out = { ...pat.choices };
-    if (out.finish) {
-      const members = patterns.filter((p) => p.name === pattern.name);
-      const group = patternGroups.find(([t]) => t === pattern.name);
-      if (group) for (const n of group[1]) members.push(patterns.find((p) => p.name === n));
-      if (members.length > 0) out.finish = out.finish.filter((v) => members.every((p) => !p?.finishes || p.finishes.includes(v)));
-    }
+    if (out.finish) out.finish = finishesFor(pattern.name, out.finish, meta);
     return out;
   });
   // A finish the pattern no longer takes falls back to the default.
