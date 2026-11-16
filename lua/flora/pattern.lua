@@ -250,9 +250,10 @@ end
 -- pattern module lists the roles it uses (`roles`, patterns.lua) and
 -- paints only with them; it never picks an ink itself.
 --
---   ground  a surface under the cells, cell by cell: the cell's `under`
---           path, else its tile. Painted under ground=on for the patterns
---           that list it, at the lightness the palette gives it, else
+--   ground  a surface under the cells: cell by cell (the cell's `under`
+--           path, else its tile) under ground=cells, or one panel
+--           (M.panel_path) under ground=panel, on, and auto on a dark
+--           backdrop, for the patterns that list it, at the lightness the palette gives it, else
 --           the module's own (its `ground`), unless the palette sets
 --           ground=none.
 --   band    the strapwork and line work

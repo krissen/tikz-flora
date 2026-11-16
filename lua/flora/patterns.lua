@@ -27,7 +27,7 @@
 --          colour); it paints with no other. A pattern listing ground
 --          gives each cell's piece of it, the cell's `under` path or its
 --          `tile`, which the field paints under every cell under
---          ground=on. A cell that lies on its neighbours'
+--          ground=cells. A cell that lies on its neighbours'
 --          pieces and has none of its own says `rests = true`. A cell's
 --          `plates`, {path, "a", "b" or "accent"} pairs, are fields that
 --          tile the plane, painted with the ground. A plate that lies
