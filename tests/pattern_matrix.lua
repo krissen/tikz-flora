@@ -38,6 +38,7 @@
 --   holes     no cell the field leaves out has every neighbour kept (the
 --             page's edge is hard, edge=cell)
 --   between   a plate that lies between cells runs along their outlines
+--             (its gaps: tests/test_pattern_protect.lua)
 --
 -- M.knot(filter) runs the knot field (pat_celtic.lua's bleed and inset)
 -- over both knot patterns x layout x mode x backdrop, holding it to
@@ -390,8 +391,10 @@ function M.run(floors, filter)
               if h > 0 then fail(c, "holes", h .. " cells left out with every neighbour kept") end
             end
             -- between: a plate that lies between cells runs along their
-            -- outlines, so it is never nearer anything than they are
-            -- (pattern.lua's footprint leaves it out).
+            -- outlines, so the field ends along the cells. It does not keep
+            -- the plate clear: something may lie inside it, clear of every
+            -- cell round it. The plate keeps its own gaps (pattern.lua's
+            -- plate; tests/test_pattern_protect.lua).
             local bad_between = M.between(rec.pt.pattern)
             if bad_between > 0 then fail(c, "between", bad_between .. " plates between cells that leave their outlines") end
             -- fragments: kept cells with no kept neighbour.

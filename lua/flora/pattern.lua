@@ -180,17 +180,40 @@ local function path_shapes(cmds, out)
   return out
 end
 
+-- A path as the shapes its subpaths cover, each its own hull (and its
+-- circles), so a panel of many rectangles is measured rectangle by
+-- rectangle rather than as one hull over them all.
+local function subpath_shapes(cmds)
+  local out, cur = {}, nil
+  local function walk(cs)
+    for _, c in ipairs(cs) do
+      if type(c[1]) == "table" then walk(c)
+      elseif c[1] == "o" then out[#out + 1] = { circle = { c[2], c[3], c[4] } }
+      elseif c[1] == "m" then cur = {}; out[#out + 1] = cur; cur[1] = { c[2], c[3] }
+      elseif c[1] ~= "z" then
+        if not cur then cur = {}; out[#out + 1] = cur end
+        for i = 2, #c, 2 do cur[#cur + 1] = { c[i], c[i + 1] } end
+      end
+    end
+  end
+  walk(cmds)
+  for i, s in ipairs(out) do
+    if not s.circle then out[i] = { verts = hull(s) } end
+  end
+  return out
+end
+
 -- Everything cell `c` paints, as shapes the field measures its clearance
 -- by: the cell's outline, and the pieces it lays beyond it, its piece of
 -- the ground when the page lays the ground cell by cell (`base.ground`, and
 -- not as one panel, `base.ground_panel`: its `under` path, else its tile)
 -- and its own plates unless the page is painted as lines. A ground square
 -- round a small dot reaches far past the dot. A plate that lies between
--- cells (`between`) is not the cell's alone: it is laid only when every
--- cell it lies between is kept, and its outline runs along theirs
--- (tests/pattern_matrix.lua holds it to that), so it is never nearer the
--- text, the hero or the margin than they are, and it does not count here.
--- The ground's panel keeps its own gaps (M.panel_path).
+-- cells (`between`) is not the cell's alone and does not count here: it is
+-- laid only when every cell it lies between is kept, and, as every plate
+-- and the ground's panel, only when it keeps the gaps itself (M.paint's
+-- plate). Its cells keeping theirs is not enough: a reservation may lie
+-- inside it, clear of every cell round it.
 function M.footprint(c, base)
   local out = { c }
   if base.ground and not base.ground_panel then
@@ -843,6 +866,29 @@ end
 
 -- Lay out and paint the page's pattern onto `pt`. Returns false when the
 -- pattern weights leave nothing to pick, so the caller grows flora.
+-- The one measure of the gaps, for everything the field paints: how far
+-- `shapes`, reached `reach` past, lie from what field f keeps clear of
+-- (f.keep, less that reach), and whether they keep the hero's gap (f.hero;
+-- `is_hero` for the hero itself) and, under outer=margin, lie inside the
+-- margin of the page (f.page). Returns that distance and that verdict.
+function M.measure(shapes, reach, f, is_hero)
+  local d, ok = math.huge, true
+  for _, s in ipairs(shapes) do
+    for _, rc in ipairs(f.keep) do d = math.min(d, M.clearance(s, rc) - reach) end
+    if f.hero and not is_hero and M.disc_clearance(s, f.hero) - reach < GAP then ok = false end
+    if f.outer == "margin" and not within(s, f.page, OUTER_MARGIN + reach) then ok = false end
+  end
+  return d, ok
+end
+
+-- The precondition for laying anything on the page: whether `shapes` of
+-- the form named (cell, plate, between, piece, panel, hero) keep every gap
+-- of field f by M.measure. M.paint asks it at every place it paints.
+function M.lays(form, shapes, reach, f)
+  local d, ok = M.measure(shapes, reach, f, form == "hero")
+  return ok and d >= f.gap
+end
+
 function M.paint(spec, pt)
   local rng = Rng.new(spec.seed or 1)
   local p = Patterns.pick(rng:fork("choose pattern"), weights(spec.pattern))
@@ -938,38 +984,33 @@ function M.paint(spec, pt)
   local stagger = rng:fork("growth")
   local kept, offered, bare = {}, 0, {}
   local onpage = {}
+  local page = { 0, 0, W, top }
+  local field = { keep = keep_rects, hero = hero, gap = gap, outer = outer, page = page }
+  local function measure(shapes, reach) return M.measure(shapes, reach, field) end
+  local function fits(form, shapes, reach) return M.lays(form, shapes, reach, field) end
   -- Whether each cell is placed, and the share it keeps (0 drops it).
   local function judge(c, r)
     local in_side = not side or (side.left and c.x < text.x0) or (side.right and c.x > text.x1)
     -- Paint reaches half a band and the cell's own pad beyond its outline.
     local reach = width / 2 + (c.pad or 0)
-    local page = { 0, 0, W, top }
     onpage[c] = M.clearance(c, page) <= reach
     -- The gaps hold for everything the cell paints, not its outline alone.
     local shapes = M.footprint(c, base)
-    local placed = in_side
+    local d, ok = measure(shapes, reach)
     local on_panel = true
-    for _, s in ipairs(shapes) do
-      if hero and M.disc_clearance(s, hero) - reach < GAP then placed = false end
-      if outer == "margin" and not within(s, page, OUTER_MARGIN + reach) then placed = false end
-      if panel_rects and not M.on_panel(s, panel_rects, reach, W, top) then on_panel = false end
+    if panel_rects then
+      for _, s in ipairs(shapes) do
+        if not M.on_panel(s, panel_rects, reach, W, top) then on_panel = false end
+      end
     end
-    placed = placed and on_panel
+    local placed = in_side and ok and on_panel
     if outer ~= "margin" then placed = placed and M.clearance(c, page) <= reach end
-    local d = math.huge
-    for _, rc in ipairs(keep_rects) do
-      for _, s in ipairs(shapes) do d = math.min(d, M.clearance(s, rc) - reach) end
-    end
     -- The last value: clear of the text and the hero, on the page, on
     -- whichever side (a reweave's turns, below).
     if not placed then
       -- Clear for everything the cell paints, as a placed cell is, and on
       -- the field's side and its panel.
-      local free = in_side and on_panel and onpage[c] and dens > 0 and d >= gap
-      for _, s in ipairs(shapes) do
-        if hero and M.disc_clearance(s, hero) - reach < GAP then free = false end
-        if outer == "margin" and not within(s, page, OUTER_MARGIN + reach) then free = false end
-      end
+      local free = in_side and on_panel and onpage[c] and dens > 0 and ok and d >= gap
       return false, 0, false, free
     end
     local a = 0
@@ -1110,7 +1151,14 @@ function M.paint(spec, pt)
   -- cell is painted.
   -- Pieces that meet edge to edge (the ground, a cell's plates) are
   -- stroked as well as filled, so neighbours leave no seam between them.
-  local function plate(c, k, path, colour)
+  -- Nothing is laid that does not keep the gaps itself (fits), whatever
+  -- laid the cells round it: a plate, a piece of the ground, the ground's
+  -- panel and a plate between cells alike, each subpath as painted (filled,
+  -- and stroked 0.6 wide). One that does not is left out, and the paper
+  -- (or what lies under it) shows there.
+  local PLATE_REACH = 0.3
+  local function plate(c, k, path, colour, form)
+    if not fits(form, subpath_shapes(path), PLATE_REACH) then return false end
     local function draw() lit(function() pt:fill(path, colour, 1); pt:stroke(path, colour, 0.6, 1) end) end
     if grow then
       if grow >= k.painted then draw() end
@@ -1136,12 +1184,12 @@ function M.paint(spec, pt)
       -- The panel lies under the pattern's cells; with none (density=0)
       -- there is no pattern, and no panel.
       local first = grounded[1] or { cell = { x = 0, y = 0 }, painted = 0 }
-      if #grounded > 0 then plate(first.cell, first, pieces.panel, M.cell_inks(base, 1).ground) end
+      if #grounded > 0 then plate(first.cell, first, pieces.panel, M.cell_inks(base, 1).ground, "panel") end
     else
       for _, k in ipairs(grounded) do
         local c = k.cell
         local under, colour = pieces.piece(k, c.under or (c.tile and K.path(c.tile)), M.cell_inks(base, k.a).ground)
-        if under then plate(c, k, under, colour)
+        if under then plate(c, k, under, colour, "piece")
         elseif not c.rests and not pieces.drops then holes = holes + 1 end
       end
     end
@@ -1167,14 +1215,19 @@ function M.paint(spec, pt)
       for _, pl in ipairs(k.cell.plates or {}) do
         local ik = M.cell_inks(base, k.a)
         local colour = pl[2] == "accent" and ik.accent or ik.fill[pl[2] == "b" and 2 or 1]
-        if between_ok(pl) then plate(k.cell, k, pl[1], colour) end
+        if between_ok(pl) then plate(k.cell, k, pl[1], colour, pl.between and "between" or "plate") end
       end
     end
   end
   for _, k in ipairs(kept) do
     local c, ink = k.cell, band_ink(M.cell_inks(base, k.a), p, spec, k_scale)
     local birth, painted = k.birth, k.painted
-    if grow then
+    -- The same precondition for the cell itself, its outline and what it
+    -- lays (M.footprint), as judge placed it.
+    if not fits("cell", M.footprint(c, base), width / 2 + (c.pad or 0)) then
+      -- Left out. judge keeps no such cell; this holds should it ever.
+      pt.pattern_unfit = (pt.pattern_unfit or 0) + 1
+    elseif grow then
       -- A "watch it grow" frame (spec.grow, tools/grow-frame.sh) shows a
       -- cell on the times the progression parts below use: its lines once
       -- it is born and the cell halfway through its painting, or, with a
@@ -1202,7 +1255,9 @@ function M.paint(spec, pt)
         function() lit(function() c.paint(pt, c, ink) end) end, nil, c.sweep and { sweep = c.sweep } or nil)
     end
   end
-  if hero then M.paint_hero(pt, hero, band_ink(M.cell_inks(base, 1, true), p, spec, k_scale), grow) end
+  if hero and fits("hero", { { circle = hero } }, 0) then
+    M.paint_hero(pt, hero, band_ink(M.cell_inks(base, 1, true), p, spec, k_scale), grow)
+  end
   if edge == "guilloche" and (not grow or grow >= 0.1) then
     local ink = band_ink(M.cell_inks(base, 1, true), p, spec, k_scale)
     Progression.part(pt, "pattern_border", { text.x0, text.y0 }, 0, 0.2, function()
@@ -1227,6 +1282,9 @@ function M.paint(spec, pt)
     all = cells, onpage = onpage, warnings = pt.pattern_warnings,
     -- Cells that should lay a piece of the ground and have none.
     holes = holes, grounded = base.ground and #grounded or 0,
+    -- Kept cells left out at painting for not keeping their gaps (none,
+    -- tests/test_pattern_protect.lua).
+    unfit = pt.pattern_unfit or 0,
     -- The field's edge (M.field_edges): cells with no grounded neighbour, and
     -- at the edge.
     isolated = edgeinfo.isolated, edge_cells = edgeinfo.edge }
