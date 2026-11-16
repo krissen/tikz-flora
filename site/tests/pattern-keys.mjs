@@ -16,7 +16,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { chromium } from "playwright-core";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { patternDefaults, patternParts, patternFromQuery, colourParts } from "../src/lib/setup.js";
+import { patternDefaults, patternParts, patternFromQuery, colourParts, finishesFor } from "../src/lib/setup.js";
 
 const SITE = join(dirname(fileURLToPath(import.meta.url)), "..");
 const catalog = JSON.parse(readFileSync(process.argv[2] ?? join(SITE, "public/bake/catalog.json"), "utf8"));
@@ -47,6 +47,28 @@ for (const k of pat.keys) {
   check(patternFromQuery(new URLSearchParams(`${k}=nonesuch`), meta)[k] === d, `?${k}=nonesuch is not ignored`);
 }
 check(patternParts({ name: "", hero: "rose" }, meta).length === 0, "flora has pattern keys");
+
+// Values a pattern takes of its own: ends=bleed on celtic_knot and
+// finish=lacquer on asanoha reach the line and the URL like any value.
+for (const [name, k, v] of [["celtic_knot", "ends", "bleed"], ["asanoha", "finish", "lacquer"]]) {
+  check(pat.choices[k]?.includes(v), `${k} does not offer ${v}`);
+  check(patternParts({ name, [k]: v }, meta).includes(`${k}=${v}`), `${name}: ${k}=${v} is not in the setup line`);
+  check(String(patternFromQuery(new URLSearchParams(`pattern=${name}&${k}=${v}`), meta)[k]) === v, `${name}: ?${k}=${v} is not kept`);
+}
+// The mixer offers lacquer only where every pattern the name can pick takes
+// it (the catalog's finishes, and the mixer's own filter): on sikku_kolam
+// and asanoha, not on rosette_lattice or a pattern without a ground, and
+// not on a group with a member that does not take it.
+{
+  const fin = pat.choices.finish;
+  const takes = (name) => finishesFor(name, fin, meta).includes("lacquer");
+  check(takes("sikku_kolam") && takes("asanoha"), "lacquer is not offered on sikku_kolam and asanoha");
+  for (const name of ["rosette_lattice", "kikko", "celtic_knot", "khatam"]) check(!takes(name), `lacquer is offered on ${name}`);
+  check(!takes("japanese"), "lacquer is offered on a group with a member that does not take it");
+  const lacquered = catalog.patterns.filter((p) => (p.finishes ?? []).includes("lacquer")).map((p) => p.name).sort();
+  check(JSON.stringify(lacquered) === JSON.stringify(["asanoha", "sikku_kolam"]), `the catalog gives lacquer to ${lacquered}`);
+  check(JSON.stringify(finishesFor("", fin, meta)) === JSON.stringify(fin), "with no pattern every finish is not listed");
+}
 
 // The colour parts the worker parses for its preview (settings.lua's
 // pattern_preview) are the setup line's: a colourway chosen in the mixer
@@ -85,7 +107,11 @@ check(patternParts({ name: "", hero: "rose" }, meta).length === 0, "flora has pa
 // is rosette_lattice, which has fields, a ground and straps, so that every
 // key (saturation, ground and bands among them) changes what it paints;
 // the star patterns' own keys are tried on the star pattern they belong to.
-const PAGE = { starfill: "khatam", gapfill: "khatam", alternate: "hexagram_lattice" };
+const PAGE = { starfill: "khatam", gapfill: "khatam", alternate: "hexagram_lattice", ends: "celtic_knot", panels: "sikku_kolam" };
+// The value each key is tried with where its first value after the default
+// is what auto already gives on that page (ground=off on light paper,
+// ends=closed, panels=on and the star patterns' own choices).
+const VALUE = { ground: "panel", ends: "bleed", panels: "off", starfill: "split", gapfill: "paper", alternate: "rows" };
 if (!existsSync(join(SITE, "dist/mixer/index.html"))) check(false, "site/dist is not built (npm run build in site/)");
 else {
   const PORT = process.env.PATTERN_KEYS_PORT || "4318";
@@ -115,7 +141,7 @@ else {
       }
       const ctl = page.locator(`details.pattern [data-pattern-key="${k}"]`);
       if (await ctl.count() !== 1) { check(false, `${k}: the mixer has no control for it`); continue; }
-      const v = pat.choices[k] ? pat.choices[k].find((x) => x !== String(pat.defaults[k])) : String(pat.range[k][1]);
+      const v = VALUE[k] ?? (pat.choices[k] ? pat.choices[k].find((x) => x !== String(pat.defaults[k])) : String(pat.range[k][1]));
       if (pat.choices[k]) await ctl.getByRole("button", { name: v, exact: true }).click();
       else await ctl.locator('input[type="range"]').fill(v);
       await settled(page);
