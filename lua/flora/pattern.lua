@@ -203,6 +203,30 @@ local function subpath_shapes(cmds)
   return out
 end
 
+-- Whether point (x, y) lies on any of `shapes` (subpath_shapes'), within
+-- `slack`.
+local function covers(shapes, x, y, slack)
+  for _, s in ipairs(shapes) do
+    if s.circle then
+      local c = s.circle
+      if (c[1] - x) ^ 2 + (c[2] - y) ^ 2 <= (c[3] + slack) ^ 2 then return true end
+    elseif #s.verts > 0 then
+      local P = s.verts
+      local x0, y0, x1, y1 = math.huge, math.huge, -math.huge, -math.huge
+      for _, q in ipairs(P) do x0, y0, x1, y1 = math.min(x0, q[1]), math.min(y0, q[2]), math.max(x1, q[1]), math.max(y1, q[2]) end
+      if x >= x0 - slack and x <= x1 + slack and y >= y0 - slack and y <= y1 + slack then
+        if in_poly(x, y, P) then return true end
+        local j = #P
+        for i = 1, #P do
+          if seg_point(x, y, P[j], P[i]) <= slack then return true end
+          j = i
+        end
+      end
+    end
+  end
+  return false
+end
+
 -- Everything cell `c` paints, as shapes the field measures its clearance
 -- by: the cell's outline, and the pieces it lays beyond it, its piece of
 -- the ground when the page lays the ground cell by cell (`base.ground`, and
@@ -555,9 +579,9 @@ end
 -- A cell's colours, mixed by 1 - a toward what it fades into
 -- (base.fade: the page as it is shown); `hero` for the hero's, which lies
 -- on the paper with its bands unlit and is repainted with the page.
-function M.cell_inks(base, a, hero)
+function M.cell_inks(base, a, hero, to)
   local pal = Paint.palette
-  local to = (not hero and base.fade) or pal.paper
+  to = to or (not hero and base.fade) or pal.paper
   local function f(c) return c and (a >= 1 and c or Paint.mix(to, c, a)) end
   return {
     band = f(hero and base.band0 or base.band), core = f(base.core), accent = f(base.accent),
@@ -1174,6 +1198,7 @@ function M.paint(spec, pt)
     else
       Progression.part(pt, "pattern_ground", { c.x, c.y }, k.painted, BAND, draw, nil, { no_area = true })
     end
+    return true
   end
   local holes = 0
   local ge = opts.ground_edge or "cells"
@@ -1187,20 +1212,42 @@ function M.paint(spec, pt)
   local edgeinfo = need and M.field_edges(cells, grounded, onpage) or { share = {}, depth = {}, isolated = 0, edge = 0, nd = size }
   local fr = { text = text, gap = gap, side = side, W = W, top = top, ramp = ramp, avoid = keep_rects, hero = hero, outer = outer }
   local pieces = M.edge_pieces(ge, fr, edgeinfo)
+  -- The ground as laid, in order: { shapes, colour }.
+  local below = {}
   if base.ground then
     local K = require("flora.pat_kit")
     if pieces.panel then
       -- The panel lies under the pattern's cells; with none (density=0)
       -- there is no pattern, and no panel.
       local first = grounded[1] or { cell = { x = 0, y = 0 }, painted = 0 }
-      if #grounded > 0 then plate(first.cell, first, pieces.panel, M.cell_inks(base, 1).ground, "panel") end
+      if #grounded > 0 and plate(first.cell, first, pieces.panel, M.cell_inks(base, 1).ground, "panel") then
+        below[1] = { shapes = subpath_shapes(pieces.panel), colour = M.cell_inks(base, 1).ground }
+      end
     else
       for _, k in ipairs(grounded) do
         local c = k.cell
+        -- A piece fades with its cell toward the page.
         local under, colour = pieces.piece(k, c.under or (c.tile and K.path(c.tile)), M.cell_inks(base, k.a).ground)
-        if under then plate(c, k, under, colour, "piece")
+        if under then
+          if plate(c, k, under, colour, "piece") then
+            below[#below + 1] = { shapes = subpath_shapes(under), colour = colour }
+          end
         elseif not c.rests and not pieces.drops then holes = holes + 1 end
       end
+    end
+  end
+  -- What lies under kept cell k where it is painted, which it fades toward
+  -- (M.cell_inks' `to`): the ground laid last at its middle (taken on the
+  -- paper, for a cell whose centre lies off it), the panel or a piece, as
+  -- that was painted (a piece fades with its own cell toward the page; a
+  -- cell resting on its neighbours' pieces lies on theirs); else nothing,
+  -- and the cell fades toward the page (nil). The one place the fading's
+  -- target is chosen.
+  local function under_of(k)
+    local x = math.max(0, math.min(W, k.cell.x))
+    local y = math.max(0, math.min(top, k.cell.y))
+    for i = #below, 1, -1 do
+      if covers(below[i].shapes, x, y, 1) then return below[i].colour end
     end
   end
   -- A cell's plates: fields that tile the plane, painted with the ground.
@@ -1222,14 +1269,14 @@ function M.paint(spec, pt)
     end
     for _, k in ipairs(kept) do
       for _, pl in ipairs(k.cell.plates or {}) do
-        local ik = M.cell_inks(base, k.a)
+        local ik = M.cell_inks(base, k.a, nil, under_of(k))
         local colour = pl[2] == "accent" and ik.accent or ik.fill[pl[2] == "b" and 2 or 1]
         if between_ok(pl) then plate(k.cell, k, pl[1], colour, pl.between and "between" or "plate") end
       end
     end
   end
   for _, k in ipairs(kept) do
-    local c, ink = k.cell, band_ink(M.cell_inks(base, k.a), p, spec, k_scale)
+    local c, ink = k.cell, band_ink(M.cell_inks(base, k.a, nil, under_of(k)), p, spec, k_scale)
     local birth, painted = k.birth, k.painted
     -- The same precondition for the cell itself, its outline and what it
     -- lays (M.footprint), as judge placed it.

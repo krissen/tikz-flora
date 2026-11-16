@@ -345,7 +345,7 @@ do
   f:close()
   for _, m in ipairs({
     { "the knot's fixed cells", "local ok = dens > 0 and d >= gap", "local ok = d >= gap", "celtic_knot" },
-    { "an empty panel", "if #grounded > 0 then", "if true then", "asanoha" },
+    { "an empty panel", "if #grounded > 0 and plate(", "if true and plate(", "asanoha" },
   }) do
     local i, j = src:find(m[2], 1, true)
     H.check(i ~= nil, "mutation: the line is gone from pattern.lua: " .. m[2])
@@ -356,6 +356,30 @@ do
       H.check(#mf > 0, "the density0 check missed " .. m[1])
       if os.getenv("FLORA_MATRIX_VERBOSE") then print(string.format("mutation density0 %s: %d failures", m[1], #mf)) end
     end
+  end
+end
+
+-- A faded cell fades into what lies under it, the ground or the page, and
+-- the check fails when every cell fades toward the page again.
+do
+  local pages, compared, fs = M.fadeunder()
+  H.check(pages == 144, "fadeunder pages: " .. pages)
+  H.check(compared > 0, "fadeunder compared no colours")
+  for _, f in ipairs(fs) do H.check(false, f) end
+  if os.getenv("FLORA_MATRIX_VERBOSE") then print(string.format("fadeunder: %d pages, %d faded colours, %d failures", pages, compared, #fs)) end
+  local real = package.loaded["flora.pattern"]
+  local f = io.open("lua/flora/pattern.lua")
+  local src = f:read("a")
+  f:close()
+  local line = "to = to or (not hero and base.fade) or pal.paper"
+  local i, j = src:find(line, 1, true)
+  H.check(i ~= nil, "mutation: the line is gone from pattern.lua: " .. line)
+  if i then
+    package.loaded["flora.pattern"] = assert(load(src:sub(1, i - 1) .. "to = (not hero and base.fade) or pal.paper" .. src:sub(j + 1), "@pattern.lua (mutated)"))()
+    local _, _, mf = M.fadeunder()
+    package.loaded["flora.pattern"] = real
+    H.check(#mf > 0, "the fadeunder check missed cells faded toward the page over a ground")
+    if os.getenv("FLORA_MATRIX_VERBOSE") then print(string.format("mutation fadeunder toward the page: %d failures", #mf)) end
   end
 end
 

@@ -44,6 +44,12 @@
 -- over both knot patterns x layout x mode x backdrop, holding it to
 --   units     no strand ending loose inside the page
 --
+-- M.fadeunder(filter) runs every pattern with a ground x ground x
+-- backdrop x colourway under edge=fade, holding it to
+--   fadeunder a faded cell's colours lie between its whole colours and
+--             what is painted under it (the ground's piece or panel there,
+--             else the page), as shown
+--
 -- M.reweave(filter) runs every pattern that reweaves its field's edge x
 -- edge x ground x layout x backdrop, holding it to
 --   reweave   the drawing woven again keeps the edge's treatment: every
@@ -607,6 +613,156 @@ function M.lacquer(filter)
     end
   end
   return cells, failures
+end
+
+-- Whether (x, y) lies on path `cmds` (its subpaths, Bezier control
+-- polygons and circles), within `slack`.
+local function on_path(cmds, x, y, slack)
+  local subs, cur = {}, nil
+  local function walk(cs)
+    for _, c in ipairs(cs) do
+      if type(c[1]) == "table" then walk(c)
+      elseif c[1] == "o" then
+        if math.sqrt((c[2] - x) ^ 2 + (c[3] - y) ^ 2) <= c[4] + slack then subs.hit = true end
+      elseif c[1] == "m" then cur = { { c[2], c[3] } }; subs[#subs + 1] = cur
+      elseif c[1] ~= "z" then
+        if not cur then cur = {}; subs[#subs + 1] = cur end
+        for i = 2, #c, 2 do cur[#cur + 1] = { c[i], c[i + 1] } end
+      end
+    end
+  end
+  walk(cmds)
+  if subs.hit then return true end
+  for _, P in ipairs(subs) do
+    local inside, j = false, #P
+    for i = 1, #P do
+      local a, b = P[i], P[j]
+      if (a[2] > y) ~= (b[2] > y) and x < (b[1] - a[1]) * (y - a[2]) / (b[2] - a[2]) + a[1] then inside = not inside end
+      local dx, dy = a[1] - b[1], a[2] - b[2]
+      local L2 = dx * dx + dy * dy
+      local t = L2 > 0 and math.max(0, math.min(1, ((x - b[1]) * dx + (y - b[2]) * dy) / L2)) or 0
+      if math.sqrt((x - b[1] - t * dx) ^ 2 + (y - b[2] - t * dy) ^ 2) <= slack then return true end
+      j = i
+    end
+    if inside then return true end
+  end
+  return false
+end
+local function lab(c)
+  local L, Ch, h = Color.lch(c)
+  local r = math.rad(h or 0)
+  return L, Ch * math.cos(r), Ch * math.sin(r)
+end
+local function de(p, q)
+  local a1, b1, c1 = lab(p)
+  local a2, b2, c2 = lab(q)
+  return math.sqrt((a1 - a2) ^ 2 + (b1 - b2) ^ 2 + (c1 - c2) ^ 2)
+end
+
+-- A page under edge=fade painted twice, as it is and with every cell whole
+-- (Pattern.cell_inks at a share of 1): for each faded cell, its colours as
+-- shown, paired with the whole ones, and the ground painted under its
+-- centre on the paper (the last of the ground's pieces or panel there,
+-- found by the paths Pattern.edge_pieces hands out), else the page.
+local function fade_pages(spec)
+  local Progression = require("flora.progression")
+  -- The field as loaded now (a mutation may have put another in its place).
+  local Pattern = require("flora.pattern")
+  local function run(whole)
+    local out, grounds, share = {}, {}, nil
+    local cur
+    local fill, stroke, part, ep, ci = Paint.fill, Paint.stroke, Progression.part, Pattern.edge_pieces, Pattern.cell_inks
+    local tagged = setmetatable({}, { __mode = "k" })
+    Pattern.edge_pieces = function(mode, f, info)
+      local r = ep(mode, f, info)
+      if r.panel then tagged[r.panel] = true end
+      if r.piece then
+        local piece = r.piece
+        r.piece = function(...)
+          local q, col = piece(...)
+          if q then tagged[q] = true end
+          return q, col
+        end
+      end
+      return r
+    end
+    Pattern.cell_inks = function(base, a, hero, ...)
+      share = a
+      return ci(base, whole and 1 or a, hero, ...)
+    end
+    local function rec(self, cmds, rgb)
+      if not (self.group and self.group.tag == "pattern") then return end
+      if tagged[cmds] then grounds[#grounds + 1] = { cmds = cmds, rgb = self:ink(rgb) }
+      elseif cur then out[#out + 1] = { rgb = self:ink(rgb), at = cur, a = share, under = #grounds } end
+    end
+    Paint.fill = function(self, cmds, rgb, ...) rec(self, cmds, rgb); return fill(self, cmds, rgb, ...) end
+    Paint.stroke = function(self, cmds, rgb, ...) rec(self, cmds, rgb); return stroke(self, cmds, rgb, ...) end
+    Progression.part = function(pt, k, a, b, d, fn, ...)
+      return part(pt, k, a, b, d, function()
+        local u = cur
+        if k == "pattern" or k == "pattern_line" or k == "pattern_ground" then cur = a end
+        local ok, r = pcall(fn)
+        cur = u
+        if not ok then error(r, 0) end
+        return r
+      end, ...)
+    end
+    Paint.reset_resources()
+    local ok, pt = pcall(Compose.page, spec)
+    Paint.fill, Paint.stroke, Progression.part, Pattern.edge_pieces, Pattern.cell_inks = fill, stroke, part, ep, ci
+    if not ok then error(pt, 0) end
+    return pt, out, grounds
+  end
+  local pt, faded, grounds = run(false)
+  local _, whole = run(true)
+  return pt, faded, whole, grounds
+end
+
+M.FADE_COLOURWAYS = { "tsuki-mi", "ember", "usu-zumi", "winter" }
+function M.fadeunder(filter)
+  local pages, compared, failures = 0, 0, {}
+  for _, p in ipairs(Patterns.list) do
+    local has = false
+    for _, r in ipairs(p.roles) do if r == "ground" then has = true end end
+    if has and (not filter or filter(p.name)) then
+      for _, ground in ipairs({ "auto", "off", "panel", "motif", "round", "cells" }) do
+        for _, bd in ipairs({ "light", "dark" }) do
+          for _, cw in ipairs(M.FADE_COLOURWAYS) do
+            local spec = page(p.name, "colourway=" .. cw .. ", edge=fade, ends=cut, ground=" .. ground .. ", backdrop=" .. bd)
+            spec.mix = { density = 2 }
+            local pt, faded, whole, grounds = fade_pages(spec)
+            pages = pages + 1
+            local where = string.format("%s ground=%s %s %s", p.name, ground, bd, cw)
+            if #faded ~= #whole then
+              failures[#failures + 1] = where .. ": fadeunder: the whole page paints " .. #whole .. " colours, the faded one " .. #faded
+            else
+              local paper = pt:ink(Paint.palette.paper)
+              local bad = 0
+              for i, f in ipairs(faded) do
+                if f.a and f.a < 1 then
+                  -- What lies under the cell's centre as it is painted: the
+                  -- last ground laid there before it, else the page.
+                  local under
+                  local x = math.max(0, math.min(spec.width, f.at[1]))
+                  local y = math.max(0, math.min(spec.height, f.at[2]))
+                  for g = f.under, 1, -1 do
+                    if on_path(grounds[g].cmds, x, y, 1) then under = grounds[g].rgb; break end
+                  end
+                  under = under or paper
+                  local w = whole[i].rgb
+                  local d = de(w, under)
+                  compared = compared + 1
+                  if de(f.rgb, under) > d + 2e-3 or de(f.rgb, w) > d + 2e-3 then bad = bad + 1 end
+                end
+              end
+              if bad > 0 then failures[#failures + 1] = string.format("%s: fadeunder: %d faded colours not between their whole colour and what lies under them", where, bad) end
+            end
+          end
+        end
+      end
+    end
+  end
+  return pages, compared, failures
 end
 
 -- The pages of M.reweave: the field drawn once (pattern_opts.reweave =
