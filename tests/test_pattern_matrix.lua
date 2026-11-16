@@ -294,7 +294,17 @@ do
     local out, w = finish_spec(spec, p)
     if out ~= spec and not w then out.pattern_ground = "panel" end
     return out, w
-  end, "rosette_lattice")
+  end, "sikku_kolam")
+  -- The rosette lattice claiming lacquer again: its page is no longer the
+  -- filled one.
+  do
+    local rl = Patterns.by_name.rosette_lattice
+    rl.finishes = { "lacquer" }
+    local _, fs = M.lacquer(function(n) return n == "rosette_lattice" end)
+    rl.finishes = nil
+    H.check(#fs > 0, "the lacquer check missed the rosette lattice taking lacquer")
+    if os.getenv("FLORA_MATRIX_VERBOSE") then print(string.format("mutation lacquer on rosette_lattice: %d failures", #fs)) end
+  end
   -- Lacquer's line work put on a pattern without a ground.
   mutant("a half look on a pattern without a ground", function(spec, p)
     local out, w = finish_spec(spec, p)

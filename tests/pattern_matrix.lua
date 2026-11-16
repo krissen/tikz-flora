@@ -543,12 +543,14 @@ function M.knot(filter)
 end
 
 -- finish=lacquer over every pattern x colourway (tsuki-mi, ember,
--- usu-zumi) x backdrop. On a pattern with a ground: the ground is one
--- panel (one fill of the ground's colour), the band is gold (before a dark
--- ground lights it), the bands are lines at half width, and a ground the
--- page sets itself goes before the panel. On a pattern without one: the
--- page is the filled page byte for byte, and it says why. Returns cells,
--- failures.
+-- usu-zumi) x backdrop, against the patterns meant to take it (M.LACQUER,
+-- named here and not read from the modules, so a module that claims it
+-- wrongly is caught). On those: the ground is one panel (one fill of the
+-- ground's colour), the band is gold (before a dark ground lights it), the
+-- bands are lines at half width, and a ground the page sets itself goes
+-- before the panel. On any other: the page is the filled page byte for
+-- byte, and it says why. Returns cells, failures.
+M.LACQUER = { sikku_kolam = true, asanoha = true }
 function M.lacquer(filter)
   local cells, failures = {}, {}
   for _, p in ipairs(Patterns.list) do
@@ -561,7 +563,10 @@ function M.lacquer(filter)
           local info = rec.pt.pattern
           local base = info.inks
           cells[#cells + 1] = { pattern = p.name, colourway = cw, backdrop = bd }
-          if Pattern.has_ground(p) then
+          if Pattern.takes(p, "lacquer") ~= (M.LACQUER[p.name] or false) then
+            failures[#failures + 1] = where .. ": lacquer: the catalog's finishes do not say what the pattern takes"
+          end
+          if M.LACQUER[p.name] then
             local eff = Pattern.finish_spec(spec, p)
             local gf = 0
             if base.ground then for _, x in ipairs(rec.fills) do if key(x) == key(base.ground) then gf = gf + 1 end end end
