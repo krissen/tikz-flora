@@ -519,9 +519,11 @@ function M.role_inks(rng, p, spec)
   base.line = base.line0
   -- A band's lightness is set against the surface it lies on: a dark
   -- ground lights the bands of a line pattern, which lie on it, but not a
-  -- surface's (p.surface), whose bands lie on its fields.
+  -- surface's (p.surface), whose bands lie on its fields. A gold band
+  -- (finish=lacquer, or a palette's band=gold) is painted as the gold ink
+  -- itself, so it is gilt as gold is (Paint:stroke), on any ground.
   if base.ground and Color.lightness(base.ground) < DARK and not p.surface then
-    base.band = Color.on_ground(base.band, base.ground, pal.paper)
+    if base.band ~= pal.gold then base.band = Color.on_ground(base.band, base.ground, pal.paper) end
     base.line = Paint.mix(base.band, base.ground, R.line.mix)
   end
   return base
@@ -902,11 +904,11 @@ function M.paint(spec, pt)
   if opts.symmetric == nil then opts.symmetric = panels == "on" end
   local ground_edges = { auto = "panel", panel = "panel", motif = "shape", round = "discs", cells = "cells" }
   if opts.ground_edge == nil then opts.ground_edge = ground_edges[M.ground_mode(spec)] or "cells" end
-  -- Laid as one panel, the ground is no cell's piece (M.footprint), and
-  -- everything a cell paints lies on the panel: a cell whose paint would
   -- How the ground's pieces are laid, for M.footprint: the edge mode and
   -- the distance M.edge_pieces sizes a rounded piece by.
   base.ground_edge = opts.ground_edge
+  -- Laid as one panel, the ground is no cell's piece (M.footprint), and
+  -- everything a cell paints lies on the panel: a cell whose paint would
   -- reach past it does not stand (the panel keeps its straight edge).
   base.ground_panel = opts.ground_edge == "panel" or nil
   local panel_rects
@@ -931,9 +933,9 @@ function M.paint(spec, pt)
   local env = { x0 = 0, y0 = 0, x1 = W, y1 = H, size = size, rng = rng:fork("cells"), opts = opts, room = field_room, style = style,
     field_panel = field_panel }
   local cells = p.cells(env)
+  if base.ground and opts.ground_edge == "discs" then base.ground_nd = M.field_edges(cells, {}, {}).nd end
   local fall = rng:fork("dissolve")
   local stagger = rng:fork("growth")
-  if base.ground and opts.ground_edge == "discs" then base.ground_nd = M.field_edges(cells, {}, {}).nd end
   local kept, offered, bare = {}, 0, {}
   local onpage = {}
   -- Whether each cell is placed, and the share it keeps (0 drops it).
