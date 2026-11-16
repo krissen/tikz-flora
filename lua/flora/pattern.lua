@@ -348,27 +348,30 @@ for _, r in ipairs(M.ROLE_KEYS) do USER[r.role] = r.key end
 -- The finishes and band characters a page may ask for.
 M.finishes = { filled = true, lines = true, lacquer = true }
 
--- Whether pattern `p` lays a ground (lists the role and has its own
--- lightness for it): the patterns finish=lacquer serves.
-function M.has_ground(p)
-  if not p.ground then return false end
-  for _, r in ipairs(p.roles or {}) do if r == "ground" then return true end end
-  return false
-end
-
--- The finishes pattern `p` takes: lacquer only where there is a ground.
+-- The finishes pattern `p` takes: filled and lines for every pattern, and
+-- any further one the module names itself in `finishes` (lacquer, on
+-- sikku_kolam and asanoha).
 function M.finishes_of(p)
   local out = { "filled", "lines" }
-  if M.has_ground(p) then out[#out + 1] = "lacquer" end
+  for _, f in ipairs(p.finishes or {}) do
+    if f ~= "filled" and f ~= "lines" then out[#out + 1] = f end
+  end
   return out
+end
+
+-- Whether pattern `p` takes finish `f`.
+function M.takes(p, f)
+  for _, g in ipairs(M.finishes_of(p)) do if g == f then return true end end
+  return false
 end
 
 -- finish=lacquer, gold line work on a ground, as one value: the ground as
 -- a panel, the bands as a line at half their width, and the band in gold,
--- on a pattern that lays a ground. A key the page sets itself (ground,
--- bands, bandwidth) goes before the value lacquer gives it; the band is
--- gold whatever the colourway gives it. On a pattern without a ground the
--- finish is the usual filled one and the page says so (`warn`). Returns
+-- on a pattern that names lacquer among its finishes (M.takes). A key the
+-- page sets itself (ground, bands, bandwidth) goes before the value
+-- lacquer gives it; the band is gold whatever the colourway gives it. On
+-- any other pattern the finish is the usual filled one, byte for byte, and
+-- the page says so (`warn`). Returns
 -- the spec the page is painted with (`spec` itself unless lacquer applies)
 -- and the warning, if any.
 function M.finish_spec(spec, p)
@@ -378,8 +381,8 @@ function M.finish_spec(spec, p)
   local out = {}
   for k, v in pairs(spec) do out[k] = v end
   out[S.finish] = "filled"
-  if not M.has_ground(p) then
-    return out, string.format("finish=lacquer: %s has no ground, so it is painted with its usual finish", p.name)
+  if not M.takes(p, "lacquer") then
+    return out, string.format("finish=lacquer: %s does not take it, so it is painted with its usual finish", p.name)
   end
   if out[S.ground] == nil then out[S.ground] = "panel" end
   if out[S.bands] == nil then out[S.bands] = "line" end

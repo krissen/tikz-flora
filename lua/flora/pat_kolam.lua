@@ -43,6 +43,8 @@ return {
   title = "Sikku kolam, lines looped round a grid of dots, as mirror curves",
   tags = { "kolam", "tamil", "south_indian", "dot_grid" },
   roles = { "band", "core", "a", "ground" },
+  -- Its finishes beyond filled and lines (pattern.lua's finishes_of).
+  finishes = { "lacquer" },
   -- A dark ground, as in the mock (t-10).
   ground = 0.31,
   scale = 14,

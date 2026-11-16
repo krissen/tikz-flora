@@ -23,6 +23,8 @@ return {
   title = "Asanoha (hemp leaf), triangles split at their centres",
   tags = { "japanese", "kumiko", "lattice", "triangular" },
   roles = { "band", "accent", "ground" },
+  -- Its finishes beyond filled and lines (pattern.lua's finishes_of).
+  finishes = { "lacquer" },
   -- A dark ground, as in the mock (t-11).
   ground = 0.40,
   scale = 26,
