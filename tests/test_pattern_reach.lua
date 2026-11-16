@@ -11,7 +11,7 @@ local Pattern = require("flora.pattern")
 local verbose = os.getenv("FLORA_MATRIX_VERBOSE")
 local cells, failures = M.run()
 if verbose then print(string.format("reach: %d cells, %d failures", #cells, #failures)) end
-H.check(#cells == #Patterns.list * 2 * #M.EDGES * 2 * #M.VARIANTS * 2, "reach cells: " .. #cells)
+H.check(#cells == #Patterns.list * #M.GROUNDS * #M.EDGES * 2 * #M.VARIANTS * 2, "reach cells: " .. #cells)
 -- At scale 3 the larger cells do not fit inside the small page's margin,
 -- so some of those cells paint nothing; at scale 1 every cell paints.
 local empty, empty1 = 0, 0
@@ -33,5 +33,20 @@ local ok, _, fs = pcall(M.run, function(n) return n == "sikku_kolam" or n == "ro
 Pattern.footprint = footprint
 H.check(ok and #fs > 0, "the reach sweep missed cells placed by their outline alone")
 if verbose then print(string.format("mutation outline-only: %d failing cells", ok and #fs or -1)) end
+
+-- The ground's panel as it was first drawn: its side of the page edge to
+-- edge, under the hero and into the margin.
+local panel_path = Pattern.panel_path
+Pattern.panel_path = function(f)
+  local t, o = f.text, f.gap
+  local x0, x1 = -2, f.W + 2
+  if f.side and f.side.left and not f.side.right then x1 = t.x0 - o end
+  if f.side and f.side.right and not f.side.left then x0 = t.x1 + o end
+  return { { "m", x0, -2 }, { "l", x1, -2 }, { "l", x1, f.top + 2 }, { "l", x0, f.top + 2 }, { "z" } }
+end
+local ok2, _, fs2 = pcall(M.run, function(n) return n == "asanoha" end)
+Pattern.panel_path = panel_path
+H.check(ok2 and #fs2 > 0, "the reach sweep missed a ground panel under the hero and in the margin")
+if verbose then print(string.format("mutation panel-edge-to-edge: %d failing cells", ok2 and #fs2 or -1)) end
 
 H.done("pattern reach")

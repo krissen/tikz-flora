@@ -306,6 +306,15 @@ local function key(spec, k)
 end
 M.key = key
 
+-- The ground key as the field reads it. on is panel on every path, the
+-- settings' (Settings, which reads it so) and a spec's own pattern_ground
+-- alike, so that one value never means two grounds.
+function M.ground_mode(spec)
+  local g = key(spec, "ground")
+  if g == "on" then return "panel" end
+  return g
+end
+
 -- A palette value split into its ink (or group) and the lightness and
 -- chroma share it may carry: "ink", "ink:L", "ink:L:share" or "ink::share".
 function M.palette_value(v)
@@ -427,7 +436,7 @@ function M.role_inks(rng, p, spec)
   local has = false
   for _, r in ipairs(p.roles or {}) do if r == "ground" then has = true end end
   -- The ground key: auto lays it on a dark backdrop only.
-  local gmode = key(spec, "ground")
+  local gmode = M.ground_mode(spec)
   local bd = spec.backdrop
   if type(bd) ~= "table" then bd = Color.backdrop(bd) end
   local wants = gmode ~= "off" and not (gmode == "auto" and not bd)
@@ -556,6 +565,75 @@ function M.field_edges(cells, grounded, onpage)
   return info
 end
 
+-- The ground as one panel (ground=panel, and auto on a dark backdrop): the
+-- field's side of the page, keeping the gaps a cell keeps, as everything a
+-- cell paints does (M.footprint): the gap from the text and every other
+-- rectangle the field keeps clear of, the gap from the hero, and under
+-- outer=margin the margin; the plate's own stroke reaches 0.3 pt past it.
+-- Built as rectangles band by band, so that no hole is painted twice
+-- however the holes overlap; the hero's disc is cut in bands two degrees
+-- of its circle high, each as wide as the disc is at its widest there.
+function M.panel_path(f)
+  local s = 0.3 + 1e-3
+  local margin = f.outer == "margin"
+  local lo = margin and OUTER_MARGIN + s or -2
+  local hi = margin and f.top - OUTER_MARGIN - s or f.top + 2
+  local L, R = lo, margin and f.W - OUTER_MARGIN - s or f.W + 2
+  local t, o = f.text, f.gap + s
+  local strips = {}
+  local left, right = f.side and f.side.left, f.side and f.side.right
+  if not f.side then strips[1] = { L, R } end
+  if left then strips[#strips + 1] = { L, math.min(R, t.x0 - o) } end
+  if right then strips[#strips + 1] = { math.max(L, t.x1 + o), R } end
+  local holes = {}
+  for _, r in ipairs(f.avoid and #f.avoid > 0 and f.avoid or { { t.x0, t.y0, t.x1, t.y1 } }) do
+    holes[#holes + 1] = { r[1] - o, r[2] - o, r[3] + o, r[4] + o }
+  end
+  local h = f.hero
+  local hr = h and h[3] + GAP + s
+  local ys = { lo, hi }
+  for _, r in ipairs(holes) do ys[#ys + 1] = r[2]; ys[#ys + 1] = r[4] end
+  if h then for a = -90, 90, 2 do ys[#ys + 1] = h[2] + hr * math.sin(math.rad(a)) end end
+  table.sort(ys)
+  local bands = {}
+  for _, y in ipairs(ys) do
+    if y >= lo and y <= hi and (#bands == 0 or y - bands[#bands] > 1e-6) then bands[#bands + 1] = y end
+  end
+  local out = {}
+  for b = 1, #bands - 1 do
+    local y0, y1 = bands[b], bands[b + 1]
+    for _, st in ipairs(strips) do
+      local iv = { { st[1], st[2] } }
+      local function cut(a, z)
+        local nv = {}
+        for _, q in ipairs(iv) do
+          if z <= q[1] or a >= q[2] then nv[#nv + 1] = q
+          else
+            if a > q[1] then nv[#nv + 1] = { q[1], a } end
+            if z < q[2] then nv[#nv + 1] = { z, q[2] } end
+          end
+        end
+        iv = nv
+      end
+      for _, r in ipairs(holes) do if r[2] < y1 and r[4] > y0 then cut(r[1], r[3]) end end
+      if h then
+        local dmin = (y0 <= h[2] and h[2] <= y1) and 0 or math.min(math.abs(y0 - h[2]), math.abs(y1 - h[2]))
+        if dmin < hr then
+          local w = math.sqrt(hr * hr - dmin * dmin)
+          cut(h[1] - w, h[1] + w)
+        end
+      end
+      for _, q in ipairs(iv) do
+        if q[2] - q[1] > 1e-6 then
+          out[#out + 1] = { "m", q[1], y0 }; out[#out + 1] = { "l", q[2], y0 }
+          out[#out + 1] = { "l", q[2], y1 }; out[#out + 1] = { "l", q[1], y1 }; out[#out + 1] = { "z" }
+        end
+      end
+    end
+  end
+  return out
+end
+
 -- How the ground and the fields end where the pattern ends (pattern_opts'
 -- ground_edge): cells (each cell's tile, today's), dark (the same, but no
 -- ground on paper), panel (one panel with a straight edge toward the
@@ -567,19 +645,7 @@ end
 -- { piece = fn(k, path, colour) -> path, colour }.
 function M.edge_pieces(mode, f, info)
   local pal = Paint.palette
-  if mode == "panel" then
-    local t, o = f.text, f.gap
-    local rect
-    if f.side and f.side.left and not f.side.right then
-      rect = { { "m", -2, -2 }, { "l", t.x0 - o, -2 }, { "l", t.x0 - o, f.top + 2 }, { "l", -2, f.top + 2 }, { "z" } }
-    elseif f.side and f.side.right and not f.side.left then
-      rect = { { "m", t.x1 + o, -2 }, { "l", f.W + 2, -2 }, { "l", f.W + 2, f.top + 2 }, { "l", t.x1 + o, f.top + 2 }, { "z" } }
-    else
-      rect = { { "m", -2, -2 }, { "l", f.W + 2, -2 }, { "l", f.W + 2, f.top + 2 }, { "l", -2, f.top + 2 }, { "z" },
-        { "m", t.x0 - o, t.y0 - o }, { "l", t.x0 - o, t.y1 + o }, { "l", t.x1 + o, t.y1 + o }, { "l", t.x1 + o, t.y0 - o }, { "z" } }
-    end
-    return { panel = rect, drops = true }
-  end
+  if mode == "panel" then return { panel = M.panel_path(f), drops = true } end
   if mode == "shape" then
     return { drops = true, piece = function(k, path, colour)
       if info.share[k] >= 1 then return path, colour end
@@ -698,7 +764,7 @@ function M.paint(spec, pt)
   if panels == "auto" then panels = p.panels or "off" end
   if opts.symmetric == nil then opts.symmetric = panels == "on" end
   local ground_edges = { auto = "panel", panel = "panel", motif = "shape", round = "discs", cells = "cells" }
-  if opts.ground_edge == nil then opts.ground_edge = ground_edges[key(spec, "ground")] or "cells" end
+  if opts.ground_edge == nil then opts.ground_edge = ground_edges[M.ground_mode(spec)] or "cells" end
   -- The room the field has (for a layout that places its own panels in
   -- it, pat_celtic.lua's knot study): the text block, the gap kept from
   -- it, the sides the field takes, the page and its painted top, the reach
@@ -901,7 +967,7 @@ function M.paint(spec, pt)
     for _, k in ipairs(kept) do if k.cell.plates then need = true break end end
   end
   local edgeinfo = need and M.field_edges(cells, grounded, onpage) or { share = {}, depth = {}, isolated = 0, edge = 0, nd = size }
-  local fr = { text = text, gap = gap, side = side, W = W, top = top, ramp = ramp }
+  local fr = { text = text, gap = gap, side = side, W = W, top = top, ramp = ramp, avoid = keep_rects, hero = hero, outer = outer }
   local pieces = M.edge_pieces(ge, fr, edgeinfo)
   if base.ground then
     local K = require("flora.pat_kit")
