@@ -49,12 +49,17 @@ end
 
 -- Paint a page, recording each cell part's birth and duration, and each
 -- colour a cell part paints as it is shown (Paint:ink, which a dark ground
--- turns off) with the part's anchor.
+-- turns off) with the part's anchor and the share of the cell that paints
+-- it (the share its inks were taken at, Pattern.cell_inks; several cells
+-- may share an anchor, as kolam's do).
 local function paint(spec)
-  local parts, colours, kind, anchor = {}, {}, nil, nil
+  local parts, colours, kind, anchor, share = {}, {}, nil, nil, nil
   local fill, stroke, part = Paint.fill, Paint.stroke, Progression.part
+  local Pattern = require("flora.pattern")
+  local cell_inks = Pattern.cell_inks
+  Pattern.cell_inks = function(base, a, ...) share = a; return cell_inks(base, a, ...) end
   local function rec(self, rgb)
-    if self.group and self.group.tag == "pattern" and CELL[kind] then colours[#colours + 1] = { self:ink(rgb), anchor } end
+    if self.group and self.group.tag == "pattern" and CELL[kind] then colours[#colours + 1] = { self:ink(rgb), anchor, share } end
   end
   Paint.fill = function(self, cmds, rgb, ...) rec(self, rgb); return fill(self, cmds, rgb, ...) end
   Paint.stroke = function(self, cmds, rgb, ...) rec(self, rgb); return stroke(self, cmds, rgb, ...) end
@@ -72,6 +77,7 @@ local function paint(spec)
   Paint.reset_resources()
   local ok, pt = pcall(Compose.page, spec)
   Paint.fill, Paint.stroke, Progression.part = fill, stroke, part
+  Pattern.cell_inks = cell_inks
   if not ok then error(pt, 0) end
   return pt, parts, colours
 end
@@ -129,8 +135,6 @@ local function fade(filter)
           local where = p.name .. " " .. setup
           local spec = spec_of(p.name, setup)
           local pt, _, faded = paint(spec)
-          local a_of = {}
-          for _, k in ipairs(pt.pattern.kept) do a_of[k.cell.x .. "," .. k.cell.y] = k.a end
           -- The same page with every cell whole.
           local cell_inks = Pattern.cell_inks
           Pattern.cell_inks = function(base, _, hero) return cell_inks(base, 1, hero) end
@@ -144,7 +148,7 @@ local function fade(filter)
             local by, bad, near = {}, 0, 0
             for i, f in ipairs(faded) do
               local w, x = whole[i][1], f[1]
-              local a = a_of[f[2][1] .. "," .. f[2][2]] or 1
+              local a = f[3] or 1
               if a < 1 then
                 pairs_ = pairs_ + 1
                 local d_wp = de(w, page)
