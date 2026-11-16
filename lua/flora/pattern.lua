@@ -686,6 +686,61 @@ function M.panel_path(f)
   return out
 end
 
+-- The rectangles of a panel M.panel_path built (its subpaths).
+function M.path_rects(cmds)
+  local out, cur = {}, nil
+  for _, c in ipairs(cmds) do
+    if c[1] == "m" then cur = { c[2], c[3], c[2], c[3] }; out[#out + 1] = cur
+    elseif c[1] == "l" and cur then
+      cur[1], cur[2] = math.min(cur[1], c[2]), math.min(cur[2], c[3])
+      cur[3], cur[4] = math.max(cur[3], c[2]), math.max(cur[4], c[3])
+    end
+  end
+  return out
+end
+
+-- Whether the disc about (x, y) of radius r lies on the union of the
+-- rectangles R: its centre and eight points round it each in one of them.
+local function on_rects(R, x, y, r)
+  for k = 0, 8 do
+    local px, py = x, y
+    if k > 0 then local a = (k - 1) * math.pi / 4; px, py = x + r * math.cos(a), y + r * math.sin(a) end
+    local hit = false
+    for _, q in ipairs(R) do
+      if px >= q[1] - 1e-6 and px <= q[3] + 1e-6 and py >= q[2] - 1e-6 and py <= q[4] + 1e-6 then hit = true; break end
+    end
+    if not hit then return false end
+  end
+  return true
+end
+
+-- Whether shape `s` (a cell, or one of its footprint's shapes), reached
+-- `reach` past, lies on the panel's rectangles R wherever it lies on the
+-- paper (0..W, 0..top); what lies off the paper is not seen.
+function M.on_panel(s, R, reach, W, top)
+  local function ok(x, y, r)
+    if x + r < 0 or x - r > W or y + r < 0 or y - r > top then return true end
+    if x - r < 0 or x + r > W or y - r < 0 or y + r > top then
+      -- Straddling the paper's edge: the part on it must lie on the panel.
+      local cx, cy = math.max(0, math.min(W, x)), math.max(0, math.min(top, y))
+      return on_rects(R, cx, cy, 0)
+    end
+    return on_rects(R, x, y, r)
+  end
+  if s.circle then
+    local c = s.circle
+    for k = 0, 7 do
+      local a = k * math.pi / 4
+      if not ok(c[1] + c[3] * math.cos(a), c[2] + c[3] * math.sin(a), reach) then return false end
+    end
+    return true
+  end
+  for _, v in ipairs(s.verts or {}) do
+    if not ok(v[1], v[2], reach) then return false end
+  end
+  return true
+end
+
 -- How the ground and the fields end where the pattern ends (pattern_opts'
 -- ground_edge): cells (each cell's tile, today's), dark (the same, but no
 -- ground on paper), panel (one panel with a straight edge toward the
@@ -835,8 +890,15 @@ function M.paint(spec, pt)
   if opts.symmetric == nil then opts.symmetric = panels == "on" end
   local ground_edges = { auto = "panel", panel = "panel", motif = "shape", round = "discs", cells = "cells" }
   if opts.ground_edge == nil then opts.ground_edge = ground_edges[M.ground_mode(spec)] or "cells" end
-  -- Laid as one panel, the ground is no cell's piece (M.footprint).
+  -- Laid as one panel, the ground is no cell's piece (M.footprint), and
+  -- everything a cell paints lies on the panel: a cell whose paint would
+  -- reach past it does not stand (the panel keeps its straight edge).
   base.ground_panel = opts.ground_edge == "panel" or nil
+  local panel_rects
+  if base.ground and base.ground_panel and not base.lines then
+    panel_rects = M.path_rects(M.panel_path({ text = text, gap = gap, side = side, W = W, top = top,
+      avoid = keep_rects, hero = hero, outer = outer }))
+  end
   -- The room the field has (for a layout that places its own panels in
   -- it, pat_celtic.lua's knot study): the text block, the gap kept from
   -- it, the sides the field takes, the page and its painted top, the reach
@@ -868,10 +930,13 @@ function M.paint(spec, pt)
     -- The gaps hold for everything the cell paints, not its outline alone.
     local shapes = M.footprint(c, base)
     local placed = in_side
+    local on_panel = true
     for _, s in ipairs(shapes) do
       if hero and M.disc_clearance(s, hero) - reach < GAP then placed = false end
       if outer == "margin" and not within(s, page, OUTER_MARGIN + reach) then placed = false end
+      if panel_rects and not M.on_panel(s, panel_rects, reach, W, top) then on_panel = false end
     end
+    placed = placed and on_panel
     if outer ~= "margin" then placed = placed and M.clearance(c, page) <= reach end
     local d = math.huge
     for _, rc in ipairs(keep_rects) do
@@ -880,8 +945,9 @@ function M.paint(spec, pt)
     -- The last value: clear of the text and the hero, on the page, on
     -- whichever side (a reweave's turns, below).
     if not placed then
-      -- Clear for everything the cell paints, as a placed cell is.
-      local free = onpage[c] and dens > 0 and d >= gap
+      -- Clear for everything the cell paints, as a placed cell is, and on
+      -- the field's side and its panel.
+      local free = in_side and on_panel and onpage[c] and dens > 0 and d >= gap
       for _, s in ipairs(shapes) do
         if hero and M.disc_clearance(s, hero) - reach < GAP then free = false end
         if outer == "margin" and not within(s, page, OUTER_MARGIN + reach) then free = false end
