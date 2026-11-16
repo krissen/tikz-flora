@@ -346,7 +346,50 @@ local USER = {}
 for _, r in ipairs(M.ROLE_KEYS) do USER[r.role] = r.key end
 
 -- The finishes and band characters a page may ask for.
-M.finishes = { filled = true, lines = true }
+M.finishes = { filled = true, lines = true, lacquer = true }
+
+-- Whether pattern `p` lays a ground (lists the role and has its own
+-- lightness for it): the patterns finish=lacquer serves.
+function M.has_ground(p)
+  if not p.ground then return false end
+  for _, r in ipairs(p.roles or {}) do if r == "ground" then return true end end
+  return false
+end
+
+-- The finishes pattern `p` takes: lacquer only where there is a ground.
+function M.finishes_of(p)
+  local out = { "filled", "lines" }
+  if M.has_ground(p) then out[#out + 1] = "lacquer" end
+  return out
+end
+
+-- finish=lacquer, gold line work on a ground, as one value: the ground as
+-- a panel, the bands as a line at half their width, and the band in gold,
+-- on a pattern that lays a ground. A key the page sets itself (ground,
+-- bands, bandwidth) goes before the value lacquer gives it; the band is
+-- gold whatever the colourway gives it. On a pattern without a ground the
+-- finish is the usual filled one and the page says so (`warn`). Returns
+-- the spec the page is painted with (`spec` itself unless lacquer applies)
+-- and the warning, if any.
+function M.finish_spec(spec, p)
+  local Settings = require("flora.settings")
+  local S = Settings.SPEC
+  if spec[S.finish] ~= "lacquer" then return spec end
+  local out = {}
+  for k, v in pairs(spec) do out[k] = v end
+  out[S.finish] = "filled"
+  if not M.has_ground(p) then
+    return out, string.format("finish=lacquer: %s has no ground, so it is painted with its usual finish", p.name)
+  end
+  if out[S.ground] == nil then out[S.ground] = "panel" end
+  if out[S.bands] == nil then out[S.bands] = "line" end
+  if out[S.bandwidth] == nil then out[S.bandwidth] = 0.5 end
+  local pal = {}
+  for k, v in pairs(spec.patternpalette or {}) do pal[k] = v end
+  pal.band = "gold"
+  out.patternpalette = pal
+  return out
+end
 M.band_kinds = { strap = true, line = true }
 
 -- M.roles with the overrides `over` (role -> table of keys).
@@ -390,7 +433,7 @@ end
 -- for `spec`'s pattern palette, saturation, finish, backdrop and
 -- (internal) role overrides spec.pattern_roles.
 function M.role_inks(rng, p, spec)
-  spec = spec or {}
+  spec = M.finish_spec(spec or {}, p)
   local pal, tp = Paint.palette, require("flora.tune").color.palette
   local R = M.role_spec(spec.pattern_roles)
   local given = spec.patternpalette or {}
@@ -735,6 +778,13 @@ function M.paint(spec, pt)
   local rng = Rng.new(spec.seed or 1)
   local p = Patterns.pick(rng:fork("choose pattern"), weights(spec.pattern))
   if not p then return false end
+  local warning
+  spec, warning = M.finish_spec(spec, p)
+  if warning then
+    pt.pattern_warnings = pt.pattern_warnings or {}
+    table.insert(pt.pattern_warnings, warning)
+    if texio and texio.write_nl then texio.write_nl("log", "flora: " .. warning) end
+  end
   local W, H, text = spec.width, spec.height, spec.text
   local side = sides(spec)
   local edge = key(spec, "edge")
@@ -767,6 +817,17 @@ function M.paint(spec, pt)
   -- away with their group, and kolam's panels are symmetric.
   local ends = key(spec, "ends")
   if ends == "auto" then ends = p.ends or "cut" end
+  -- A pattern laid as one closed panel over its field (p.field_panel,
+  -- celtic_knot) is that panel under closed and bleed: closed turns its
+  -- lines back inside the paper's edges as at the text, bleed lets them run
+  -- off the paper. Any other pattern reads bleed as closed.
+  local field_panel
+  if p.field_panel and (ends == "closed" or ends == "bleed") then
+    field_panel = ends == "bleed" and "bleed" or "inset"
+    ends = "panel"
+  elseif ends == "bleed" then
+    ends = "closed"
+  end
   if opts.reweave == nil then opts.reweave = ends == "closed" end
   if opts.units == nil then opts.units = ends == "whole" end
   local panels = key(spec, "panels")
@@ -818,17 +879,6 @@ function M.paint(spec, pt)
     end
     -- The last value: clear of the text and the hero, on the page, on
     -- whichever side (a reweave's turns, below).
-  -- A pattern laid as one closed panel over its field (p.field_panel,
-  -- celtic_knot) is that panel under closed and bleed: closed turns its
-  -- lines back inside the paper's edges as at the text, bleed lets them run
-  -- off the paper. Any other pattern reads bleed as closed.
-  local field_panel
-  if p.field_panel and (ends == "closed" or ends == "bleed") then
-    field_panel = ends == "bleed" and "bleed" or "inset"
-    ends = "panel"
-  elseif ends == "bleed" then
-    ends = "closed"
-  end
     if not placed then
       -- Clear for everything the cell paints, as a placed cell is.
       local free = onpage[c] and dens > 0 and d >= gap
@@ -1083,7 +1133,7 @@ function M.paint(spec, pt)
   pt.pattern = { name = p.name, cells = #kept, offered = offered, kept = kept, avoid = keep_rects, reach = width / 2, gap = gap, hero = hero, inks = base,
     -- Every cell of the drawing, kept or not, and which lie on the page
     -- (for tests/pattern_matrix.lua's holes).
-    all = cells, onpage = onpage,
+    all = cells, onpage = onpage, warnings = pt.pattern_warnings,
     -- Cells that should lay a piece of the ground and have none.
     holes = holes, grounded = base.ground and #grounded or 0,
     -- The field's edge (M.field_edges): cells with no grounded neighbour, and
