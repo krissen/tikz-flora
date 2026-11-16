@@ -73,6 +73,13 @@ function M.build()
   for _, p in ipairs(require("flora.patterns").list) do
     c.patterns[#c.patterns + 1] = { name = p.name, title = p.title, tags = p.tags, opt_in = p.opt_in or false }
   end
+  -- The roles patternpalette={...} sets, with their labels and the flora
+  -- part each is taken from when a palette leaves it out, so a reader can
+  -- show either name.
+  c.pattern_roles = {}
+  for _, r in ipairs(require("flora.pattern").ROLE_KEYS) do
+    c.pattern_roles[#c.pattern_roles + 1] = { key = r.key, label = r.label, about = r.about, part = r.part }
+  end
 
   c.parts = {}
   for _, p in ipairs({ "hero", "blooms", "leaves", "leaflets", "stems", "sprays", "ghost", "cartouche" }) do
@@ -83,7 +90,8 @@ function M.build()
   c.inks = Inks.order
   c.colourways = {}
   for _, name in ipairs(Inks.colourway_order) do
-    c.colourways[#c.colourways + 1] = { name = name, inks = Inks.colourways[name] or {} }
+    c.colourways[#c.colourways + 1] = { name = name, inks = Inks.colourways[name] or {}, pattern = Inks.pattern_palette(name),
+      about = Inks.colourway_about[name] }
   end
 
   local keys = {}

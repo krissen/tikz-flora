@@ -6,8 +6,7 @@ local K = require("flora.pat_kit")
 local pi = math.pi
 
 local function paint(pt, c, ink)
-  pt:stroke(c.arcs, ink.band, ink.width, 1, { many = true })
-  pt:stroke(c.arcs, ink.accent, ink.width * 0.5, 1, { many = true })
+  K.band(pt, c.arcs, ink, { many = true, core = "accent" })
 end
 
 local function construct(pt, c, ink)
@@ -24,8 +23,9 @@ return {
   name = "truchet",
   title = "Truchet tiles of quarter circles, turned at random into winding bands",
   tags = { "truchet", "tiles", "square" },
+  roles = { "band", "accent" },
   scale = 18,
-  width = 3,
+  width = 3, core = 0.5, bands = "strap",
   cells = function(env)
     local s, r = env.size, env.size / 2
     local out = {}

@@ -70,8 +70,11 @@ M.groups = {
   ["warm"] = { "tsutsuji", "bishamonten", "hana-ikada", "kosumosu", "momiji", "benzaiten", "fuyu-gaki", "yu-yake", "to-ro" },
   ["earth"] = { "yama-guri", "tsukushi", "ina-ho", "syun-gyo", "take-sumi", "hoteison" },
   ["gold"] = { "daikokuten", "hotaru-bi" },
+  -- Greys, none of them quite neutral: bamboo charcoal and the winter
+  -- general's blue-grey, with misty rain.
+  ["grey"] = { "take-sumi", "fuyu-syogun", "kiri-same" },
 }
-M.group_order = { "blue", "blue-grey", "teal", "green", "violet", "warm", "earth", "gold" }
+M.group_order = { "blue", "blue-grey", "teal", "green", "violet", "warm", "earth", "gold", "grey" }
 
 -- Whole palettes. The seasons are chosen by the inks' names as much as
 -- their colours: azalea and cherry petals in spring, hydrangea and
@@ -92,8 +95,64 @@ M.colourways = {
     stems = "yama-guri", sprays = "yama-budo", ghost = "kiri-same", cartouche = "tsuki-yo" },
   winter = { hero = "tsuki-yo", blooms = "fuyu-gaki", leaves = "blue-grey", leaflets = "syo-ro",
     stems = "take-sumi", sprays = "kiri-same", ghost = "fukagawa-nezu", cartouche = "shin-kai" },
+  -- Greys muted toward neutral: bamboo charcoal, the winter general and
+  -- misty rain, with chestnut stems.
+  ["usu-zumi"] = { hero = "take-sumi", blooms = "grey", leaves = "grey", leaflets = "grey",
+    stems = "yama-guri", sprays = "fuyu-syogun", ghost = "grey", cartouche = "take-sumi" },
+  -- The geometry study's pigments: earth red, ochre and green earth,
+  -- under a night blue.
+  ["tsuki-mi"] = { hero = "fuyu-gaki", blooms = "ina-ho", leaves = "sui-gyoku", leaflets = "fukurokuju",
+    stems = "yama-guri", sprays = "to-ro", ghost = "kiri-same", cartouche = "tsuki-yo" },
 }
-M.colourway_order = { "original", "spring", "summer", "autumn", "winter", "ember", "plum", "rose" }
+M.colourway_order = { "original", "spring", "summer", "autumn", "winter", "ember", "plum", "rose", "usu-zumi", "tsuki-mi" }
+
+-- Each colourway's colours for a geometric pattern, by pattern role
+-- (pattern.lua's M.ROLE_KEYS): chosen for tiles and mosaics, not taken
+-- from the flowers'. A role left out is derived from the colourway's
+-- flora parts; core is the paper and accent gold unless set.
+M.pattern_colourways = {
+  -- Navy straps, ochre and cornflower fields on a moonlit ground.
+  original = { band = "kon-peki", fielda = "daikokuten", fieldb = "tsuyu-kusa", ground = "tsuki-yo" },
+  -- Lantern ochre and bamboo green, chestnut straps, a deep green ground.
+  ember = { band = "yama-guri", fielda = "to-ro", fieldb = "chiku-rin", ground = "shin-ryoku" },
+  -- Rice-ear straw and maple, chestnut straps, a dawn-dark ground.
+  autumn = { band = "yama-guri", fielda = "ina-ho", fieldb = "momiji", ground = "syun-gyo" },
+  spring = { band = "fukurokuju", fielda = "tsutsuji", fieldb = "ebisu", ground = "chiku-rin" },
+  summer = { band = "kon-peki", fielda = "daikokuten", fieldb = "ajisai", ground = "shin-ryoku" },
+  winter = { band = "tsuki-yo", fielda = "kiri-same", fieldb = "fuyu-gaki", ground = "shin-kai" },
+  plum = { band = "shimbashi-iro", fielda = "yama-budo", fieldb = "chiku-rin", ground = "edo-murasaki" },
+  rose = { band = "take-sumi", fielda = "hana-ikada", fieldb = "fukagawa-nezu", ground = "tsuki-yo" },
+  -- Greys muted toward neutral (a third of their chroma), the fields
+  -- apart in lightness so they still read as two.
+  ["usu-zumi"] = { band = "take-sumi:0.22:0.3", fielda = "grey:0.76:0.3", fieldb = "fuyu-syogun:0.56:0.3",
+    ground = "take-sumi::0.3" },
+  -- The pigments of the mocks (ochre, green earth, terracotta on a blue
+  -- black, a soft dark contour), each the nearest ink at the mock's
+  -- lightness and chroma.
+  ["tsuki-mi"] = { band = "chiku-rin:0.46:0.1", fielda = "ina-ho:0.71:0.8", fieldb = "sui-gyoku:0.61:0.45",
+    accent = "fuyu-gaki:0.64:0.4", ground = "tsuki-yo:0.31:0.2" },
+}
+
+-- What each colourway is, for the catalog (catalog.lua) and the guide.
+M.colourway_about = {
+  original = "flora's own blue look. For patterns: kon-peki bands, daikokuten and tsuyu-kusa fields, a tsuki-yo ground.",
+  spring = "Azalea and cherry petals. For patterns: fukurokuju bands, tsutsuji and ebisu fields, a chiku-rin ground.",
+  summer = "Hydrangea and fireflies. For patterns: kon-peki bands, daikokuten and ajisai fields, a shin-ryoku ground.",
+  autumn = "Maple and rice ears. For patterns: yama-guri bands, ina-ho and momiji fields, a syun-gyo ground.",
+  winter = "Moonlit night and winter persimmon. For patterns: tsuki-yo bands, kiri-same and fuyu-gaki fields, a shin-kai ground.",
+  ember = "Ember and moss. For patterns: yama-guri bands, to-ro and chiku-rin fields, a shin-ryoku ground.",
+  plum = "Plum and jade. For patterns: shimbashi-iro bands, yama-budo and chiku-rin fields, an edo-murasaki ground.",
+  rose = "Rose and slate. For patterns: take-sumi bands, hana-ikada and fukagawa-nezu fields, a tsuki-yo ground.",
+  ["usu-zumi"] = "Usu-zumi (薄墨), thin or diluted ink: greys muted to a third of their colour, with gold. For patterns: take-sumi bands, a field of the grey group (take-sumi, fuyu-syogun, kiri-same) and one of fuyu-syogun, a take-sumi ground.",
+  ["tsuki-mi"] = "Tsuki-mi (月見), moon viewing: ochre, green earth and earth red under a night blue, the colours of the geometry study's sketches. For patterns: chiku-rin bands, ina-ho and sui-gyoku fields, fuyu-gaki accents, a tsuki-yo ground.",
+}
+
+-- Colourway `name`'s pattern roles, as patternpalette={...} takes them.
+function M.pattern_palette(name)
+  local t = {}
+  for k, v in pairs(M.pattern_colourways[name] or {}) do t[k] = v end
+  return t
+end
 M.colourway_alias = { fall = "autumn" }
 
 return M

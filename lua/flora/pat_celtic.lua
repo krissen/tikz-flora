@@ -107,11 +107,19 @@ local function path(...)
   return out
 end
 
+-- Under the line band character each strand is one line, and the halo
+-- that parts it from the strand it crosses keeps a gap of 0.8 pt either
+-- side of it.
 local function paint(pt, c, ink)
-  local w = ink.width
+  local line = ink.bands == "line"
+  local w = line and (ink.linew or 0.6) or ink.width
+  local core = not line and w * (ink.corefrac or 0.4) or 0
+  if core > 0 and (w - core) / 2 < K.CONTOUR_MIN then core = w - 2 * K.CONTOUR_MIN end
+  if core < K.CORE_MIN then core = 0 end
+  local hw = line and w + 1.6 or w * HALO
   if #c.under > 0 then
     pt:stroke(c.under, ink.band, w, 1, { many = true })
-    pt:stroke(c.under_core, ink.accent, w * 0.4, 1, { many = true })
+    if core > 0 then pt:stroke(c.under_core, ink.accent, core, 1, { many = true }) end
   end
   if #c.over > 0 then
     -- The halo is the page's own colour: the paper, or on a dark backdrop
@@ -120,13 +128,13 @@ local function paint(pt, c, ink)
     -- is painted as it is (a nonzero pt.metal keeps a colour unrepainted).
     if pt.backdrop then
       pt.metal = pt.metal + 1
-      pt:stroke(c.halo, pt.backdrop, w * HALO, 1, { many = true })
+      pt:stroke(c.halo, pt.backdrop, hw, 1, { many = true })
       pt.metal = pt.metal - 1
     else
-      pt:stroke(c.halo, Paint.palette.paper, w * HALO, 1, { many = true })
+      pt:stroke(c.halo, Paint.palette.paper, hw, 1, { many = true })
     end
     pt:stroke(c.over, ink.band, w, 1, { many = true })
-    pt:stroke(c.over_core, ink.accent, w * 0.4, 1, { many = true })
+    if core > 0 then pt:stroke(c.over_core, ink.accent, core, 1, { many = true }) end
   end
 end
 
@@ -202,8 +210,9 @@ return {
   name = "celtic_knot",
   title = "Celtic knotwork, mirror curves with alternating over/under crossings",
   tags = { "celtic", "insular", "interlace", "knot" },
+  roles = { "band", "accent", "paper" },
   scale = SCALE,
-  width = WIDTH,
+  width = WIDTH, core = 0.4, bands = "strap",
   cells = function(env) return M.cells_with(env, nil) end,
   engine = M,
 }

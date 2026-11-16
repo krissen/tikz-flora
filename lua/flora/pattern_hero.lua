@@ -62,11 +62,11 @@ local function rosette(x, y, R, ink)
         pt:stroke(circle(x, y, rim), ink.line, 0.4, 1)
       end,
       paint = function(pt)
-        pt:fill(petals, fill, 1, { many = true })
+        K.fill(pt, petals, fill, ink, { many = true, outline = true })
         pt:stroke(petals, ink.band, 0.5 * u, 1, { many = true })
         pt:stroke(circle(x, y, rim), ink.band, 0.7 * u, 1)
         if i == 1 then
-          pt:fill(circle(x, y, 0.07 * R), ink.accent, 1)
+          K.fill(pt, circle(x, y, 0.07 * R), ink.accent, ink, { outline = true })
           pt:stroke(circle(x, y, 0.07 * R), ink.band, 0.6 * u, 1)
         end
       end }
@@ -78,7 +78,7 @@ local function rosette(x, y, R, ink)
   end
   rings[#rings + 1] = { r = 0.972 * R,
     construct = function(pt) pt:stroke(circle(x, y, 0.96 * R), ink.line, 0.4, 1) end,
-    paint = function(pt) pt:fill(dots, ink.accent, 1, { many = true }) end }
+    paint = function(pt) K.fill(pt, dots, ink.accent, ink, { many = true, outline = true }) end }
   return rings
 end
 
@@ -106,7 +106,7 @@ local function phyllotaxis(x, y, R, ink)
     rings[b] = { r = math.min(R, rim + 0.6 * c + 0.3),
       construct = function(pt) pt:stroke(bands[b], ink.line, 0.4, 1, { many = true }) end,
       paint = function(pt)
-        pt:fill(bands[b], fill, 1, { many = true })
+        K.fill(pt, bands[b], fill, ink, { many = true, outline = true })
         pt:stroke(bands[b], ink.band, 0.06 * c, 1, { many = true })
       end }
   end
@@ -125,7 +125,12 @@ local function rose(x, y, R, ink)
   local ri = (Rr - 2 * r) * 0.62
   local sm = sin(pi / m)
   local rr = ri * sm / (1 + sm)
-  local light = ink.core
+  -- The window is a dark disc (the role `dark`, pattern.lua) with the
+  -- paper's light tracery, painted as it is on any backdrop, so its ground
+  -- stays darker than its tracery on a dark page too.
+  -- Under the lines finish there is no disc, and the tracery is line work.
+  local light = ink.lines and ink.band or ink.paper or ink.core
+  local dark = ink.dark or ink.band
   local rings = {}
   -- The inner rose.
   local foils = {}
@@ -139,12 +144,12 @@ local function rose(x, y, R, ink)
       for _, f in ipairs(foils) do pt:stroke(circle(f[1], f[2], rr), ink.line, 0.4, 1) end
     end,
     paint = function(pt)
-      pt:fill(circle(x, y, ri), ink.band, 1)
+      K.fill(pt, circle(x, y, ri), dark, ink)
       local glass = {}
       for _, f in ipairs(foils) do glass[#glass + 1] = circle(f[1], f[2], rr * 0.9) end
-      pt:fill(glass, ink.fill[2], 1, { many = true })
+      K.fill(pt, glass, ink.fill[2], ink, { many = true })
       pt:stroke(glass, light, 0.8 * u, 1, { many = true })
-      pt:fill(circle(x, y, 0.28 * ri), ink.accent, 1)
+      K.fill(pt, circle(x, y, 0.28 * ri), ink.accent, ink)
       pt:stroke(circle(x, y, 0.28 * ri), light, 0.8 * u, 1)
       pt:stroke(circle(x, y, ri), light, 1.2 * u, 1)
     end }
@@ -160,7 +165,7 @@ local function rose(x, y, R, ink)
   rings[2] = { r = Rr,
     construct = function(pt) pt:stroke(spokes, ink.line, 0.4, 1, { many = true }) end,
     paint = function(pt)
-      pt:fill(ground, ink.band, 1, { evenodd = true })
+      K.fill(pt, ground, dark, ink, { evenodd = true })
       pt:stroke(spokes, light, 0.9 * u, 1, { many = true })
     end }
   -- The roundels with their foils.
@@ -171,7 +176,7 @@ local function rose(x, y, R, ink)
     paint = function(pt)
       for i, q in ipairs(centres) do
         local cx, cy, a = q[1], q[2], q[3]
-        pt:fill(circle(cx, cy, r * 0.92), i % 2 == 1 and ink.fill[1] or ink.fill[2], 1)
+        K.fill(pt, circle(cx, cy, r * 0.92), i % 2 == 1 and ink.fill[1] or ink.fill[2], ink)
         local r2, tracery = r * 0.42, {}
         for j = 0, 3 do
           local b = a + pi / 4 + j * pi / 2
@@ -185,9 +190,20 @@ local function rose(x, y, R, ink)
   rings[4] = { r = R,
     construct = function(pt) pt:stroke(circle(x, y, R - u), ink.line, 0.4, 1) end,
     paint = function(pt)
-      pt:stroke(circle(x, y, R - u), ink.band, 2 * u, 1)
+      pt:stroke(circle(x, y, R - u), dark, 2 * u, 1)
       pt:stroke(circle(x, y, R - u), ink.accent, 0.6 * u, 1)
     end }
+  for _, ring in ipairs(ink.lines and {} or rings) do
+    for _, k in ipairs({ "paint", "construct" }) do
+      local f = ring[k]
+      ring[k] = function(pt)
+        pt.metal = pt.metal + 1
+        local ok, err = pcall(f, pt)
+        pt.metal = pt.metal - 1
+        if not ok then error(err, 0) end
+      end
+    end
+  end
   return rings
 end
 
@@ -225,7 +241,7 @@ local function guilloche(x, y, R, ink)
           pt:stroke(cv, j % 2 == 1 and ink.band or ink.fill[1], 0.22 * u, 1)
         end
         if i == 1 then
-          pt:fill(circle(x, y, 0.06 * R), ink.accent, 1)
+          K.fill(pt, circle(x, y, 0.06 * R), ink.accent, ink, { outline = true })
           pt:stroke(circle(x, y, 0.06 * R), ink.band, 0.5 * u, 1)
         end
       end }
@@ -240,6 +256,14 @@ local function guilloche(x, y, R, ink)
 end
 
 M.motifs = { rosette = rosette, phyllotaxis = phyllotaxis, rose = rose, guilloche = guilloche }
+
+-- The roles (pattern.lua's M.roles) each motif paints with.
+M.roles = {
+  rosette = { "band", "line", "a", "b", "accent" },
+  phyllotaxis = { "band", "line", "a", "accent" },
+  rose = { "dark", "paper", "line", "a", "b", "accent" },
+  guilloche = { "band", "line", "a", "accent" },
+}
 
 -- The names hero= accepts, sorted, then none.
 function M.names()
@@ -416,7 +440,7 @@ function M.paint_band(pt, t, o, a, ink)
       pt:clip_end()
     end
   end
-  pt:fill(b.dots, ink.accent, 1, { many = true })
+  K.fill(pt, b.dots, ink.accent, ink, { many = true, outline = true })
   pt:stroke(b.dots, ink.band, 0.35, 1, { many = true })
   return b
 end

@@ -227,9 +227,7 @@ Each `pattern` setting replaces the one before it, and
 - `hexagram_lattice`: hexagrams of two triangles on a triangular lattice,
   tips touching. Opt-in. Groups: `symbol`, `hexagram`, `triangular`,
   `star`.
-- `khatam`: eight-pointed stars of two squares turned 45 degrees on a
-  square lattice, a small dot in each gap. Opt-in. Groups: `symbol`,
-  `khatam`, `star`, `square`.
+- `khatam`: eight-pointed stars of two squares turned 45 degrees on a square lattice, light stars with a dot at each heart on a coloured field. Opt-in. Groups: `symbol`, `khatam`, `star`, `square`.
 - `greek_crosses`: Greek crosses that tile the plane by themselves, in
   four colours. Opt-in. Groups: `symbol`, `cross`, `square`, `tiling`.
 - `overlapping_circles`: circles on a triangular grid, each through its
@@ -250,12 +248,13 @@ more of them the nearer the text), `cell` (whole cells to a hard edge),
 `fade` (cells pale into the paper), `border` (a ruled frame round the
 text) or `guilloche` (a guilloche band round it: two strands crossing over
 and under, a dot in each eye, between fine rules); `outer` whether it runs off the paper (`bleed`) or stops in whole
-cells, and a whole hero, inside it (`margin`); `scale` the cell size. The palette paints it
-as it paints flora: the bands take the `leaves` ink, the fills the
-`blooms` and `sprays` inks, one ink per page from a group, and the gold
-stays gold. A pattern grows as flora does (see `docs/progression.md`):
-each cell from the page's outer edge inwards, its construction lines
-first and then its colour.
+cells, and a whole hero, inside it (`margin`); `scale` the cell size. A pattern grows as flora does (see `docs/progression.md`): each cell from the page's outer edge inwards, its construction lines first and then its colour.
+
+A pattern is painted in roles of its own, named for the geometry: `band` (the strapwork and line work), `core` (the light line down a band's middle, the paper unless set), `fielda` and `fieldb` (the two fields of colour: stars, tiles, petals), `ground` (a surface under the cells, for the patterns that have one) and `accent` (centres, dots and jewels, gold unless set). `patternpalette={band=..., fielda=..., ...}` sets them: an iroshizuku ink by name, an ink group (one of its inks for the whole page), `paper` or `gold`, and for the ground also `none`; an ink may carry its lightness and the share of its colour it keeps, as `ink:L` or `ink:L:share` (`fielda=ina-ho:0.71:0.8`); without a lightness an ink takes the role's own, and for `core` and `accent`, which have none, its richest (most chromatic) shade. Every `colourway` sets them all, chosen for tiles and mosaics rather than taken from its flowers, whatever an earlier colourway or `patternpalette` set (a `patternpalette` after it changes the roles it names), and a role a palette leaves out takes the ink of the flora part it corresponds to (`band` and `ground` the leaves', `fielda` the blooms', `fieldb` the sprays'). `saturation` (0 to 1, default 0.5) says how much of their inks' colour the fields and the ground keep, so that a pattern reads as muted pigment rather than full ink; a share a palette gives a field or the ground is the one it keeps at the default saturation, and other saturations scale it (0 greys it). A lightness the palette gives the ground holds on every pattern, each pattern's own ground lightness being the fallback, and a dark ground lights the bands that lie on it: a line pattern's, not those of a surface pattern (tiles, stars, rosettes), whose bands lie on its fields and keep their own lightness.
+
+`finish=lines` draws a pattern as pure line work: its bands and outlines alone, nothing filled, no fields and no ground; a pattern made only of filled tiles (`penrose_rhombs`, `hexagram_lattice`, `greek_crosses`, `kikko`) becomes its tiles' outlines, and dots become rings. `bands` says how the bands are drawn: `strap`, a broad band with a fine contour round a light core, `line`, one thin line, or `auto` (the default), each pattern's own (under `finish=lines`, `stars_8_4`, `shippo`, `overlapping_circles` and `rosette_lattice` take `line`). `bandwidth` scales the bands and lines (0.25 to 4). A strap too narrow for its contour to show either side of its core becomes one solid line. `ground=on` lays the palette's ground under the patterns that have one (`asanoha`, `sikku_kolam`, `rosette_lattice`); `ground=off`, the default, leaves the paper. On a dark backdrop a pattern's inks are repainted light as flora's are and its paper follows the page; a dark ground stays dark under the bands it lights.
+
+Two colourways are made for patterns: `tsuki-mi` (月見, moon viewing), ochre, green earth and earth red under a night blue, taken from the geometry study's sketches (`chiku-rin` bands, `ina-ho` and `sui-gyoku` fields, `fuyu-gaki` accents, a `tsuki-yo` ground), and `usu-zumi` (薄墨, thin or diluted ink), greys muted to a third of their colour with gold (`take-sumi` bands, fields from the `grey` group and `fuyu-syogun`, a `take-sumi` ground). Both also colour flora.
 
 `hero` adds one large radial motif to a pattern page, as a flora page has
 its hero bloom: `rosette` (rings of petals round a gold centre),
@@ -276,6 +275,8 @@ clear of the text, and it grows ring by ring from its centre. `hero=none`
 ```latex
 \florasetup{layout=right, pattern=asanoha, edge=dissolve, colourway=autumn}
 \florathispage{pattern=stars_8_4, hero=rose, edge=guilloche}
+\florathispage{pattern=sikku_kolam, colourway=tsuki-mi, ground=on}
+\florathispage{pattern=penrose_rhombs, finish=lines, bands=line}
 ```
 
 A new pattern is a Lua file that returns its description (the fields are

@@ -9,17 +9,7 @@ export function setupLine({ layout, seed, mix, ornaments = {}, palette, spin, gi
   const ornDefaults = Object.fromEntries((meta.ornaments ?? []).flatMap((s) => s.kinds.map(([k, , d]) => [k, d])));
   const orn = Object.entries(ornaments).filter(([k, v]) => v !== ornDefaults[k]);
   if (orn.length) parts.push(`ornaments={${orn.map(([k, v]) => `${k}=${v}`).join(", ")}}`);
-  // The palette as the colourway it is closest to, when naming one saves
-  // writing parts out, and the parts that differ from it.
-  const partDefaults = Object.fromEntries(meta.parts);
-  const differ = (base) => Object.entries(palette).filter(([k, v]) => v !== base[k]);
-  let way = null, pal = differ(partDefaults);
-  for (const [name, inks] of Object.entries(meta.colourways ?? {})) {
-    const d = differ({ ...partDefaults, ...inks });
-    if (d.length + 1 < pal.length + (way ? 1 : 0)) [way, pal] = [name, d];
-  }
-  if (way) parts.push(`colourway=${way}`);
-  if (pal.length) parts.push(`palette={${pal.map(([k, v]) => `${k}=${v}`).join(", ")}}`);
+  parts.push(...colourParts(palette, meta));
   if (spin && Object.values(palette).includes("random")) parts.push(`spin=${spin}`);
   const g = meta.catalog?.gilt;
   if (g && gilt && gilt !== g.default) parts.push(`gilt=${gilt}`);
@@ -31,6 +21,25 @@ export function setupLine({ layout, seed, mix, ornaments = {}, palette, spin, gi
   parts.push(...patternParts(pattern, meta));
   if (backdrop && backdrop !== "light") parts.push(`backdrop=${backdrop}`);
   return `\\florasetup{${parts.join(", ")}}`;
+}
+
+// The colour parts of the \florasetup line for a mixer palette: the
+// colourway it is closest to, when naming one saves writing parts out, and
+// the parts that differ from it. The worker's preview parses these same
+// parts (settings.lua's pattern_preview), so a colourway's pattern roles
+// reach the preview as they reach the downloaded document.
+export function colourParts(palette, meta) {
+  const partDefaults = Object.fromEntries(meta.parts);
+  const differ = (base) => Object.entries(palette).filter(([k, v]) => v !== base[k]);
+  let way = null, pal = differ(partDefaults);
+  for (const [name, inks] of Object.entries(meta.colourways ?? {})) {
+    const d = differ({ ...partDefaults, ...inks });
+    if (d.length + 1 < pal.length + (way ? 1 : 0)) [way, pal] = [name, d];
+  }
+  const parts = [];
+  if (way) parts.push(`colourway=${way}`);
+  if (pal.length) parts.push(`palette={${pal.map(([k, v]) => `${k}=${v}`).join(", ")}}`);
+  return parts;
 }
 
 // The pattern keys of a mixer state, `{ name, edge, hero, outer, scale }`: a

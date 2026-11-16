@@ -162,8 +162,16 @@ function C.ink_for(rng, choice)
   return nil
 end
 
--- sRGB for ink `name` at lightness L, its chroma scaled by `share`.
+-- The lightness of ink `name`'s richest stop, its most chromatic.
+function C.richest_lightness(name)
+  return Inks.ramps[name][richest[name]][1]
+end
+
+-- sRGB for ink `name` at lightness L, its chroma scaled by `share`. With
+-- no L (a pattern role without a lightness of its own, given an ink
+-- without one) the ink is taken at its richest stop.
 function C.ink_rgb(name, L, share)
+  L = L or C.richest_lightness(name)
   local ch, h = C.ink_at(name, L)
   return C.oklch(L, ch * (share or 1), h)
 end

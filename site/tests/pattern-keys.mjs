@@ -16,7 +16,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { chromium } from "playwright-core";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { patternDefaults, patternParts, patternFromQuery } from "../src/lib/setup.js";
+import { patternDefaults, patternParts, patternFromQuery, colourParts } from "../src/lib/setup.js";
 
 const SITE = join(dirname(fileURLToPath(import.meta.url)), "..");
 const catalog = JSON.parse(readFileSync(process.argv[2] ?? join(SITE, "public/bake/catalog.json"), "utf8"));
@@ -37,19 +37,53 @@ for (const k of pat.keys) {
   // Setup line: a value that differs is written, the default is not.
   const others = pat.choices[k] ? pat.choices[k].filter((v) => v !== String(d)) : [pat.range[k][0] === d ? pat.range[k][1] : pat.range[k][0]];
   for (const v of others) {
-    const line = patternParts({ name: "asanoha", [k]: v }, meta);
+    const line = patternParts({ name: "rosette_lattice", [k]: v }, meta);
     check(line.includes(`${k}=${v}`), `${k}=${v} is not in the setup line: ${line}`);
     // URL: ?key=value opens on it.
-    const st = patternFromQuery(new URLSearchParams(`pattern=asanoha&${k}=${v}`), meta);
+    const st = patternFromQuery(new URLSearchParams(`pattern=rosette_lattice&${k}=${v}`), meta);
     check(String(st[k]) === String(v), `?${k}=${v} is not kept: ${JSON.stringify(st)}`);
   }
-  check(!patternParts({ name: "asanoha", [k]: d }, meta).some((p) => p.startsWith(k + "=")), `${k}: the default is written to the line`);
+  check(!patternParts({ name: "rosette_lattice", [k]: d }, meta).some((p) => p.startsWith(k + "=")), `${k}: the default is written to the line`);
   check(patternFromQuery(new URLSearchParams(`${k}=nonesuch`), meta)[k] === d, `?${k}=nonesuch is not ignored`);
 }
 check(patternParts({ name: "", hero: "rose" }, meta).length === 0, "flora has pattern keys");
 
+// The colour parts the worker parses for its preview (settings.lua's
+// pattern_preview) are the setup line's: a colourway chosen in the mixer
+// (Mixer.svelte's useColourway, the colourway's inks over the defaults),
+// after no other, after any other or after an ink was changed, gives
+// exactly colourway=NAME, and an ink changed after it adds that part only.
+// tests/test_pattern_colourways.lua holds that those parts paint the roles
+// the document paints. The meta is the worker's: every colourway with
+// inks of its own.
+{
+  const cmeta = {
+    parts: catalog.parts.map((p) => [p.key, p.default]),
+    colourways: Object.fromEntries(catalog.colourways.filter((c) => Object.keys(c.inks).length).map((c) => [c.name, c.inks])),
+  };
+  const defaults = Object.fromEntries(cmeta.parts);
+  const use = (_before, name) => ({ ...defaults, ...cmeta.colourways[name] });
+  const names = Object.keys(cmeta.colourways);
+  check(names.length >= 9, `the worker's meta lists ${names.length} colourways`);
+  let cells = 0;
+  for (const name of names) {
+    const histories = [defaults, { ...defaults, hero: "hoteison" }, ...names.filter((n) => n !== name).map((n) => use(defaults, n))];
+    for (const before of histories) {
+      cells++;
+      const got = colourParts(use(before, name), cmeta).join(", ");
+      check(got === `colourway=${name}`, `${name} chosen in the mixer gives the colour parts "${got}"`);
+    }
+    const edited = colourParts({ ...use(defaults, name), hero: "hoteison" }, cmeta).join(", ");
+    check(edited === `colourway=${name}, palette={hero=hoteison}`, `${name} with its hero changed gives "${edited}"`);
+  }
+  check(colourParts(defaults, cmeta).length === 0, "the package's own look names a colourway");
+  console.log(`colour parts: ${cells} cells`);
+}
+
 // The built mixer: every catalog key has a control; a non-default value
-// reaches the line and changes the picture; the URL opens on it.
+// reaches the line and changes the picture; the URL opens on it. The page
+// is rosette_lattice, which has fields, a ground and straps, so that every
+// key (saturation, ground and bands among them) changes what it paints.
 if (!existsSync(join(SITE, "dist/mixer/index.html"))) check(false, "site/dist is not built (npm run build in site/)");
 else {
   const PORT = process.env.PATTERN_KEYS_PORT || "4318";
@@ -67,7 +101,7 @@ else {
     });
     const settled = async (page) => { await page.waitForTimeout(800); await page.locator(".status", { hasText: "Grown in" }).waitFor({ timeout: 120000 }); };
     const page = await browser.newPage({ viewport: { width: 1500, height: 1000 } });
-    await page.goto(`${base}?layout=left&pattern=asanoha`);
+    await page.goto(`${base}?layout=left&pattern=rosette_lattice`);
     await settled(page);
     const code = () => page.locator(".controls pre code").textContent();
     const before = await sum(page);
@@ -78,7 +112,7 @@ else {
       if (pat.choices[k]) await ctl.getByRole("button", { name: v, exact: true }).click();
       else await ctl.locator('input[type="range"]').fill(v);
       await settled(page);
-      check(new RegExp(`pattern=asanoha(, \\w+=[^,}]+)*, ${k}=${v}`).test(await code()), `${k}=${v} set by the control is not in the line: ${await code()}`);
+      check(new RegExp(`pattern=rosette_lattice(, \\w+=[^,}]+)*, ${k}=${v}`).test(await code()), `${k}=${v} set by the control is not in the line: ${await code()}`);
       check(await sum(page) !== before, `${k}=${v} set by the control does not change the sheet (the worker drops it?)`);
       // Back to the default, for the next key to be compared with the same page.
       if (pat.choices[k]) await ctl.getByRole("button", { name: String(pat.defaults[k]), exact: true }).click();
@@ -86,7 +120,7 @@ else {
       await settled(page);
       check(await sum(page) === before, `${k} back at its default does not restore the sheet`);
       const url = await browser.newPage({ viewport: { width: 1500, height: 1000 } });
-      await url.goto(`${base}?layout=left&pattern=asanoha&${k}=${v}`);
+      await url.goto(`${base}?layout=left&pattern=rosette_lattice&${k}=${v}`);
       await settled(url);
       check(new RegExp(`${k}=${v}`).test(await url.locator(".controls pre code").textContent()), `?${k}=${v} does not open the mixer on it`);
       await url.close();

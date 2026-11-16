@@ -4,7 +4,7 @@
 //   { id, kind: "meta" }            -> { id, meta }  settings to offer, with
 //                                      each ink's ramp, each group's inks and
 //                                      each colourway's palette
-//   { id, kind: "render", spec, layout, seed, page, mix, ornaments, palette, spin, px, gilt, giltenv, giltlook, backdrop, pattern, draw }
+//   { id, kind: "render", spec, layout, seed, page, mix, ornaments, palette, spin, px, gilt, giltenv, giltlook, backdrop, pattern, colours, draw }
 //                                   -> { id, progress } as it goes (0 to 1,
 //                                      rising: PROGRESS below), then
 //                                      { id, bitmap | pdf, ms }
@@ -253,7 +253,7 @@ onmessage = async (e) => {
       postMessage({ id, ...picture(pdf, px, null, mode), cells, slots, w, h }, transfers);
       return;
     }
-    const { spec, layout, seed, page, mix, ornaments, palette, spin, px, gilt, giltenv, giltlook, backdrop, pattern, draw: mode } = e.data;
+    const { spec, layout, seed, page, mix, ornaments, palette, spin, px, gilt, giltenv, giltlook, backdrop, pattern, colours, draw: mode } = e.data;
     const t0 = performance.now();
     // The page's own progress (compose.lua's spec.progress) is the grow's
     // share of the whole; the PDF scene and the drawing follow.
@@ -263,6 +263,7 @@ onmessage = async (e) => {
     l.global.set("SEED", String(seed));
     l.global.set("BACKDROP", backdrop ?? "light");
     l.global.set("PATTERN", pattern ?? "");
+    l.global.set("COLOURS", colours ?? "");
     // `layout`, when given, replaces the baked page's own (frames.lua).
     l.global.set("LAYOUT", layout ?? "");
     await l.doString(`
@@ -282,14 +283,11 @@ onmessage = async (e) => {
       spec.gilt_env = ${JSON.stringify(giltenv ?? "studio")}
       spec.gilt_look = require("flora.settings").parse("giltlook={" .. GILTLOOK .. "}").giltlook
       spec.backdrop = require("flora.settings").parse("backdrop=" .. BACKDROP).backdrop
-      -- The pattern and its keys (edge, hero, outer, scale: Settings.PATTERN)
-      -- as \\florasetup writes them ("" is flora).
-      if PATTERN ~= "" then
-        local Settings = require("flora.settings")
-        local ps = Settings.parse(PATTERN)
-        spec.pattern = ps.pattern
-        for k in pairs(Settings.PATTERN) do spec[Settings.SPEC[k]] = ps[k] end
-      end
+      -- The pattern and its keys (Settings.PATTERN), and the colourway and
+      -- palette parts, as \\florasetup writes them ("" is flora, or no
+      -- colourway): the colourway's pattern roles come from the same parts
+      -- the setup line downloads.
+      require("flora.settings").pattern_preview(spec, PATTERN, COLOURS)
       spec.gilt_dpi = ${px ? `math.max(50, math.min(600, ${Number(px)} / spec.width * 72.27))` : 150}
       spec.progress = PROGRESS
       Paint.reset_resources()
