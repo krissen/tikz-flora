@@ -33,12 +33,25 @@ end
 if verbose then print(string.format("reach: %d cells paint nothing (%d at scale 1)", empty, empty1)) end
 for _, f in ipairs(failures) do H.check(false, f) end
 
+-- Each mutation below breaks how the field measures what it lays, and
+-- runs with the precondition that measures each form again where it is
+-- painted (Pattern.lays) waived; that precondition would otherwise leave
+-- the mismeasured paint out, and tests/test_pattern_protect.lua proves it
+-- form by form.
+local function unchecked(fn, ...)
+  local lays = Pattern.lays
+  Pattern.lays = function() return true end
+  local r = table.pack(pcall(fn, ...))
+  Pattern.lays = lays
+  return table.unpack(r, 1, r.n)
+end
+
 -- The field placing cells by their outline alone, as it did before their
 -- ground and plates were counted: the ground squares of the dot grids
 -- reach past their dots into the text.
 local footprint = Pattern.footprint
 Pattern.footprint = function(c) return { c } end
-local ok, _, fs = pcall(M.run, function(n) return n == "sikku_kolam" or n == "rosette_lattice" end)
+local ok, _, fs = unchecked(M.run, function(n) return n == "sikku_kolam" or n == "rosette_lattice" end)
 Pattern.footprint = footprint
 H.check(ok and #fs > 0, "the reach sweep missed cells placed by their outline alone")
 if verbose then print(string.format("mutation outline-only: %d failing cells", ok and #fs or -1)) end
@@ -53,7 +66,7 @@ Pattern.panel_path = function(f)
   if f.side and f.side.right and not f.side.left then x0 = t.x1 + o end
   return { { "m", x0, -2 }, { "l", x1, -2 }, { "l", x1, f.top + 2 }, { "l", x0, f.top + 2 }, { "z" } }
 end
-local ok2, _, fs2 = pcall(M.run, function(n) return n == "asanoha" end)
+local ok2, _, fs2 = unchecked(M.run, function(n) return n == "asanoha" end)
 Pattern.panel_path = panel_path
 H.check(ok2 and #fs2 > 0, "the reach sweep missed a ground panel under the hero and in the margin")
 if verbose then print(string.format("mutation panel-edge-to-edge: %d failing cells", ok2 and #fs2 or -1)) end
@@ -98,7 +111,7 @@ do
     M.GROUNDS = { g }
     -- auto lays its ground (the panel) on a dark backdrop only.
     M.BACKDROP = g == "auto" and "dark" or nil
-    local ok, _, fs = pcall(M.run, function(n) return n == "asanoha" or n == "sikku_kolam" or n == "rosette_lattice" end)
+    local ok, _, fs = unchecked(M.run, function(n) return n == "asanoha" or n == "sikku_kolam" or n == "rosette_lattice" end)
     H.check(ok and #fs > 0, "the reach sweep missed a ground piece larger than measured under ground=" .. g)
     if verbose then print(string.format("mutation ground larger than measured, ground=%s: %d failing cells", g, ok and #fs or -1)) end
   end
