@@ -12,7 +12,7 @@ local function paint(pt, c, ink)
 end
 
 local function construct(pt, c, ink)
-  pt:stroke(c.path, ink.line, 0.4, 1)
+  pt:stroke(c.path, ink.line, K.cline(ink), 1)
 end
 
 local function lerp(p, q, t) return { p[1] + (q[1] - p[1]) * t, p[2] + (q[2] - p[2]) * t } end

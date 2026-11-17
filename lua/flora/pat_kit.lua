@@ -92,6 +92,11 @@ end
 K.CONTOUR_MIN = 0.55
 K.CORE_MIN = 0.6
 
+-- The construction lines' width at the field factor 1, and the width on
+-- `ink` (pattern.lua's band_ink sets ink.cline from it, by the field).
+K.CONSTRUCT_LINE = 0.4
+function K.cline(ink) return ink.cline or K.CONSTRUCT_LINE end
+
 -- Paint path (or with opt.many, paths) as a band, opt.w times the band's
 -- width. opt.core names the role down its middle ("core", the default, or
 -- "accent"); opt.core = false paints a solid band, opt.w times ink.width.
@@ -108,12 +113,20 @@ function K.band(pt, path, ink, opt)
     pt:stroke(path, ink.band, W, 1, o)
     return
   end
-  local core = W * (ink.corefrac or 0.45)
-  local c = (W - core) / 2
-  if c < K.CONTOUR_MIN then core = W - 2 * K.CONTOUR_MIN end
+  local core = K.core_width(W, ink.corefrac)
   pt:stroke(path, ink.band, W, 1, o)
   if core >= K.CORE_MIN then pt:stroke(path, ink[opt.core or "core"], core, 1, o) end
 end
+
+-- The core's width in a strap W wide whose core takes `corefrac` of it,
+-- the contour kept at least CONTOUR_MIN either side; and whether that core
+-- is drawn at all.
+function K.core_width(W, corefrac)
+  local core = W * (corefrac or 0.45)
+  if (W - core) / 2 < K.CONTOUR_MIN then core = W - 2 * K.CONTOUR_MIN end
+  return core
+end
+function K.core_shows(W, corefrac) return K.core_width(W, corefrac) >= K.CORE_MIN end
 
 -- Fill path with rgb (opt as pt:fill's, with many and evenodd), or under
 -- the lines finish nothing at all, or with opt.outline its outline as a

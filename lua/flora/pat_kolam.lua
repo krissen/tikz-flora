@@ -33,7 +33,7 @@ local function paint_dot(pt, c, ink)
 end
 
 local function construct(pt, c, ink)
-  pt:stroke(c.path, ink.line, 0.4, 1)
+  pt:stroke(c.path, ink.line, K.cline(ink), 1)
 end
 
 local function key(x, y) return string.format("%.1f,%.1f", x, y) end

@@ -38,7 +38,7 @@ local function paint(pt, c, ink)
 end
 
 local function construct(pt, c, ink)
-  pt:stroke({ { "o", c.x, c.y, c.r } }, ink.line, 0.4, 1)
+  pt:stroke({ { "o", c.x, c.y, c.r } }, ink.line, K.cline(ink), 1)
 end
 
 return {

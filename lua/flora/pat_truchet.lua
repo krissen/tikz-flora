@@ -10,7 +10,7 @@ local function paint(pt, c, ink)
 end
 
 local function construct(pt, c, ink)
-  pt:stroke(c.arcs, ink.line, 0.4, 1, { many = true })
+  pt:stroke(c.arcs, ink.line, K.cline(ink), 1, { many = true })
 end
 
 local function quarter(cx, cy, r, a0)

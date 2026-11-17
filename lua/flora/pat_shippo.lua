@@ -14,7 +14,7 @@ local function paint(pt, c, ink)
 end
 
 local function construct(pt, c, ink)
-  pt:stroke(c.path, ink.line, 0.4, 1)
+  pt:stroke(c.path, ink.line, K.cline(ink), 1)
 end
 
 -- The petal two circles of radius r about (x0, y0) and (x1, y1), a apart,
