@@ -518,4 +518,51 @@ caught("fragments", "kikko", function()
   end
 end, function() kikko.cells = kikko_cells2 end)
 
+-- The field scale (tests/pattern_scale.lua): the same number of cells
+-- across every governing strip within the floor and the ceiling, and the
+-- reference page as it was drawn before the scale followed the field.
+do
+  local S = dofile("tests/pattern_scale.lua")
+  local scells, sfails = S.run()
+  H.check(#scells == #Patterns.list * #S.FORMATS * #S.LAYOUTS * #S.RATIOS, "field scale cells: " .. #scells)
+  for _, f in ipairs(sfails) do H.check(false, "field scale: " .. f) end
+  if os.getenv("FLORA_MATRIX_VERBOSE") then
+    print(string.format("field scale: %d cells, %d failures", #scells, #sfails))
+  end
+  -- Each mutation breaks one of them; the check must say so.
+  local few = { khatam = true, asanoha = true }
+  local function scale_caught(what, mutate, restore)
+    mutate()
+    local ok, _, fs = pcall(S.run, few)
+    restore()
+    local n = 0
+    for _, f in ipairs(ok and fs or {}) do if f:find(": " .. what .. ":", 1, true) then n = n + 1 end end
+    H.check(ok and n > 0, "the field scale check missed a broken " .. what .. " invariant")
+    if os.getenv("FLORA_MATRIX_VERBOSE") then print(string.format("mutation field scale %s: %d failures", what, n)) end
+  end
+  local factor, strip = Pattern.field_factor, Pattern.field_strip
+  -- The cells keep their own size whatever the field.
+  scale_caught("periods", function() Pattern.field_factor = function() return 1 end end,
+    function() Pattern.field_factor = factor end)
+  -- The reference drifts by a hundredth.
+  scale_caught("reference", function()
+    Pattern.field_factor = function(spec, p) return factor(spec, p) * 1.01 end
+  end, function() Pattern.field_factor = factor end)
+  -- No floor and no ceiling.
+  local floor = Pattern.factor_floor
+  local ceil = Pattern.FIELD_SCALE.ceil
+  scale_caught("bounds", function()
+    Pattern.factor_floor = function() return 0 end
+    Pattern.FIELD_SCALE.ceil = nil
+  end, function() Pattern.factor_floor = floor; Pattern.FIELD_SCALE.ceil = ceil end)
+  -- surround sized by its narrowest strip, not its widest.
+  scale_caught("periods", function()
+    Pattern.field_strip = function(spec)
+      if spec.layout ~= "surround" then return strip(spec) end
+      local t = spec.text
+      return math.min(t.x0 - 6, spec.width - t.x1 - 6, spec.height - t.y1 - 6, t.y0 - 6)
+    end
+  end, function() Pattern.field_strip = strip end)
+end
+
 H.done("pattern matrix")
