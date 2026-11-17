@@ -65,7 +65,7 @@ sheet() {
 
 [ -n "${EDGE_SHEETS_LIB:-}" ] && return 0
 for p in rosette_lattice sikku_kolam khatam asanoha; do
-  case $p in rosette_lattice) m=f-14 ;; sikku_kolam) m=t-10 ;; khatam) m=y-03 ;; asanoha) m=t-11 ;; esac
+  case $p in rosette_lattice) m='f-14' ;; sikku_kolam) m='t-10' ;; khatam) m='y-03' ;; asanoha) m='t-11' ;; esac
   sheet "kant__$p" "$p" "$m" "$p: how the ground and fields end where the pattern ends (ground=on)" "tsuki-mi usu-zumi ember" \
     "edge-cells=Today: a square per cell" "edge-dark=A1 No ground on paper" "edge-panel=A2 A straight panel" \
     "edge-shape=A3 Ends along the motif" "edge-fade=A4 Fades out" "edge-discs=A5 Rounded edge (own proposal)"
@@ -75,7 +75,7 @@ sheet "enhet__sikku_kolam" sikku_kolam t-10 "sikku_kolam: what falls away at the
 sheet "enhet__celtic_knot" celtic_knot y-08 "celtic_knot: what falls away at the edge" "tsuki-mi" \
   "unit-today=Today" "unit-closed=Strands closed at the edge"
 for p in hexagram_lattice greek_crosses penrose_rhombs khatam; do
-  case $p in hexagram_lattice) m=y-02 ;; greek_crosses) m=y-04 ;; penrose_rhombs) m=t-05 ;; khatam) m=y-03 ;; esac
+  case $p in hexagram_lattice) m='y-02' ;; greek_crosses) m='y-04' ;; penrose_rhombs) m='t-05' ;; khatam) m='y-03' ;; esac
   sheet "form__$p" "$p" "$m" "$p: the form should carry, not the fill" "tsuki-mi ember" \
     "form-today=Today" "form-lighter=B1 Lighter fields"
 done

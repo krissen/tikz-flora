@@ -408,6 +408,7 @@ add the TinyTeX binaries to `PATH`:
   example from the unpacked zip alone.
 - `just test`: run the Lua and Python unit tests. `just test-tex` and
   `just test-preview` check against real compiles.
+- `just lint`: lua-language-server over the Lua, ruff and pyright over the Python, shellcheck over `tools/*.sh`; each must be installed (pyright is skipped, with a note, when it is missing). Files whose findings are not yet cleaned are listed in `.lint-exempt`; the list only shrinks, so clean a file and delete its line. The same check runs in CI.
 - `just site-bake`, `just site-dev`, `just test-site`, `just site-deploy`:
   build, test and publish the site. `site/README.md` explains them.
 - `just tuner`: run a local web app with a slider for every setting in

@@ -47,7 +47,7 @@ end
 -- cartouche's box.
 for seed = 1, 6 do
   local spec = H.page(seed)
-  local g, m = Layout.region(spec)
+  local _, m = Layout.region(spec)
   local mw = m.x1 - m.x0
   local R = G.clamp(mw * Tune.compose.hero, 28, 80)
   local hero = { m.x0 + mw * 0.5, spec.header_y - R * 0.55, R }

@@ -160,7 +160,7 @@ local function fade(filter)
           local setup = string.format("ground=%s, edge=fade, density=2, backdrop=%s", ground, bd)
           local where = p.name .. " " .. setup
           local spec = spec_of(p.name, setup)
-          local pt, _, faded = paint(spec)
+          local _, _, faded = paint(spec)
           -- The same page with every cell whole.
           local cell_inks = Pattern.cell_inks
           Pattern.cell_inks = function(base, _, hero) return cell_inks(base, 1, hero) end
@@ -216,7 +216,7 @@ end
 
 -- The faults put back into pattern.lua's source, one at a time.
 local function mutated(old, new, check)
-  local f = io.open("lua/flora/pattern.lua")
+  local f = assert(io.open("lua/flora/pattern.lua"))
   local src = f:read("a")
   f:close()
   local i, j = src:find(old, 1, true)

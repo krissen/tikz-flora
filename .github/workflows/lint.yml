@@ -1,0 +1,69 @@
+name: lint
+
+# tools/lint.py: lua-language-server over the Lua, ruff and pyright over the
+# Python, shellcheck over tools/*.sh (configuration in .luarc.json,
+# ruff.toml, pyrightconfig.json; .lint-exempt lists files not yet clean).
+# numpy and Pillow are installed only so pyright can resolve the imports of
+# the measuring tools. Every version is pinned.
+# The paths filter below skips the job on a pull request that touches none of
+# them; were the job ever a required status check, such a pull request would
+# wait for it for ever, so the filter must go first.
+on:
+  pull_request:
+    paths:
+      - "**.lua"
+      - "**.py"
+      - "**.sh"
+      - ".luarc.json"
+      - ".luals/**"
+      - ".lint-exempt"
+      - "ruff.toml"
+      - "pyrightconfig.json"
+      - "tools/lint.py"
+      - ".github/workflows/lint.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: lint-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  LUA_LS_VERSION: "3.19.2"
+  LUA_LS_SHA256: "93ad326b10f6c00911dd8c450fa098332dbd8f9f45d1052f5636a2d54479b947"
+  SHELLCHECK_VERSION: "0.11.0"
+  SHELLCHECK_SHA256: "b7af85e41cc99489dcc21d66c6d5f3685138f06d34651e6d34b42ec6d54fe6f6"
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: lua-language-server
+        run: |
+          set -e
+          url="https://github.com/LuaLS/lua-language-server/releases/download/${LUA_LS_VERSION}/lua-language-server-${LUA_LS_VERSION}-linux-x64.tar.gz"
+          curl -fsSL --retry 3 -o "$RUNNER_TEMP/luals.tar.gz" "$url"
+          echo "${LUA_LS_SHA256}  $RUNNER_TEMP/luals.tar.gz" | sha256sum -c -
+          mkdir "$RUNNER_TEMP/luals"
+          tar -xzf "$RUNNER_TEMP/luals.tar.gz" -C "$RUNNER_TEMP/luals"
+          echo "LUA_LS=$RUNNER_TEMP/luals/bin/lua-language-server" >> "$GITHUB_ENV"
+      - name: shellcheck
+        run: |
+          set -e
+          url="https://github.com/koalaman/shellcheck/releases/download/v${SHELLCHECK_VERSION}/shellcheck-v${SHELLCHECK_VERSION}.linux.x86_64.tar.gz"
+          curl -fsSL --retry 3 -o "$RUNNER_TEMP/shellcheck.tar.gz" "$url"
+          echo "${SHELLCHECK_SHA256}  $RUNNER_TEMP/shellcheck.tar.gz" | sha256sum -c -
+          mkdir "$RUNNER_TEMP/shellcheck"
+          tar -xzf "$RUNNER_TEMP/shellcheck.tar.gz" -C "$RUNNER_TEMP/shellcheck" --strip-components=1
+          echo "$RUNNER_TEMP/shellcheck" >> "$GITHUB_PATH"
+      - name: ruff and pyright
+        run: |
+          set -e
+          python3 -m venv "$RUNNER_TEMP/lintenv"
+          "$RUNNER_TEMP/lintenv/bin/pip" install -q ruff==0.17.3 pyright==1.1.414 numpy==2.5.4 pillow==13.0.0
+          echo "$RUNNER_TEMP/lintenv/bin" >> "$GITHUB_PATH"
+      - name: lint
+        run: python3 -I tools/lint.py --require-pyright

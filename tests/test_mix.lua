@@ -53,7 +53,6 @@ do
   local before = Tune.color.palette.leaves
   H.check(page(2, nil, { leaves = "warm" }):code() ~= page(2):code(), "palette leaves=warm changed nothing")
   H.check(Tune.color.palette.leaves == before, "palette override leaked into tune")
-  local Mix = require("flora.mix")
   pcall(Mix.with_palette, { leaves = "warm" }, function() error("boom") end)
   H.check(Tune.color.palette.leaves == before, "palette override leaked after an error")
 end
@@ -104,7 +103,7 @@ do
   H.check(w.hero == "momiji" and w.blooms == "fuyu-gaki" and w.cartouche == "shin-kai", "palette after a colourway lost a part")
   local o = Settings.parse("palette={hero=momiji}, colourway=winter").palette
   H.check(o.hero == "tsuki-yo", "a colourway after a palette left its hero")
-  local fall, autumn = Settings.parse("colourway=fall").palette, Settings.parse("colourway=autumn").palette
+  local fall = Settings.parse("colourway=fall").palette
   local orig = Settings.parse("palette={leaves=teal}, colourway=original").palette
   local seen = {}
   for _, name in ipairs(Inks.colourway_order) do

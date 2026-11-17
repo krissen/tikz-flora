@@ -1,0 +1,41 @@
+# Files tools/lint.py does not fail on: the findings not yet cleaned. The list only shrinks; clean a file, then delete its line. Patterns are shell globs on the path from the repository root.
+
+# The engine, cleaned file by file once the pattern-scale work has merged.
+lua/flora/compose.lua
+lua/flora/flower.lua
+lua/flora/frames.lua
+lua/flora/geom.lua
+lua/flora/grow.lua
+lua/flora/init.lua
+lua/flora/layout.lua
+lua/flora/orn_celestial.lua
+lua/flora/orn_corner.lua
+lua/flora/orn_pieces.lua
+lua/flora/orn_relief.lua
+lua/flora/orn_roundel.lua
+lua/flora/orn_scrollwork.lua
+lua/flora/ornament.lua
+lua/flora/pattern.lua
+lua/flora/pdfout.lua
+lua/flora/progression.lua
+lua/flora/raster_relief.lua
+lua/flora/raster.lua
+lua/flora/settings.lua
+lua/flora/sprig.lua
+lua/flora/visitor.lua
+lua/flora/wash.lua
+lua/flora/pat_*.lua
+
+# Tests with many findings or shared with the pattern-scale work.
+tests/pattern_matrix.lua
+tests/pattern_panel.lua
+tests/test_header_mark.lua
+tests/test_ornaments.lua
+tests/test_pattern_matrix.lua
+tests/test_pattern.lua
+tests/test_raster.lua
+
+# Files the pattern-scale work adds or rewrites.
+tools/pattern_scale*.lua
+tools/scale_formats.lua
+tools/pattern-scale*.sh

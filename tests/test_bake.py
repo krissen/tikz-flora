@@ -7,7 +7,7 @@ import sys
 import tempfile
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "tools"))
-import bake_tune as B  # noqa: E402
+import bake_tune as B
 
 failures = 0
 
@@ -23,7 +23,8 @@ tmp = tempfile.mkdtemp()
 try:
     path = os.path.join(tmp, "tune.lua")
     shutil.copy(B.TUNE, path)
-    original = open(path).read()
+    with open(path) as f:
+        original = f.read()
     old = B.read_tune(path)
     new = copy.deepcopy(old)
     # A number, a range, a choice, a curve; a range inside a one-line look
@@ -46,7 +47,8 @@ try:
         check(B._same(B._get(back, p), B._get(new, p)), f"{p} reads back as {B._get(back, p)}")
     for style in back["blooms"]:
         check(back["blooms"][style]["petals"] == old["blooms"][style]["petals"], f"blooms.{style}.petals moved")
-    text = open(path).read()
+    with open(path) as f:
+        text = f.read()
     a, b = original.splitlines(), text.splitlines()
     check(len(a) == len(b), "line count changed")
     differ = sum(1 for x, y in zip(a, b) if x != y)

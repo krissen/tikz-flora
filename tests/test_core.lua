@@ -127,7 +127,7 @@ end
 -- spread by area, so the wide arm of an L gets proportionally more.
 do
   local L = { { 0, 0 }, { 30, 0 }, { 30, 10 }, { 10, 10 }, { 10, 40 }, { 0, 40 } }
-  local sample = G.span_sampler(L, 0.5)
+  local sample = assert(G.span_sampler(L, 0.5))
   local rng = Rng.new(4)
   local foot, outside = 0, 0
   for _ = 1, 6000 do
@@ -280,7 +280,8 @@ do
   local left, total = 0, 0
   for seed = 1, 20 do
     local found, lost = W.edge_runs(Rng.new(seed), circle, pale, 0.3)
-    H.check(found and lost and #found == #lost and #lost >= 1, "runs alternate")
+    assert(found and lost, "no edge was lost at share 0.3")
+    H.check(#found == #lost and #lost >= 1, "runs alternate")
     local len, lost_len = 0, 0
     for _, r in ipairs(found) do len = len + G.length(r) end
     for _, r in ipairs(lost) do
@@ -328,8 +329,8 @@ do
   H.check(math.abs(mean - 0.5) < 0.02 and ends < 0.02, string.format("peaked curve: mean %.3f, %.3f at the ends", mean, ends))
   mean = stats({ range = { 2, 5 }, weights = { 1, 0 } }, 4000)
   H.check(math.abs(mean - 3) < 0.05, string.format("falling ramp mean %.3f, want 3", mean))
-  mean, lo = stats({ range = { 0, 1 }, weights = { 0, 0, 1 } }, 4000)
-  H.check(lo >= 0.5 and math.abs(mean - 5 / 6) < 0.02, string.format("last-point curve: mean %.3f, min %.3f", mean, lo))
+  local last_mean, lo = stats({ range = { 0, 1 }, weights = { 0, 0, 1 } }, 4000)
+  H.check(lo >= 0.5 and math.abs(last_mean - 5 / 6) < 0.02, string.format("last-point curve: mean %.3f, min %.3f", last_mean, lo))
   mean = stats({ range = { 0, 1 }, weights = { 0, 0 } }, 2000)
   H.check(math.abs(mean - 0.5) < 0.03, "a flat zero curve falls back to uniform")
 end

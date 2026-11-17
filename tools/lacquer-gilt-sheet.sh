@@ -46,6 +46,8 @@ EOF
 # "x y w h" in pt from the page's top left, at 8 px a point.
 tile() {
   if [ -n "${4:-}" ]; then
+    # $4 is a list of numbers, split on purpose.
+    # shellcheck disable=SC2086
     set -- "$1" "$2" "$3" $4
     pdftocairo -png -singlefile -r 576 -x $(($4 * 8)) -y $(($5 * 8)) -W $(($6 * 8)) -H $(($7 * 8)) ${2:+-transp} "$1" "$OUT/tmp/t"
   else

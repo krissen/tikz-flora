@@ -133,7 +133,6 @@ end
 -- inside it.
 do
   local Grow = require("flora.grow")
-  local Rng = require("flora.rng")
   local stem = { pts = {}, t = 0.5, width = function() return 2.4 end }
   for i = 0, 60 do stem.pts[#stem.pts + 1] = { 100, i * 5 } end
   local p = { 100, 150 }
@@ -141,7 +140,7 @@ do
   for seed = 1, 120 do
     local side = seed % 2 == 0 and 1 or -1
     local ang = math.pi / 2 - side * 0.9
-    local at, base = Grow.joint(Rng.new(seed), p, ang, 70, stem)
+    local at, base = assert(Grow.joint(Rng.new(seed), p, ang, 70, stem))
     if math.abs(at.f) < L.FRONT then
       seen.side = seen.side + 1
       local off = base[1] - p[1]
@@ -162,7 +161,6 @@ end
 -- which stays on the line from the stem to the blade.
 do
   local Paint = require("flora.paint")
-  local Rng = require("flora.rng")
   local G = require("flora.geom")
   for seed = 1, 30 do
     local f = ({ 0.8, 0, -0.8 })[seed % 3 + 1]
@@ -207,7 +205,6 @@ end
 -- lies within 0.18 of the leaf's length of the base (it would cut the stem
 -- at the joint), and the halo still covers most of the outline.
 do
-  local Rng = require("flora.rng")
   local G = require("flora.geom")
   for seed = 1, 30 do
     local r = Rng.new(seed)

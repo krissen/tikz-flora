@@ -111,9 +111,9 @@ do
     M.GROUNDS = { g }
     -- auto lays its ground (the panel) on a dark backdrop only.
     M.BACKDROP = g == "auto" and "dark" or nil
-    local ok, _, fs = unchecked(M.run, function(n) return n == "asanoha" or n == "sikku_kolam" or n == "rosette_lattice" end)
-    H.check(ok and #fs > 0, "the reach sweep missed a ground piece larger than measured under ground=" .. g)
-    if verbose then print(string.format("mutation ground larger than measured, ground=%s: %d failing cells", g, ok and #fs or -1)) end
+    local ok_larger, _, fs_larger = unchecked(M.run, function(n) return n == "asanoha" or n == "sikku_kolam" or n == "rosette_lattice" end)
+    H.check(ok_larger and #fs_larger > 0, "the reach sweep missed a ground piece larger than measured under ground=" .. g)
+    if verbose then print(string.format("mutation ground larger than measured, ground=%s: %d failing cells", g, ok_larger and #fs_larger or -1)) end
   end
   M.GROUNDS = grounds
   M.BACKDROP = nil

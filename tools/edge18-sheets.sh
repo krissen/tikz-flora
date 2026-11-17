@@ -58,7 +58,6 @@ zoom() {
   k=4
   opt=""; [ "$2" = dark ] && opt="-transp"
   px() { awk -v a="$1" -v k="$k" 'BEGIN { printf "%d", a * k }'; }
-  # shellcheck disable=SC2086
   pdftocairo -png $opt -singlefile -r 288 -x "$(px "$4")" -y "$(px "$5")" -W "$(px "$6")" -H "$(px "$7")" "$pdf" "$T/z"
   shade "$T/z.png" "$2"
   draw=$(bars "$R/$1/$2/$3.text" "$k" 0 "$4" "$5")

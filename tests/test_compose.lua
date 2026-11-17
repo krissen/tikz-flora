@@ -93,7 +93,7 @@ do
   local limit = math.rad(20)
   for seed = 1, 4 do
     local spec = H.page(seed, 420)
-    local g, m = Layout.region(spec)
+    local _, m = Layout.region(spec)
     local hero = { m.x0 + (m.x1 - m.x0) * 0.5, 700, 70 }
     local strands, root = Layout.strands(Rng.new(seed), m, hero, spec.width)
     local all = { table.unpack(strands) }
@@ -120,11 +120,10 @@ end
 -- outer margin and back, rather than rising as a straight column, and the
 -- star cartouche finds room in a quiet stretch beside it.
 do
-  local G = require("flora.geom")
   local with_panel = 0
   for seed = 1, 6 do
     local spec = H.page(seed)
-    local g, m = Layout.region(spec)
+    local _, m = Layout.region(spec)
     local mw = m.x1 - m.x0
     local hero = { m.x0 + mw * 0.5, spec.header_y - 40, 70 }
     local gest = Layout.gesture(Rng.new(seed), m, hero)

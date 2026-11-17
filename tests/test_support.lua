@@ -28,7 +28,7 @@ Compose.page=function(spec)
 end
 local plan=P.plan({width=100,height=100,text={x0=90,y0=0,x1=100,y1=100},lines={}})
 Compose.page=original
-local flower,child,noise,parent=table.unpack(plan.parts)
+local flower,child,_,parent=table.unpack(plan.parts)
 H.check(child.support==parent,'branch selected a nearby crossing instead of its actual parent')
 H.check(math.abs(child.birth-.95)<1e-9,'child did not wait for the later painted parent')
 H.check(flower.support==child and flower.birth>=child.birth+child.duration,'floret ignored transitive support')
@@ -45,7 +45,7 @@ H.check(math.abs(G.mapped_fraction(loop,mapped,late)-expected)<1e-9,'mapped atta
 for _,kind in ipairs({'umbel','cyme','gyps'}) do
   Compose.page=function(spec)
     local pt=Paint.new({backend='pdf'}); P.attach(pt,spec)
-    pt.growth_clock={reach=100,birth=function(_,x,y) return y end}
+    pt.growth_clock={reach=100,birth=function(_,_,y) return y end}
     local b=S.batch(); local support={parent=root,t=.75}; local r=Rng.new(7)
     if kind=='umbel' then S.umbel(b,r,{10,70},0,18,support)
     elseif kind=='cyme' then S.cyme(b,r,{10,70},0,18,1,support)

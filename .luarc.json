@@ -1,0 +1,28 @@
+{
+  "$schema": "https://raw.githubusercontent.com/LuaLS/vscode-lua/master/setting/schema.json",
+  "runtime.version": "Lua 5.3",
+  "runtime.pathStrict": true,
+  "runtime.path": [
+    "lua/?.lua",
+    "lua/?/init.lua",
+    "?.lua"
+  ],
+  "workspace.checkThirdParty": false,
+  "workspace.ignoreDir": [
+    "tests/fixtures",
+    "analysis",
+    "site",
+    "tuner",
+    "build"
+  ],
+  "telemetry.enable": false,
+  "diagnostics.severity": {
+    "unused-local": "Warning",
+    "redefined-local": "Warning",
+    "lowercase-global": "Warning",
+    "duplicate-set-field": "Hint"
+  },
+  "workspace.library": [
+    ".luals"
+  ]
+}

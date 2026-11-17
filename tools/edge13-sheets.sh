@@ -62,7 +62,6 @@ n=0
 for size in slide page; do
   for cw in tsuki-mi ember; do
     for bd in light dark; do
-      args=""
       set --
       for layout in left right centered surround; do
         for m in bleed inset; do

@@ -29,6 +29,14 @@ bench:
 test:
     for f in tests/test_*.lua; do texlua "$f" || exit 1; done
     {{PYTHON}} -I tests/test_bake.py
+    {{PYTHON}} -I tests/test_lint.py
+
+# Lint the Lua (lua-language-server, .luarc.json), the Python (ruff, and
+# pyright when installed) and tools/*.sh (shellcheck). .lint-exempt lists the
+# files not yet clean. Each tool must be installed; the run names a missing
+# one and fails.
+lint:
+    python3 -I tools/lint.py
 
 # The ornament gallery: every ornament kind, labelled, for three seeds
 # (tex/gallery.tex), to build/gallery.pdf and .png. ONLY limits it to some

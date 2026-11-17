@@ -1,5 +1,4 @@
 local H = dofile("tests/helper.lua")
-local F = require("flora.flower")
 local Compose = require("flora.compose")
 local Paint = require("flora.paint")
 local Frames = require("flora.frames")
@@ -272,7 +271,8 @@ do
   spec.tune.gesture.top_inset = 48
   spec.reserve = {{0,0,10,10},{5,5,15,15}}
   local Title = require("flora.orn_title")
-  local paint, depth = Title.paint
+  local paint = Title.paint
+  local depth
   Title.paint = function(p, ...)
     depth = p.clips
     return paint(p, ...)

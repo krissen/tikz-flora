@@ -48,7 +48,8 @@ def components(mask):
 
 def main(out):
     out = Path(out)
-    rows = list(csv.DictReader(open(out / "cells.tsv"), delimiter="\t"))
+    with open(out / "cells.tsv") as f:
+        rows = list(csv.DictReader(f, delimiter="\t"))
     res = []
     for r in rows:
         name = f"{r['pattern']}__ground-{r['ground']}__{r['edge']}"
@@ -64,7 +65,7 @@ def main(out):
             res.append({**r, "ragged": "", "steps": "", "fragments": ""})
             continue
         e = np.array([np.max(np.where(m[y])[0]) for y in rowsp], dtype=float)
-        win = max(3, int(round(3 * cell)))
+        win = max(3, round(3 * cell))
         k = np.ones(win) / win
         s = np.convolve(np.pad(e, win // 2, mode="edge"), k, mode="same")[win // 2: win // 2 + len(e)]
         length = np.sum(np.sqrt(1 + np.diff(e) ** 2))
