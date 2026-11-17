@@ -1,5 +1,4 @@
 local H = dofile("tests/helper.lua")
-local F = require("flora.flower")
 local Compose = require("flora.compose")
 local Paint = require("flora.paint")
 local Frames = require("flora.frames")

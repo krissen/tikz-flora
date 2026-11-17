@@ -104,7 +104,7 @@ do
   H.check(w.hero == "momiji" and w.blooms == "fuyu-gaki" and w.cartouche == "shin-kai", "palette after a colourway lost a part")
   local o = Settings.parse("palette={hero=momiji}, colourway=winter").palette
   H.check(o.hero == "tsuki-yo", "a colourway after a palette left its hero")
-  local fall, autumn = Settings.parse("colourway=fall").palette, Settings.parse("colourway=autumn").palette
+  local fall, _ = Settings.parse("colourway=fall").palette, Settings.parse("colourway=autumn").palette
   local orig = Settings.parse("palette={leaves=teal}, colourway=original").palette
   local seen = {}
   for _, name in ipairs(Inks.colourway_order) do

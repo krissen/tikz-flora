@@ -1,7 +1,6 @@
 local H = dofile("tests/helper.lua")
 local Relief = require("flora.orn_relief")
 local Paint = require("flora.paint")
-local G = require("flora.geom")
 
 -- Gold mirrors its studio: an edge facing the light (upper left) is
 -- brighter than one facing away, at every bevel tilt, and the flat top

@@ -61,7 +61,7 @@ do
   H.check(spec.layout == "title" and spec.height == 110 + view.y and view.height == 110, "band page and view disagree")
   H.check(spec.grow == 0.6, "band growth not carried")
   local below, inside = 0, 0
-  spec.probe = function(x, y, r)
+  spec.probe = function(_, y, r)
     if y + r < view.y - 2 then below = below + 1 elseif y - r < view.y + view.height then inside = inside + 1 end
   end
   Paint.reset_resources()

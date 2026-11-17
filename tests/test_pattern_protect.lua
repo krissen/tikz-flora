@@ -116,7 +116,7 @@ end), only("celtic_knot", "field panel"), with({ plan = { { 1, 1 } } }))
 mutant("a hero placed and laid unchecked", waive("hero", function()
   local Hero = require("flora.pattern_hero")
   local place = Hero.place
-  Hero.place = function(name, spec, side, top, keep, ...) return place(name, spec, side, top, {}, ...) end
+  Hero.place = function(name, spec, side, top, _, ...) return place(name, spec, side, top, {}, ...) end
   return function() Hero.place = place end
 end), only("stars_8_4", "hero rosette"), with({ plan = { { 1, 1 } } }))
 
