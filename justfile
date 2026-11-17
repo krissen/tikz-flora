@@ -30,9 +30,10 @@ test:
     for f in tests/test_*.lua; do texlua "$f" || exit 1; done
     {{PYTHON}} -I tests/test_bake.py
 
-# Lint the Lua with lua-language-server (the editor's checker), configured
-# by .luarc.json; .lint-exempt lists the files not yet clean. Needs
-# lua-language-server (Homebrew, or $LUA_LS).
+# Lint the Lua (lua-language-server, .luarc.json), the Python (ruff, and
+# pyright when installed) and tools/*.sh (shellcheck). .lint-exempt lists the
+# files not yet clean. Each tool must be installed; the run names a missing
+# one and fails.
 lint:
     python3 -I tools/lint.py
 

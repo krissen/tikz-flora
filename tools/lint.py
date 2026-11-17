@@ -1,15 +1,22 @@
-# Lints the repository's Lua with lua-language-server, the checker behind the
-# editor's warnings, so that what the editor shows is what CI fails on.
+# Lints the repository: its Lua with lua-language-server (the checker behind
+# the editor's warnings, so what the editor shows is what CI fails on), its
+# Python with ruff and pyright, and its shell scripts with shellcheck.
 #
-#   python3 -I tools/lint.py
+#   python3 -I tools/lint.py [--require-pyright]
 #
-# Reads .luarc.json (Lua 5.3, the LuaTeX globals in .luals/luatex.lua).
-# Files named in .lint-exempt are reported as a count and do not fail the
-# run: the list is the debt not yet cleaned, and it only shrinks. A file
-# listed there that has become clean is reported, so its line can go.
+# Configuration: .luarc.json (Lua 5.3, the LuaTeX globals in
+# .luals/luatex.lua), ruff.toml, pyrightconfig.json; shellcheck runs on
+# tools/*.sh with its defaults. Files named in .lint-exempt are reported as
+# a count and do not fail the run: the list is the debt not yet cleaned, and
+# it only shrinks. A file listed there that has become clean is reported, so
+# its line can go.
 #
-# The server is found as $LUA_LS or lua-language-server on PATH.
+# A tool that is not installed fails the run and is named; nothing is
+# skipped quietly. The one exception is pyright, which is skipped, said
+# aloud, when it is not on PATH, unless --require-pyright is given (CI).
+# Locations: $LUA_LS for lua-language-server, otherwise PATH.
 import fnmatch
+import glob
 import json
 import os
 import shutil
@@ -21,6 +28,13 @@ import urllib.request
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
+INSTALL = {
+    "lua-language-server": "brew install lua-language-server",
+    "ruff": "brew install ruff, or pip install ruff",
+    "shellcheck": "brew install shellcheck",
+    "pyright": "pip install pyright",
+}
+
 
 def exempt_patterns():
     path = os.path.join(ROOT, ".lint-exempt")
@@ -31,11 +45,19 @@ def exempt_patterns():
         return [line for line in lines if line]
 
 
-def diagnostics(server):
-    """Every finding at warning level or above, as (file, line, col, code, text)."""
+def relative(path):
+    return os.path.relpath(os.path.realpath(path), os.path.realpath(ROOT))
+
+
+def run(cmd):
+    return subprocess.run(cmd, cwd=ROOT, capture_output=True, text=True, check=False)
+
+
+def lua(server):
+    """Findings at warning level or above, as (file, line, col, code, text)."""
     with tempfile.TemporaryDirectory() as tmp:
         out = os.path.join(tmp, "check.json")
-        run = subprocess.run(
+        proc = run(
             [
                 server,
                 "--check",
@@ -46,52 +68,104 @@ def diagnostics(server):
                 "--check_out_path=" + out,
                 "--logpath=" + os.path.join(tmp, "log"),
                 "--metapath=" + os.path.join(tmp, "meta"),
-            ],
-            capture_output=True,
-            text=True,
-            check=False,
+            ]
         )
         if not os.path.exists(out):
             # No report is written when nothing was found; anything else is a failure.
-            if run.returncode == 0:
+            if proc.returncode == 0:
                 return []
-            sys.exit("lint: lua-language-server failed:\n" + run.stdout + run.stderr)
+            raise RuntimeError(proc.stdout + proc.stderr)
         with open(out) as f:
             report = json.load(f)
     found = []
     # An empty report is a list, a non-empty one a mapping from file URI.
-    for uri, items in (report.items() if isinstance(report, dict) else []):
-        path = urllib.request.url2pathname(urllib.parse.urlparse(uri).path)
-        rel = os.path.relpath(path, ROOT)
+    for uri, items in report.items() if isinstance(report, dict) else []:
+        rel = relative(urllib.request.url2pathname(urllib.parse.urlparse(uri).path))
         for d in items:
             start = d["range"]["start"]
-            text = d["message"].split("\n", 1)[0]
-            found.append((rel, start["line"] + 1, start["character"] + 1, d["code"], text))
-    return sorted(found)
+            found.append((rel, start["line"] + 1, start["character"] + 1, d["code"], d["message"].split("\n", 1)[0]))
+    return found
+
+
+def ruff(exe, _exempt):
+    proc = run([exe, "check", "--output-format=json", "."])
+    if proc.returncode not in (0, 1):
+        raise RuntimeError(proc.stdout + proc.stderr)
+    return [
+        (relative(d["filename"]), d["location"]["row"], d["location"]["column"], d["code"] or "error", d["message"])
+        for d in json.loads(proc.stdout)
+    ]
+
+
+def shellcheck(exe, exempt):
+    files = sorted(os.path.relpath(f, ROOT) for f in glob.glob(os.path.join(ROOT, "tools", "*.sh")))
+    files = [f for f in files if not any(fnmatch.fnmatch(f, p) for p in exempt)]
+    proc = run([exe, "-f", "json", *files])
+    if proc.returncode not in (0, 1):
+        raise RuntimeError(proc.stdout + proc.stderr)
+    return [
+        (relative(os.path.join(ROOT, d["file"])), d["line"], d["column"], f"SC{d['code']}", d["message"])
+        for d in json.loads(proc.stdout or "[]")
+    ]
+
+
+def pyright(exe, _exempt):
+    proc = run([exe, "--outputjson"])
+    if proc.returncode not in (0, 1):
+        raise RuntimeError(proc.stdout + proc.stderr)
+    found = []
+    for d in json.loads(proc.stdout).get("generalDiagnostics", []):
+        if d["severity"] in ("error", "warning"):
+            start = d["range"]["start"]
+            found.append(
+                (relative(d["file"]), start["line"] + 1, start["character"] + 1, d.get("rule", "pyright"), d["message"].split("\n", 1)[0])
+            )
+    return found
 
 
 def main():
-    server = os.environ.get("LUA_LS") or shutil.which("lua-language-server")
-    if not server:
-        sys.exit("lint: lua-language-server not found (set LUA_LS or put it on PATH)")
+    require_pyright = "--require-pyright" in sys.argv[1:]
     patterns = exempt_patterns()
+    tools = [
+        ("lua-language-server", os.environ.get("LUA_LS") or shutil.which("lua-language-server"), lambda exe, _: lua(exe)),
+        ("ruff", shutil.which("ruff"), ruff),
+        ("shellcheck", shutil.which("shellcheck"), shellcheck),
+        ("pyright", shutil.which("pyright"), pyright),
+    ]
+    failing = {}
     exempt = {}
-    failing = []
-    for rel, line, col, code, text in diagnostics(server):
-        if any(fnmatch.fnmatch(rel, p) for p in patterns):
-            exempt[rel] = exempt.get(rel, 0) + 1
-        else:
-            failing.append((rel, line, col, code, text))
-    for rel, line, col, code, text in failing:
-        print(f"{rel}:{line}:{col}: {code}: {text}")
+    broken = []
+    for name, exe, check in tools:
+        if not exe:
+            if name == "pyright" and not require_pyright:
+                print("lint: pyright skipped, not on PATH (pip install pyright)")
+                continue
+            print(f"lint: {name} not found ({INSTALL[name]})")
+            broken.append(name)
+            continue
+        try:
+            findings = sorted(set(check(exe, patterns)))
+        except RuntimeError as e:
+            print(f"lint: {name} failed to run:\n{e}")
+            broken.append(name)
+            continue
+        for finding in findings:
+            if any(fnmatch.fnmatch(finding[0], p) for p in patterns):
+                exempt[finding[0]] = exempt.get(finding[0], 0) + 1
+            else:
+                failing.setdefault(name, []).append(finding)
+        for rel, line, col, code, text in failing.get(name, []):
+            print(f"{name}: {rel}:{line}:{col}: {code}: {text}")
+        n = len(failing.get(name, []))
+        print(f"lint: {name}: {'ok' if not n else str(n) + ' findings'}")
     for p in patterns:
-        hit = [f for f in exempt if fnmatch.fnmatch(f, p)]
-        if not hit and "*" not in p and os.path.exists(os.path.join(ROOT, p)):
+        if "*" not in p and os.path.exists(os.path.join(ROOT, p)) and p not in exempt:
             print(f"lint: {p} is clean; remove it from .lint-exempt")
     if exempt:
         print(f"lint: {sum(exempt.values())} findings in {len(exempt)} files are exempt (.lint-exempt)")
-    if failing:
-        print(f"lint: {len(failing)} findings")
+    bad = sorted(set(failing) | set(broken))
+    if bad:
+        print("lint: failed: " + ", ".join(bad))
         sys.exit(1)
     print("lint: ok")
 
