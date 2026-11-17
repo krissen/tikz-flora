@@ -139,7 +139,7 @@ local function paint(pt, c, ink)
 end
 
 local function construct(pt, c, ink)
-  pt:stroke(c.lines, ink.line, 0.4, 1, { many = true })
+  pt:stroke(c.lines, ink.line, K.cline(ink), 1, { many = true })
 end
 
 -- The cells for env's box. `inner(X, Y)` is as in M.trace, in doubled
@@ -271,6 +271,13 @@ function M.field_inner(env, mode)
       if side and side.left and not side.right and x1 > t.x0 - clear then return false end
       if side and side.right and not side.left and x0 < t.x1 + clear then return false end
       if side and side.left and side.right and x1 > t.x0 - clear and x0 < t.x1 + clear then return false end
+      -- On a page the field takes whole, the panel is one closed shape
+      -- round the text: it keeps clear of the text block, not only of its
+      -- lines, so an indented or short line opens no notch for it to grow
+      -- into (a first line's indent did, at small cells).
+      if not side and t and x1 > t.x0 - clear and x0 < t.x1 + clear and y1 > t.y0 - clear and y0 < t.y1 + clear then
+        return false
+      end
       local bleed = mode == "bleed" and room.outer ~= "margin"
       local m = bleed and -a or (room.outer == "margin" and 4 or 0) + room.reach + 0.6 * a
       if x0 < m or x1 > room.W - m or y0 < m then return false end
