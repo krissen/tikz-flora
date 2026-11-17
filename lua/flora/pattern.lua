@@ -1236,11 +1236,14 @@ function M.paint(spec, pt)
     end
   end
   choose(cells)
-  -- No kept cell stands alone: one whose every neighbour on the page the
-  -- field left out (a crumb the edge's thinning leaves, more often the
-  -- smaller the cells) is left out too, its piece of the ground kept as a
-  -- dissolved cell's. A layout that places itself (c.fixed) keeps its own.
-  if #kept > 1 then
+  -- No kept cell stands alone at a hard or fading edge: one whose every
+  -- neighbour on the page the field left out (a crumb the edge leaves where
+  -- the text's outline cuts the lattice, more often the smaller the cells)
+  -- is left out too, its piece of the ground kept as a dissolved cell's.
+  -- Under edge=dissolve the cells that stand alone near the text are the
+  -- dissolve itself and stay. A layout that places itself (c.fixed) keeps
+  -- its own.
+  if edge ~= "dissolve" and #kept > 1 then
     local lone = M.field_edges(cells, kept, onpage)
     local keep2 = {}
     for _, k in ipairs(kept) do
