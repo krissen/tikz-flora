@@ -181,7 +181,7 @@ if verbose then print(string.format("mutation no-richest-stop: %d failures", ok 
 -- A fault put back into module `mod`'s source; returns what `check(M)`
 -- returns with the mutated module loaded.
 local function mutated(mod, file, old, new, check)
-  local f = io.open(file)
+  local f = assert(io.open(file))
   local src = f:read("a")
   f:close()
   local i, j = src:find(old, 1, true)

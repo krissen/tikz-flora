@@ -140,7 +140,7 @@ do
   for seed = 1, 120 do
     local side = seed % 2 == 0 and 1 or -1
     local ang = math.pi / 2 - side * 0.9
-    local at, base = Grow.joint(Rng.new(seed), p, ang, 70, stem)
+    local at, base = assert(Grow.joint(Rng.new(seed), p, ang, 70, stem))
     if math.abs(at.f) < L.FRONT then
       seen.side = seen.side + 1
       local off = base[1] - p[1]

@@ -127,7 +127,7 @@ end
 -- spread by area, so the wide arm of an L gets proportionally more.
 do
   local L = { { 0, 0 }, { 30, 0 }, { 30, 10 }, { 10, 10 }, { 10, 40 }, { 0, 40 } }
-  local sample = G.span_sampler(L, 0.5)
+  local sample = assert(G.span_sampler(L, 0.5))
   local rng = Rng.new(4)
   local foot, outside = 0, 0
   for _ = 1, 6000 do
@@ -280,7 +280,8 @@ do
   local left, total = 0, 0
   for seed = 1, 20 do
     local found, lost = W.edge_runs(Rng.new(seed), circle, pale, 0.3)
-    H.check(found and lost and #found == #lost and #lost >= 1, "runs alternate")
+    assert(found and lost, "no edge was lost at share 0.3")
+    H.check(#found == #lost and #lost >= 1, "runs alternate")
     local len, lost_len = 0, 0
     for _, r in ipairs(found) do len = len + G.length(r) end
     for _, r in ipairs(lost) do

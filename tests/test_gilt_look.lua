@@ -102,7 +102,7 @@ do
     for i = 1, #im.rgb do s = s + im.rgb:byte(i) end
     return s
   end
-  local flat = render("studio", { shadow = 0 })
+  local flat = assert(render("studio", { shadow = 0 }))
   local cov = 0
   for i = 1, #flat.coverage do cov = cov + math.floor(math.min(1, flat.coverage[i]) * 255 + 0.5) end
   H.check(alpha_sum(flat) == cov, "with shadow=0 the image's alpha is not its coverage")

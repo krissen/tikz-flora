@@ -216,7 +216,7 @@ end
 
 -- The faults put back into pattern.lua's source, one at a time.
 local function mutated(old, new, check)
-  local f = io.open("lua/flora/pattern.lua")
+  local f = assert(io.open("lua/flora/pattern.lua"))
   local src = f:read("a")
   f:close()
   local i, j = src:find(old, 1, true)

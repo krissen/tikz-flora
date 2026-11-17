@@ -245,9 +245,9 @@ end
 
 -- \floraletters' options are checked.
 do
-  local o = Letters.options("")
+  local o = assert(Letters.options(""))
   H.check(o.style == "shaded" and o.arch == 0 and o.ink == nil, "lettering defaults changed")
-  o = Letters.options("style=engraved, arch=-30, ink=momiji")
+  o = assert(Letters.options("style=engraved, arch=-30, ink=momiji"))
   H.check(o.style == "engraved" and o.arch == -30 and o.ink == "momiji", "lettering options did not parse")
   H.check(Letters.options("ink=black").ink == nil, "ink=black is not the default black")
   for _, bad in ipairs({ "style=gothic", "arch=200", "arch=wide", "ink=plaid", "size=3", "engraved" }) do
