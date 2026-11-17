@@ -87,7 +87,7 @@ def lua(server):
     return found
 
 
-def ruff(exe, _exempt):
+def ruff(exe):
     proc = run([exe, "check", "--output-format=json", "."])
     if proc.returncode not in (0, 1):
         raise RuntimeError(proc.stdout + proc.stderr)
@@ -97,9 +97,8 @@ def ruff(exe, _exempt):
     ]
 
 
-def shellcheck(exe, exempt):
+def shellcheck(exe):
     files = sorted(os.path.relpath(f, ROOT) for f in glob.glob(os.path.join(ROOT, "tools", "*.sh")))
-    files = [f for f in files if not any(fnmatch.fnmatch(f, p) for p in exempt)]
     proc = run([exe, "-f", "json", *files])
     if proc.returncode not in (0, 1):
         raise RuntimeError(proc.stdout + proc.stderr)
@@ -109,7 +108,7 @@ def shellcheck(exe, exempt):
     ]
 
 
-def pyright(exe, _exempt):
+def pyright(exe):
     proc = run([exe, "--outputjson"])
     if proc.returncode not in (0, 1):
         raise RuntimeError(proc.stdout + proc.stderr)
@@ -127,7 +126,7 @@ def main():
     require_pyright = "--require-pyright" in sys.argv[1:]
     patterns = exempt_patterns()
     tools = [
-        ("lua-language-server", os.environ.get("LUA_LS") or shutil.which("lua-language-server"), lambda exe, _: lua(exe)),
+        ("lua-language-server", os.environ.get("LUA_LS") or shutil.which("lua-language-server"), lua),
         ("ruff", shutil.which("ruff"), ruff),
         ("shellcheck", shutil.which("shellcheck"), shellcheck),
         ("pyright", shutil.which("pyright"), pyright),
@@ -144,7 +143,7 @@ def main():
             broken.append(name)
             continue
         try:
-            findings = sorted(set(check(exe, patterns)))
+            findings = sorted(set(check(exe)))
         except RuntimeError as e:
             print(f"lint: {name} failed to run:\n{e}")
             broken.append(name)
