@@ -11,7 +11,8 @@
 -- which sit over stars_8_4), with the variant's settings on light paper
 -- and on the dark backdrop; a variant's `layout` replaces the page's left
 -- and the slide's right, moves the text block where that layout puts it,
--- and writes the moved text's boxes beside the page (<pattern>.text). ONLY limits the run to the variants named
+-- and writes the moved text's boxes beside the page (<pattern>.text); a
+-- variant's `grow` renders that frame of the growth (spec.grow). ONLY limits the run to the variants named
 -- (comma-separated).
 --
 -- Writes OUTDIR/<variant>/<backdrop>/<pattern>.pdf (and hero-<name>.pdf,
@@ -161,11 +162,13 @@ for _, v in ipairs(V.variants) do
         if v.patterns and not v.patterns[p.name] then goto skip end
         local spec = page_spec("4", v.layout or "left", "pattern=" .. p.name .. ", " .. v.setup, bd, v.opts)
         if v.layout then place_text(spec, v.layout); write_text(spec, dir .. "/" .. p.name .. ".text") end
+        spec.grow = v.grow
         render(spec, dir .. "/" .. p.name .. ".pdf")
         measure(v.name, bd, p, spec)
         if v.slide then
           local sspec = page_spec("slide", v.layout or "right", "pattern=" .. p.name .. ", " .. v.setup, bd, v.opts)
           if v.layout then place_text(sspec, v.layout); write_text(sspec, dir .. "/slide-" .. p.name .. ".text") end
+          sspec.grow = v.grow
           render(sspec, dir .. "/slide-" .. p.name .. ".pdf")
         end
         ::skip::
