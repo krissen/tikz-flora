@@ -30,6 +30,12 @@ test:
     for f in tests/test_*.lua; do texlua "$f" || exit 1; done
     {{PYTHON}} -I tests/test_bake.py
 
+# Lint the Lua with lua-language-server (the editor's checker), configured
+# by .luarc.json; .lint-exempt lists the files not yet clean. Needs
+# lua-language-server (Homebrew, or $LUA_LS).
+lint:
+    python3 -I tools/lint.py
+
 # The ornament gallery: every ornament kind, labelled, for three seeds
 # (tex/gallery.tex), to build/gallery.pdf and .png. ONLY limits it to some
 # slots or kinds (comma-separated), e.g. `just gallery flourish,fan 6`.
