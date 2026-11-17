@@ -51,7 +51,7 @@ tile() {
   t="$OUT/tiles/$1__$2__$3__$4.png"
   if [ ! -f "$t" ]; then
     pdftocairo -png -singlefile -scale-to "$BOX" "$base.pdf" "$OUT/tmp/t"
-    draw=$(awk -v box="$BOX" 'NR == 1 { W = $1; H = $2; s = box / (W > H ? W : H); next }
+    draw=$(LC_ALL=C awk -v box="$BOX" 'NR == 1 { W = $1; H = $2; s = box / (W > H ? W : H); next }
       { printf "rectangle %.1f,%.1f %.1f,%.1f ", $1 * s, (H - $4) * s, $3 * s, (H - $2) * s }' "$base.text")
     magick "$OUT/tmp/t.png" -fill '#9a968e' -draw "$draw" "$t"
   fi
