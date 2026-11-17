@@ -65,6 +65,12 @@ if mode == "tex" then
   os.exit(0)
 end
 
+if mode == "patterns" then
+  package.path = "./lua/?.lua;" .. package.path
+  for _, p in ipairs(require("flora.patterns").list) do print(p.name) end
+  os.exit(0)
+end
+
 local Serial = require("flora.serial")
 local Paint = require("flora.paint")
 local Compose = require("flora.compose")
@@ -144,7 +150,8 @@ local function period(p)
   local size = p.scale
   local B = math.max(400, 14 * size)
   local env = { x0 = 0, y0 = 0, x1 = B, y1 = B, size = size, rng = Rng.new(1):fork("cells"), opts = {}, style = {},
-    room = { text = { x0 = B + 100, y0 = B + 100, x1 = B + 200, y1 = B + 200 }, gap = GAP, W = B, H = B, top = B, reach = 1,
+    room = { text = { x0 = B + 100, y0 = B + 100, x1 = B + 200, y1 = B + 200 }, gap = GAP, W = B, H = B, top = B,
+      reach = 1,
       avoid = {}, outer = "bleed" } }
   local ok, cells = pcall(p.cells, env)
   if not ok then period_cache[p.name] = { note = "cells failed: " .. tostring(cells) }; return period_cache[p.name] end
@@ -266,13 +273,13 @@ local proposals = {
   -- field's width against it (each pattern keeps its count of today's
   -- slide).
   { name = "refwidth", label = "B: own size x field / reference field (160 x 90 left)",
-    k = function(p, spec, layout)
+    k = function(_, spec, layout)
       local s = governing(strips(spec, layout), layout)
       return s[2] / REF_ACROSS
     end },
   -- B': as B, by the page's shorter side rather than the field.
   { name = "refpage", label = "B': own size x page's short side / 90 mm",
-    k = function(p, spec, layout)
+    k = function(_, spec)
       return math.min(spec.width, spec.height) / REF_SHORT
     end },
   -- C: B rounded so the governing strip holds a whole number of periods
@@ -289,13 +296,14 @@ local proposals = {
 
 if mode == "measure" then
   local out = assert(io.open(arg[3], "w"))
-  out:write(table.concat({ "format", "layout", "pattern", "strip", "across_mm", "along_mm", "size_pt", "period_x_pt", "period_y_pt",
+  out:write(table.concat({ "format", "layout", "pattern", "strip", "across_mm", "along_mm", "size_pt",
+    "period_x_pt", "period_y_pt",
     "periods_across", "periods_along", "periods_per_page_short", "strips", "note" }, "\t") .. "\n")
   local kout = assert(io.open(arg[3]:gsub("%.tsv$", "") .. "-proposals.tsv", "w"))
   kout:write("format\tlayout\tpattern\tgoverning_strip\ttoday_across")
   for _, q in ipairs(proposals) do kout:write("\t" .. q.name .. "_k\t" .. q.name .. "_across") end
   kout:write("\n")
-  for _, f in ipairs(Formats) do
+  for _, f in ipairs(Formats) do if not f.study then
     for _, layout in ipairs(LAYOUTS) do
       for _, p in ipairs(Patterns.list) do
         local spec = page_spec(f.name, layout, "pattern=" .. p.name)
@@ -313,7 +321,8 @@ if mode == "measure" then
           f.name, layout, p.name, s[1], s[2] / MM, s[3] / MM, p.scale, px_of(r), py_of(r), ac, al, short,
           table.concat(all, "; "), r.note or ""))
         local gs = governing(ss, layout)
-        kout:write(string.format("%s\t%s\t%s\t%s %.1fmm\t%.2f", f.name, layout, p.name, gs[1], gs[2] / MM, (counts(gs, r, 1))))
+        kout:write(string.format("%s\t%s\t%s\t%s %.1fmm\t%.2f", f.name, layout, p.name, gs[1], gs[2] / MM,
+          (counts(gs, r, 1))))
         for _, q in ipairs(proposals) do
           local k = q.k(p, spec, layout)
           kout:write(string.format("\t%.3f\t%.2f", k, (counts(gs, r, k))))
@@ -321,7 +330,7 @@ if mode == "measure" then
         kout:write("\n")
       end
     end
-  end
+  end end
   out:close()
   kout:close()
   os.exit(0)
@@ -366,11 +375,11 @@ if mode == "render" then
     log:write(string.format("%s\t%s\t%s\t%s\t%.3f\n", variant, fname, layout, p.name, k or 1))
   end
   -- Today: every pattern, every format, left and surround.
-  for _, f in ipairs(Formats) do
+  for _, f in ipairs(Formats) do if not f.study then
     for _, layout in ipairs({ "left", "surround" }) do
       for _, p in ipairs(Patterns.list) do one("today", f.name, layout, p, nil) end
     end
-  end
+  end end
   for _, q in ipairs(proposals) do
     for _, f in ipairs(Formats) do
       if MOCK_FORMATS[f.name] then
@@ -394,4 +403,124 @@ if mode == "render" then
   os.exit(0)
 end
 
-error("usage: pattern_scale.lua formats | tex FORMAT | measure BAKE OUT.tsv | render BAKE OUTDIR")
+-- Job files for the sweep (below) and the labels the sheets print, under
+-- the field scale as the engine has it:
+--   OUTDIR/own.job     greek_crosses, sikku_kolam and penrose_rhombs at
+--                      their own size today and three candidates
+--   OUTDIR/whole.job   khatam, asanoha, sikku_kolam and celtic_knot under
+--                      outer=margin and edge=cell, at the field's size and
+--                      rounded so the strip (less the margin) holds a whole
+--                      number of periods
+-- with OUTDIR/<job>.labels: variant format layout pattern k label.
+if mode == "jobs" then
+  local outdir = arg[3]
+  local Pattern = require("flora.pattern")
+  local OWN = { greek_crosses = { 30, 26, 22 }, sikku_kolam = { 16, 18, 21 }, penrose_rhombs = { 18, 21, 24 } }
+  local ORDER = { "greek_crosses", "sikku_kolam", "penrose_rhombs" }
+  local function factor_of(spec, p)
+    return Pattern.field_factor(spec, p), Pattern.field_strip(spec)
+  end
+  local job = assert(io.open(outdir .. "/own.job", "w"))
+  local lab = assert(io.open(outdir .. "/own.labels", "w"))
+  for _, name in ipairs(ORDER) do
+    local p = Patterns.by_name[name]
+    for _, fname in ipairs({ "slide169", "a4" }) do
+      for _, layout in ipairs({ "left", "surround" }) do
+        local spec = page_spec(fname, layout, "pattern=" .. name)
+        local f = factor_of(spec, p)
+        local s = governing(strips(spec, layout), layout)
+        local a = across_period(s, period(p))
+        local sizes = { p.scale, table.unpack(OWN[name]) }
+        for i, sz in ipairs(sizes) do
+          local k = sz / p.scale
+          local v = i == 1 and "own-today" or ("own-" .. i - 1)
+          -- sikku_kolam's band would pass the width at which its core
+          -- shows (pat_kit.lua's CORE_MIN) and turn pale: its width is
+          -- held, so only the cells grow.
+          local hold = (name == "sikku_kolam" and k > 1) and string.format(" spec.pattern_bandwidth=%.4f", 1 / k) or ""
+          job:write(string.format("%s %s %s %s %.4f%s\n", v, fname, layout, name, k, hold))
+          lab:write(string.format("%s %s %s %s %.4f %s\n", v, fname, layout, name, k,
+            string.format("%s %g: %.1f across, field x%.2f%s", i == 1 and "today" or "cand.", sz, s[2] / (a * k * f), f,
+              hold ~= "" and ", band held" or "")))
+        end
+      end
+    end
+  end
+  job:close(); lab:close()
+  job = assert(io.open(outdir .. "/whole.job", "w"))
+  lab = assert(io.open(outdir .. "/whole.labels", "w"))
+  local KEYS = "spec.pattern_outer=margin spec.pattern_edge=cell"
+  for _, name in ipairs({ "khatam", "asanoha", "sikku_kolam", "celtic_knot" }) do
+    local p = Patterns.by_name[name]
+    for _, fname in ipairs({ "slide169", "a4", "a5" }) do
+      for _, layout in ipairs({ "left", "surround" }) do
+        local spec = page_spec(fname, layout, "pattern=" .. name .. ", outer=margin, edge=cell")
+        local f = factor_of(spec, p)
+        local s = governing(strips(spec, layout), layout)
+        local a = across_period(s, period(p)) * f
+        local w = s[2] - 4
+        local n = math.max(2, math.floor(w / a + 0.5))
+        local kc = w / (n * a)
+        job:write(string.format("B %s %s %s 1 %s\n", fname, layout, name, KEYS))
+        lab:write(string.format("B %s %s %s 1 B: %.2f across, field x%.2f\n", fname, layout, name, w / a, f))
+        job:write(string.format("C %s %s %s %.4f %s\n", fname, layout, name, kc, KEYS))
+        lab:write(string.format("C %s %s %s %.4f C: %d across (x%.3f)\n", fname, layout, name, kc, n, kc))
+      end
+    end
+  end
+  job:close(); lab:close()
+  os.exit(0)
+end
+
+-- A sweep: pattern pages at a list of scale factors, for the floor and
+-- ceiling study. Each line of the job file JOB is
+--   variant format layout pattern k [key=value ...]
+-- where k multiplies the page's scale key and the key=value pairs set
+-- fields of flora.pattern's M.FIELD_SCALE for that page (enabled=false
+-- draws it without the field factor, as before there was one; min_line=0,
+-- ceil=none, ...), or, prefixed with spec., keys of the page's spec
+-- (spec.pattern_outer=margin). as_field=true makes k the page's field
+-- factor instead of a factor on its key. Writes
+-- OUTDIR/<variant>/<format>__<layout>__<pattern>__<k>.pdf and .text.
+if mode == "sweep" then
+  local outdir, job = arg[3], arg[4]
+  local Pattern = require("flora.pattern")
+  local FS = Pattern.FIELD_SCALE or {}
+  local saved = {}
+  for k, v in pairs(FS) do saved[k] = v end
+  local function value(v)
+    if v == "none" then return nil elseif v == "true" then return true elseif v == "false" then return false end
+    return tonumber(v) or v
+  end
+  for line in io.lines(job) do
+    local w = {}
+    for t in line:gmatch("%S+") do w[#w + 1] = t end
+    if #w >= 5 and w[1]:sub(1, 1) ~= "#" then
+      local variant, fname, layout, pname, k = w[1], w[2], w[3], w[4], tonumber(w[5])
+      for kk in pairs(FS) do FS[kk] = nil end
+      for kk, v in pairs(saved) do FS[kk] = v end
+      local spec = page_spec(fname, layout, "pattern=" .. pname .. ", colourway=tsuki-mi")
+      for i = 6, #w do
+        local kk, v = w[i]:match("^([%w_.]+)=(.+)$")
+        if kk:sub(1, 5) == "spec." then spec[kk:sub(6)] = value(v) else FS[kk] = value(v) end
+      end
+      if FS.as_field then
+        -- k as the field factor rather than the key: the reference set so
+        -- that this page's strip gives k, with no ceiling or floor.
+        FS.as_field = nil
+        FS.ref, FS.ceil, FS.floor, FS.min_factor = Pattern.field_strip(spec) / k, nil, 0, {}
+      else
+        spec[Settings.SPEC.scale] = k * (spec[Settings.SPEC.scale] or 1)
+      end
+      local dir = outdir .. "/" .. variant
+      os.execute("mkdir -p '" .. dir .. "'")
+      local base = string.format("%s/%s__%s__%s__%s", dir, fname, layout, pname, w[5])
+      write_text(spec, base .. ".text")
+      render(spec, base .. ".pdf")
+    end
+  end
+  os.exit(0)
+end
+
+error("usage: pattern_scale.lua formats | patterns | tex FORMAT | measure BAKE OUT.tsv | render BAKE OUTDIR"
+  .. " | jobs BAKE OUTDIR | sweep BAKE OUTDIR JOB")

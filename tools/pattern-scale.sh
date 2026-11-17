@@ -62,6 +62,7 @@ k_of() { awk -F "$TAB" -v v="$1" -v f="$2" -v l="$3" -v p="$4" '$1 == v && $2 ==
 
 # Every pattern today: the 160 x 90 mm slide beside A4, layout left.
 args=""
+# shellcheck disable=SC2013 # pattern names are single words
 for p in $(awk -F "$TAB" 'NR > 1 && $1 == "today" && $2 == "a4" && $3 == "left" { print $4 }' "$OUT/render/factors.tsv"); do
   args="$args${args:+|}-label|$p  160 x 90|$(tile today slide169 left "$p")|-label|$p  A4|$(tile today a4 left "$p")"
 done
@@ -72,6 +73,7 @@ montage -font "$FONT" $args -tile 6x -geometry "${BOX}x${BOX}+6+6" -pointsize 13
 unset IFS
 
 # A sheet per proposal: rows pattern x layout, columns format x (today, proposal).
+# shellcheck disable=SC2013 # proposal names are single words
 for q in $(awk -F "$TAB" 'NR > 1 && $1 != "today" { print $1 }' "$OUT/render/factors.tsv" | sort -u); do
   args=""
   for p in khatam asanoha sikku_kolam celtic_knot; do

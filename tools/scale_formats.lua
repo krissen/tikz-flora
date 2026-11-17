@@ -13,5 +13,8 @@ return {
   -- A4 portrait with tex/lorem.tex's margins.
   { name = "a4", label = "A4", w = 210, h = 297, left = 56, right = 20, top = 42, bottom = 35, font = "" },
   -- A5 portrait, its margins in A4's proportions to its width.
+  -- A4 with a wide outer margin (80 mm), for the field scale's ceiling:
+  -- a field half as wide again as the reference.
+  { name = "a4wide", label = "A4, 80 mm margin", w = 210, h = 297, left = 80, right = 20, top = 42, bottom = 35, font = "", study = "ceiling" },
   { name = "a5", label = "A5", w = 148, h = 210, left = 39, right = 14, top = 30, bottom = 25, font = "" },
 }
