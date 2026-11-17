@@ -46,6 +46,23 @@ def exempt_patterns():
         return [line for line in lines if line]
 
 
+def owners(rel):
+    """The tools that read this file, and so the only ones that can call it clean."""
+    if rel.endswith(".lua"):
+        try:
+            with open(os.path.join(ROOT, ".luarc.json")) as f:
+                ignored = json.load(f).get("workspace.ignoreDir", [])
+        except (OSError, ValueError):
+            ignored = []
+        outside = any(rel == d or rel.startswith(d.rstrip("/") + "/") for d in ignored)
+        return [] if outside else ["lua-language-server"]
+    if rel.endswith(".py"):
+        return ["ruff", "pyright"]
+    if rel.endswith(".sh") and os.path.dirname(rel) == "tools":
+        return ["shellcheck"]
+    return []
+
+
 def relative(path):
     return os.path.relpath(os.path.realpath(path), os.path.realpath(ROOT))
 
@@ -135,20 +152,24 @@ def main():
     failing = {}
     exempt = {}
     broken = []
+    ran = set()
+    skipped = []
     for name, exe, check in tools:
         if not exe:
             if name == "pyright" and not require_pyright:
                 print("lint: pyright skipped, not on PATH (pip install pyright)")
+                skipped.append(name)
                 continue
             print(f"lint: {name} not found ({INSTALL[name]})")
             broken.append(name)
             continue
         try:
             findings = sorted(set(check(exe)))
-        except RuntimeError as e:
-            print(f"lint: {name} failed to run:\n{e}")
+        except (RuntimeError, ValueError, KeyError, TypeError) as e:
+            print(f"lint: {name} failed to run or gave output that could not be read:\n{e}")
             broken.append(name)
             continue
+        ran.add(name)
         for finding in findings:
             if any(fnmatch.fnmatch(finding[0], p) for p in patterns):
                 exempt[finding[0]] = exempt.get(finding[0], 0) + 1
@@ -158,11 +179,27 @@ def main():
             print(f"{name}: {rel}:{line}:{col}: {code}: {text}")
         n = len(failing.get(name, []))
         print(f"lint: {name}: {'ok' if not n else str(n) + ' findings'}")
+    # An exact exemption is called clean only when every tool that reads the
+    # file ran to the end and found nothing in it. Globs and files no tool
+    # reads are never called clean.
+    unchecked = []
     for p in patterns:
-        if "*" not in p and os.path.exists(os.path.join(ROOT, p)) and p not in exempt:
+        if any(c in p for c in "*?[") or not os.path.exists(os.path.join(ROOT, p)):
+            continue
+        who = owners(p)
+        if not who:
+            continue
+        if not all(t in ran for t in who):
+            unchecked.append(p)
+        elif p not in exempt:
             print(f"lint: {p} is clean; remove it from .lint-exempt")
+    if unchecked:
+        left = sorted({t for p in unchecked for t in owners(p) if t not in ran})
+        print(f"lint: {len(unchecked)} exact exemptions not checked for cleanliness ({', '.join(left)} did not run)")
     if exempt:
-        print(f"lint: {sum(exempt.values())} findings in {len(exempt)} files are exempt (.lint-exempt)")
+        left = sorted(set(broken + skipped))
+        note = f"; not counted: {', '.join(left)} did not run" if left else ""
+        print(f"lint: {sum(exempt.values())} findings in {len(exempt)} files are exempt (.lint-exempt{note})")
     bad = sorted(set(failing) | set(broken))
     if bad:
         print("lint: failed: " + ", ".join(bad))
