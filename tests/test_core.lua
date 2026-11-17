@@ -329,8 +329,8 @@ do
   H.check(math.abs(mean - 0.5) < 0.02 and ends < 0.02, string.format("peaked curve: mean %.3f, %.3f at the ends", mean, ends))
   mean = stats({ range = { 2, 5 }, weights = { 1, 0 } }, 4000)
   H.check(math.abs(mean - 3) < 0.05, string.format("falling ramp mean %.3f, want 3", mean))
-  mean, lo = stats({ range = { 0, 1 }, weights = { 0, 0, 1 } }, 4000)
-  H.check(lo >= 0.5 and math.abs(mean - 5 / 6) < 0.02, string.format("last-point curve: mean %.3f, min %.3f", mean, lo))
+  local last_mean, lo = stats({ range = { 0, 1 }, weights = { 0, 0, 1 } }, 4000)
+  H.check(lo >= 0.5 and math.abs(last_mean - 5 / 6) < 0.02, string.format("last-point curve: mean %.3f, min %.3f", last_mean, lo))
   mean = stats({ range = { 0, 1 }, weights = { 0, 0 } }, 2000)
   H.check(math.abs(mean - 0.5) < 0.03, "a flat zero curve falls back to uniform")
 end
