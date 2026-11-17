@@ -1201,8 +1201,8 @@ function M.paint(spec, pt)
     k.painted = k.birth + (c.sweep and LINES or 0.05)
   end
   pt:begin_group("pattern")
-  -- The ground, every cell's piece of it before any cell's lines, as the
-  -- cell is painted.
+  -- The ground, every piece of it before any cell's lines in the stream,
+  -- each laid no later than the earliest cell on it (below).
   -- Pieces that meet edge to edge (the ground, a cell's plates) are
   -- stroked as well as filled, so neighbours leave no seam between them.
   -- Nothing is laid that does not keep the gaps itself (fits), whatever
