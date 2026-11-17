@@ -1112,16 +1112,27 @@ function M.paint(spec, pt)
   -- kept, with the share judge gives it, as any cell keeps (edge=fade
   -- pales it toward the text). A turn the edge mode would leave out takes
   -- judge's share without that choice.
+  local weaves = 0
   if opts.reweave and p.reweave then
     local keep = {}
     for _, k in ipairs(kept) do keep[M.cell_key(k.cell)] = k.cell end
     env.blocked = function(x, y) return not keep[M.cell_key({ x = x, y = y })] end
     -- A line turning back at the edge draws its turn in the cell beyond
     -- it. Where that cell may not be painted (too near the text) the kept
-    -- cells round it are walled in as well and the field is drawn again,
-    -- until every cell of the drawing on the page may be painted.
+    -- cells within three quarters of a cell of it are walled in as well and
+    -- the field is drawn again, at most six times, and no more once every
+    -- cell of the drawing on the page may be painted or the walling in
+    -- takes no cell away (the next drawing would be the same: a cell on the
+    -- text's side, which is never painted, or one more than three quarters
+    -- of a cell from every kept cell, stops it there). A cell that still
+    -- may not be painted is left out; for a pattern whose lines close cell
+    -- by cell (kolam's) nothing is left loose by that, but a knot's strand
+    -- can end there (celtic_knot, which is drawn again only under
+    -- pattern_opts.reweave: its closed ends are its field panel).
     local list
+    weaves = 0
     for _ = 1, 6 do
+      weaves = weaves + 1
       -- The same draws as the first drawing, so only the edge changes.
       env.rng = rng:fork("cells")
       cells = p.cells(env)
@@ -1139,11 +1150,13 @@ function M.paint(spec, pt)
       end
       if #failed == 0 then break end
       local r2 = (0.75 * size) ^ 2
+      local walled = 0
       for key, o in pairs(keep) do
         for _, c in ipairs(failed) do
-          if (o.x - c.x) ^ 2 + (o.y - c.y) ^ 2 < r2 then keep[key] = nil; break end
+          if (o.x - c.x) ^ 2 + (o.y - c.y) ^ 2 < r2 then keep[key] = nil; walled = walled + 1; break end
         end
       end
+      if walled == 0 then break end
     end
     kept, offered, bare = {}, #list, {}
     for _, v in ipairs(list) do kept[#kept + 1] = { cell = v.c, a = v.a, turn = v.turn, jitter = stagger:next() } end
@@ -1366,6 +1379,8 @@ function M.paint(spec, pt)
     all = cells, onpage = onpage, warnings = pt.pattern_warnings,
     -- Cells that should lay a piece of the ground and have none.
     holes = holes, grounded = base.ground and #grounded or 0,
+    -- How many times the field was drawn again at its edge (reweave).
+    weaves = weaves,
     -- Kept cells left out at painting for not keeping their gaps (none,
     -- tests/test_pattern_protect.lua).
     unfit = pt.pattern_unfit or 0,
