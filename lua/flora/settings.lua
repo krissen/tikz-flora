@@ -40,16 +40,22 @@ M.about = {
     "Fills the page with a geometric pattern instead of flora: one picked per page by weight. A group name (such as japanese or girih) weighs every pattern in it, except the emblem patterns (hexagram_lattice, khatam, greek_crosses), which only their own name or the group symbol picks. Each setting replaces the last; none grows flora again." },
   { "edge", "dissolve, cell, fade, border, guilloche",
     "How a pattern meets the text: cells falling away (the default), whole cells to a hard edge, cells paling into the paper, a ruled frame round the text, or a guilloche band round it." },
-  { "hero", "rosette, phyllotaxis, rose, guilloche, none",
-    "One large radial motif at a top corner of a pattern page, which the cells give way to: rings of petals, seeds set as a sunflower sets them, a rose window, or guilloche rings. It sits in the top corner of the pattern's side (top right for right, top left for left; top right for layouts with both sides or the whole page): centred on the paper's corner and running off it under outer=bleed, a whole disc inside the margin under outer=margin. It grows ring by ring from its centre. none (the default) paints none." },
+  { "hero", "rosette, phyllotaxis, rose, guilloche, turned_circles, circle_disc, none",
+    "One large radial motif at a top corner of a pattern page, which the cells give way to: rings of petals, seeds set as a sunflower sets them, a rose window, guilloche rings, a ring of turned circles, or a disc of overlapping circles in a rim. It sits in the top corner of the pattern's side (top right for right, top left for left; top right for layouts with both sides or the whole page): centred on the paper's corner and running off it under outer=bleed, a whole disc inside the margin under outer=margin. It grows ring by ring from its centre. none (the default) paints none." },
   { "outer", "bleed, margin", "How a pattern meets the paper's edge: running off the page (the default), or whole cells, and a whole hero, inside a small margin." },
   { "scale", "0.25 to 4", "The size of a pattern's cells, as a factor of its own." },
   { "patternpalette", "{role=ink, ...} for the roles band, core, fielda, fieldb, ground, accent",
     "What paints each part of a pattern: an ink group, one iroshizuku ink by name (as ink:L or ink:L:share with its lightness and chroma kept), paper or gold, and for the ground also none. A colourway sets them all; a role left out takes its colour from the palette's flora parts. An ink without a lightness takes the role's own, and for core and accent, which have none, the ink's richest (most chromatic) shade." },
   { "saturation", "0 to 1", "How much of its inks' colour a pattern's fields and ground keep: 0.5 (the default) mutes them as tiles and mosaics are, 1 keeps the ink's full colour. A share patternpalette gives a field or the ground (ink:L:share) is the one it keeps at 0.5, and other values scale it." },
-  { "finish", "filled, lines", "How a pattern is drawn: filled (the default), with its fields and ground, or lines, its bands and outlines alone with nothing filled." },
+  { "finish", "filled, lines, lacquer", "How a pattern is drawn: filled (the default), with its fields and ground; lines, its bands and outlines alone with nothing filled; or lacquer, for sikku_kolam and asanoha, thin gold line work on the ground laid as one panel (ground, bands and bandwidth set on the page go before it; on another pattern it is filled, and the log says so)." },
   { "bands", "auto, line, strap", "How a pattern's bands are drawn: auto (the default), each pattern's own; line, one thin line; or strap, a broad band with a fine contour and a light core." },
-  { "ground", "off, on", "Whether a pattern that has a ground (asanoha, sikku_kolam, rosette_lattice) lays it under its cells: off (the default) leaves the paper, on paints the palette's ground role." },
+  { "ground", "auto, off, panel, motif, round, cells", "Whether a pattern that has a ground (asanoha, sikku_kolam, rosette_lattice) lays it under its cells, and how it ends toward the text: auto (the default) leaves the paper on light paper and lays a panel on a dark backdrop; off leaves the page; panel lays one panel with a straight edge; motif ends it along the pattern's own motifs; round gives it a rounded edge; cells lays a piece under every cell. on is panel." },
+  { "ends", "auto, closed, bleed, whole, cut", "How a pattern's lines end where the field ends (sikku_kolam, celtic_knot): auto (the default), each pattern's own, closed; closed turns every line back at the field's edge, so none ends loose, and lays celtic_knot as one closed panel filling the field, its loops turning back just inside the paper's edges; bleed lets celtic_knot's panel run off the paper's edges (under outer=margin it closes at the margin, as closed does) and is closed for the other patterns; whole lets each line fall away whole with its dots; cut cuts the lines cell by cell." },
+  { "panels", "auto, on, off", "Whether sikku_kolam is laid out in symmetric panels, each walled in and the same under turns and reflections: auto (the default) and on do, off draws one free kolam over the field." },
+  { "starfill", "auto, whole, split", "How a star pattern's star is coloured (khatam): auto (the default) and whole lay the whole star in the first field; split lays the star's two squares in the two fields, its square on its point in the first and the other's four corners in the second." },
+  { "gapfill", "auto, field, paper", "What fills the space between a star pattern's stars (khatam's crosses, hexagram_lattice's rhombs): auto (the default) and field the second field, paper the paper. Under starfill=split khatam's crosses are always the paper." },
+  { "alternate", "auto, off, rows, three", "Whether a star pattern's stars take turns in the fields (hexagram_lattice): auto (the default) and off lay every star in the first field; rows alternate the first and second field row by row; three deal the first field, the second and the accent so that no two touching stars share one." },
+  { "lighten", "0 to 1", "Lightens a pattern's fields toward the paper: 0 (the default) keeps their inks' lightness, 1 makes them nearly the paper." },
   { "bandwidth", "0.25 to 4", "The width of a pattern's bands and lines, as a factor of its own." },
   { "cache", "true, false",
     "true (the default) keeps each page's flora in a folder <jobname>-flora beside the PDF, so a later compile reuses it; false grows every page afresh." },
@@ -145,9 +151,11 @@ M.define("pattern", function(v)
   local ok = {}
   for _, n in ipairs(names) do ok[n] = true end
   for _, n in ipairs(tags) do ok[n] = true end
+  for alias in pairs(P.aliases) do ok[alias] = true end
   local t = {}
   for _, kv in ipairs(M.parse_list(v)) do
-    local k, w = kv[1], kv[2] == nil and 1 or weight(kv[2])
+    -- An alias (patterns.lua) is read as the pattern it names.
+    local k, w = P.canonical(kv[1]), kv[2] == nil and 1 or weight(kv[2])
     if not ok[k] then
       return nil, "no pattern or group \"" .. k .. "\" (patterns: " .. table.concat(names, ", ")
         .. "; groups: " .. table.concat(tags, ", ") .. ")"
@@ -227,7 +235,7 @@ end)
 
 M.define("finish", function(v)
   if require("flora.pattern").finishes[v] then return v end
-  return nil, "finish must be filled or lines"
+  return nil, "finish must be filled, lines or lacquer"
 end)
 
 M.define("bands", function(v)
@@ -236,8 +244,40 @@ M.define("bands", function(v)
 end)
 
 M.define("ground", function(v)
-  if v == "off" or v == "on" then return v end
-  return nil, "ground must be off or on"
+  if v == "on" then return "panel" end
+  for _, m in ipairs({ "auto", "off", "panel", "motif", "round", "cells" }) do if v == m then return v end end
+  return nil, "ground must be auto, off, panel, motif, round or cells"
+end)
+
+M.define("ends", function(v)
+  for _, m in ipairs({ "auto", "closed", "bleed", "whole", "cut" }) do if v == m then return v end end
+  return nil, "ends must be auto, closed, bleed, whole or cut"
+end)
+
+M.define("panels", function(v)
+  if v == "auto" or v == "on" or v == "off" then return v end
+  return nil, "panels must be auto, on or off"
+end)
+
+M.define("starfill", function(v)
+  for _, m in ipairs({ "auto", "whole", "split" }) do if v == m then return v end end
+  return nil, "starfill must be auto, whole or split"
+end)
+
+M.define("gapfill", function(v)
+  for _, m in ipairs({ "auto", "field", "paper" }) do if v == m then return v end end
+  return nil, "gapfill must be auto, field or paper"
+end)
+
+M.define("alternate", function(v)
+  for _, m in ipairs({ "auto", "off", "rows", "three" }) do if v == m then return v end end
+  return nil, "alternate must be auto, off, rows or three"
+end)
+
+M.define("lighten", function(v)
+  local n = tonumber(v)
+  if n and n >= 0 and n <= 1 then return n end
+  return nil, "lighten must be a number from 0 to 1"
 end)
 
 M.define("bandwidth", function(v)
@@ -545,6 +585,8 @@ M.SPEC = {
   pattern = "pattern", edge = "pattern_edge", outer = "pattern_outer", scale = "pattern_scale",
   hero = "pattern_hero", patternpalette = "patternpalette", saturation = "pattern_saturation",
   finish = "pattern_finish", bands = "pattern_bands", bandwidth = "pattern_bandwidth", ground = "pattern_ground",
+  ends = "pattern_ends", panels = "pattern_panels", lighten = "pattern_lighten",
+  starfill = "pattern_starfill", gapfill = "pattern_gapfill", alternate = "pattern_alternate",
 }
 -- The pattern keys besides `pattern` itself, by key -> default. A mixer's
 -- pattern state, its \florasetup line and the preview's spec all carry
@@ -554,7 +596,8 @@ M.SPEC = {
 -- pattern.lua reads its defaults from here too. patternpalette is a
 -- palette, set role by role as palette is, so it is not one of them.
 M.PATTERN = { edge = "dissolve", hero = "none", outer = "bleed", scale = 1,
-  saturation = 0.5, finish = "filled", bands = "auto", bandwidth = 1, ground = "off" }
+  saturation = 0.5, finish = "filled", bands = "auto", bandwidth = 1, ground = "auto",
+  ends = "auto", panels = "auto", lighten = 0, starfill = "auto", gapfill = "auto", alternate = "auto" }
 M.OWN = { layout = true, header = true, seed = true, cache = true, density = true, visitors = true, colourway = true }
 
 -- What a "fresh" restyle (tools/preview.lua, the site's mixer) drops of a

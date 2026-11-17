@@ -71,7 +71,10 @@ function M.build()
 
   c.patterns = {}
   for _, p in ipairs(require("flora.patterns").list) do
-    c.patterns[#c.patterns + 1] = { name = p.name, title = p.title, tags = p.tags, opt_in = p.opt_in or false }
+    -- The finishes it takes (lacquer only on a pattern with a ground), so
+    -- the mixer offers only those.
+    c.patterns[#c.patterns + 1] = { name = p.name, title = p.title, tags = p.tags, opt_in = p.opt_in or false,
+      finishes = require("flora.pattern").finishes_of(p) }
   end
   -- The roles patternpalette={...} sets, with their labels and the flora
   -- part each is taken from when a palette leaves it out, so a reader can

@@ -349,7 +349,7 @@ do
     end, 8, 8)
   end
   -- A cell's curves, as the field builds them, stay inside its square.
-  for _, name in ipairs({ "celtic_knot", "celtic_panels" }) do
+  for _, name in ipairs({ "celtic_knot" }) do
     local p = Patterns.by_name[name]
     for _, size in ipairs({ p.scale, p.scale * 2.5 }) do
       local cells = p.cells({ x0 = 0, y0 = 0, x1 = 200, y1 = 160, size = size, rng = Rng.new(2) })
@@ -563,7 +563,7 @@ local function hero_extent(d)
   end
   return last, #rings
 end
-for _, name in ipairs({ "rosette", "phyllotaxis", "rose", "guilloche" }) do
+for _, name in ipairs({ "rosette", "phyllotaxis", "rose", "guilloche", "turned_circles", "circle_disc" }) do
   for _, R in ipairs({ 24, 60, 135 }) do
     local outer = hero_extent({ 100, 100, R, name = name })
     H.check(outer <= R + 1e-6, name .. " paints beyond its disc")

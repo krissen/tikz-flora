@@ -74,6 +74,18 @@ export function patternDefaults(meta) {
 // A mixer state's pattern keys from a URL's query (?pattern=asanoha&edge=cell
 // &hero=rosette&outer=margin&scale=1.5): each key that names one of its
 // catalog values, or a number inside its range, and none else.
+// The finishes the mixer offers for a pattern or group `name`: those every
+// pattern the name can pick takes (catalog.patterns[].finishes; lacquer
+// only on the patterns that name it). A group's members are as the mixer
+// lists them: an opt-in pattern belongs to its own name and to symbol only.
+// With no pattern chosen every finish is offered (the controls are off).
+export function finishesFor(name, choices, meta) {
+  const patterns = meta?.catalog?.patterns ?? [];
+  const members = patterns.filter((p) => p.name === name || (p.tags.includes(name) && (!p.opt_in || name === "symbol")));
+  if (members.length === 0) return choices;
+  return choices.filter((v) => members.every((p) => !p.finishes || p.finishes.includes(v)));
+}
+
 export function patternFromQuery(query, meta) {
   const s = patternDefaults(meta);
   const state = { name: query.get("pattern") ?? "", ...s.defaults };

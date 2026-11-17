@@ -1,7 +1,8 @@
 -- A cell that lays only its piece of the ground takes part in everything
 -- a cell does: its growth time and its fading.
 --
--- growth  pattern x ground (off, on) x edge x density (0.02, where
+-- growth  pattern x ground (off, cells, panel: a piece under every cell,
+--         or one panel) x edge x density (0.02, where
 --         dissolve keeps no cell and only ground is laid, 0.3, 3) x
 --         backdrop: every part a cell paints is born inside the growth
 --         interval, [0, 1], and ends by 1.01 (END), and the last frame of growth (spec.grow just
@@ -48,15 +49,46 @@ end
 
 -- Paint a page, recording each cell part's birth and duration, and each
 -- colour a cell part paints as it is shown (Paint:ink, which a dark ground
--- turns off) with the part's anchor.
+-- turns off) with the part's anchor, the share of the cell that paints
+-- it and what it fades toward, as shown (the share and the target its inks
+-- were taken at, Pattern.cell_inks; several cells may share an anchor, as
+-- kolam's do).
 local function paint(spec)
-  local parts, colours, kind, anchor = {}, {}, nil, nil
+  local parts, colours, kind, anchor, share, target = {}, {}, nil, nil, nil, nil
   local fill, stroke, part = Paint.fill, Paint.stroke, Progression.part
-  local function rec(self, rgb)
-    if self.group and self.group.tag == "pattern" and CELL[kind] then colours[#colours + 1] = { self:ink(rgb), anchor } end
+  local Pattern = require("flora.pattern")
+  local cell_inks, ep = Pattern.cell_inks, Pattern.edge_pieces
+  local fade_of
+  Pattern.cell_inks = function(base, a, hero, to, ...)
+    share, target = a, to or (not hero and base.fade) or Paint.palette.paper
+    fade_of = base.fade
+    return cell_inks(base, a, hero, to, ...)
   end
-  Paint.fill = function(self, cmds, rgb, ...) rec(self, rgb); return fill(self, cmds, rgb, ...) end
-  Paint.stroke = function(self, cmds, rgb, ...) rec(self, rgb); return stroke(self, cmds, rgb, ...) end
+  -- A piece of the ground is laid after the field has taken every piece's
+  -- inks, so its share is its own cell's, kept with its path; it fades
+  -- toward the page.
+  local piece_a = setmetatable({}, { __mode = "k" })
+  Pattern.edge_pieces = function(mode, f, info)
+    local r = ep(mode, f, info)
+    if r.piece then
+      local piece = r.piece
+      r.piece = function(k, ...)
+        local q, col = piece(k, ...)
+        if q then piece_a[q] = k.a end
+        return q, col
+      end
+    end
+    return r
+  end
+  local function rec(self, cmds, rgb)
+    if self.group and self.group.tag == "pattern" and CELL[kind] then
+      local a, to = share, target
+      if piece_a[cmds] then a, to = piece_a[cmds], fade_of end
+      colours[#colours + 1] = { self:ink(rgb), anchor, a, to and self:ink(to) }
+    end
+  end
+  Paint.fill = function(self, cmds, rgb, ...) rec(self, cmds, rgb); return fill(self, cmds, rgb, ...) end
+  Paint.stroke = function(self, cmds, rgb, ...) rec(self, cmds, rgb); return stroke(self, cmds, rgb, ...) end
   Progression.part = function(pt, k, a, birth, duration, fn, ...)
     if CELL[k] then parts[#parts + 1] = { k, birth, duration } end
     return part(pt, k, a, birth, duration, function()
@@ -71,11 +103,15 @@ local function paint(spec)
   Paint.reset_resources()
   local ok, pt = pcall(Compose.page, spec)
   Paint.fill, Paint.stroke, Progression.part = fill, stroke, part
+  Pattern.cell_inks, Pattern.edge_pieces = cell_inks, ep
   if not ok then error(pt, 0) end
   return pt, parts, colours
 end
 
 local EDGES = { "dissolve", "cell", "fade", "border", "guilloche" }
+-- The ground off, a piece under every cell (each with its own growth time
+-- and fading) and one panel.
+local GROUNDS = { "off", "cells", "panel" }
 local DENSITIES = { 0.02, 0.3, 3 }
 -- The latest a cell part may end: the latest birth (0.88), the step to
 -- its painting (0.05) and the painting itself (0.08), pattern.lua. The
@@ -87,7 +123,7 @@ local function growth(filter)
   local cells, failures, ground_only, latest = 0, {}, 0, 0
   for _, p in ipairs(Patterns.list) do
     if not filter or filter(p.name) then
-      for _, ground in ipairs({ "off", "on" }) do
+      for _, ground in ipairs(GROUNDS) do
         for _, edge in ipairs(EDGES) do
           for _, dens in ipairs(DENSITIES) do
             for _, bd in ipairs({ "light", "dark" }) do
@@ -118,15 +154,13 @@ local function fade(filter)
   local Pattern = require("flora.pattern")
   for _, p in ipairs(Patterns.list) do
     if not filter or filter(p.name) then
-      for _, ground in ipairs({ "off", "on" }) do
+      for _, ground in ipairs(GROUNDS) do
         for _, bd in ipairs({ "light", "dark" }) do
           cells = cells + 1
           local setup = string.format("ground=%s, edge=fade, density=2, backdrop=%s", ground, bd)
           local where = p.name .. " " .. setup
           local spec = spec_of(p.name, setup)
           local pt, _, faded = paint(spec)
-          local a_of = {}
-          for _, k in ipairs(pt.pattern.kept) do a_of[k.cell.x .. "," .. k.cell.y] = k.a end
           -- The same page with every cell whole.
           local cell_inks = Pattern.cell_inks
           Pattern.cell_inks = function(base, _, hero) return cell_inks(base, 1, hero) end
@@ -136,16 +170,19 @@ local function fade(filter)
           if #whole ~= #faded then
             failures[#failures + 1] = where .. ": fade: the whole page paints " .. #whole .. " colours, the faded one " .. #faded
           else
-            local page = Color.backdrop(spec.backdrop) or Paint.palette.paper
             local by, bad, near = {}, 0, 0
             for i, f in ipairs(faded) do
               local w, x = whole[i][1], f[1]
-              local a = a_of[f[2][1] .. "," .. f[2][2]] or 1
+              local a = f[3] or 1
+              -- What the cell fades toward: what lies under it (the page,
+              -- or the ground; tests/pattern_matrix.lua's fadeunder holds
+              -- it to that).
+              local page = f[4]
               if a < 1 then
                 pairs_ = pairs_ + 1
                 local d_wp = de(w, page)
                 if de(x, page) > d_wp + 1e-3 or de(x, w) > d_wp + 1e-3 then bad = bad + 1 end
-                local key = string.format("%.4f,%.4f,%.4f", w[1], w[2], w[3])
+                local key = string.format("%.4f,%.4f,%.4f %.4f,%.4f,%.4f", w[1], w[2], w[3], page[1], page[2], page[3])
                 by[key] = by[key] or {}
                 table.insert(by[key], { a, de(x, page) })
               end
@@ -154,8 +191,8 @@ local function fade(filter)
               table.sort(list, function(u, v) return u[1] < v[1] end)
               for i = 2, #list do if list[i][2] < list[i - 1][2] - 1e-3 then near = near + 1 end end
             end
-            if bad > 0 then failures[#failures + 1] = string.format("%s: fade: %d colours not between the whole colour and the page", where, bad) end
-            if near > 0 then failures[#failures + 1] = string.format("%s: fade: %d colours farther from the page than a less faded one", where, near) end
+            if bad > 0 then failures[#failures + 1] = string.format("%s: fade: %d colours not between the whole colour and what it fades toward", where, bad) end
+            if near > 0 then failures[#failures + 1] = string.format("%s: fade: %d colours farther from what they fade toward than a less faded one", where, near) end
           end
         end
       end
@@ -165,11 +202,11 @@ local function fade(filter)
 end
 
 local gc, gf, ground_only, latest = growth()
-H.check(gc == #Patterns.list * 2 * #EDGES * #DENSITIES * 2, "growth cells: " .. gc)
+H.check(gc == #Patterns.list * #GROUNDS * #EDGES * #DENSITIES * 2, "growth cells: " .. gc)
 H.check(ground_only > 0, "no growth cell lays ground with no cell kept")
 for _, f in ipairs(gf) do H.check(false, f) end
 local fc, fp, ff = fade()
-H.check(fc == #Patterns.list * 2 * 2, "fade cells: " .. fc)
+H.check(fc == #Patterns.list * #GROUNDS * 2, "fade cells: " .. fc)
 H.check(fp > 0, "no faded colours were compared")
 for _, f in ipairs(ff) do H.check(false, f) end
 if verbose then
@@ -197,7 +234,7 @@ local some = function(n) return n == "asanoha" or n == "sikku_kolam" or n == "ro
 local _, f6 = mutated("for _, k in ipairs(grounded) do far = math.max(far, root(k.cell)) end",
   "for _, k in ipairs(kept) do far = math.max(far, root(k.cell)) end", function() return growth(some) end)
 H.check(f6 and #f6 > 0, "the growth check missed growth time normalised over the kept cells only")
-local _, _, f7 = mutated("local to = (not hero and base.fade) or pal.paper", "local to = pal.paper",
+local _, _, f7 = mutated("to = to or (not hero and base.fade) or pal.paper", "to = pal.paper",
   function() return fade(some) end)
 H.check(f7 and #f7 > 0, "the fade check missed cells faded toward the light paper on a dark ground")
 -- A cell whose centre lies off the page born before the growth begins.

@@ -302,7 +302,7 @@ try {
   check(await sheetSum() !== floraSum, "the pattern does not change the page");
   await pat.getByRole("button", { name: "cell", exact: true }).click();
   await pat.getByRole("button", { name: "margin", exact: true }).click();
-  await pat.locator('input[type="range"]').fill("1.5");
+  await pat.locator('[data-pattern-key="scale"] input[type="range"]').fill("1.5");
   await settled();
   check(/pattern=asanoha, edge=cell, outer=margin, scale=1.5/.test(await code()), `pattern keys not in the line: ${await code()}`);
   // The hero is a pattern key of its own: it reaches the line and the picture,

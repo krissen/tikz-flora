@@ -139,7 +139,8 @@ function M.check(pt, points, outer, W, top)
   return out
 end
 
--- The sweep: every pattern x ground (off, on) x edge x layout (left,
+-- The sweep: every pattern x ground (off; on, which is the one panel;
+-- cells, a piece under every cell) x edge x layout (left,
 -- surround) x { bleed, margin, bleed with a hero } x scale (1, 3), at
 -- density 10, where the field comes nearest the text. `filter(name)`
 -- limits it to some patterns. Returns cells, failures; a cell is
@@ -148,20 +149,24 @@ local LINES = {}
 for k = 0, 9 do LINES[#LINES + 1] = { x0 = 120, x1 = 330 - (k % 3) * 40, y0 = 210 - k * 17, y1 = 220 - k * 17 } end
 M.VARIANTS = { { outer = "bleed" }, { outer = "margin" }, { outer = "bleed", hero = "rose" } }
 M.EDGES = { "dissolve", "cell", "fade", "border", "guilloche" }
+M.GROUNDS = { "auto", "off", "panel", "motif", "round", "cells", "on" }
+-- The backdrops the sweep paints on: light, where auto lays no ground; a
+-- sweep over auto on the dark backdrop, where it lays the panel, sets this.
+M.BACKDROP = nil
 
 function M.run(filter)
   local Patterns = require("flora.patterns")
   local cells, failures = {}, {}
   for _, p in ipairs(Patterns.list) do
     if not filter or filter(p.name) then
-      for _, ground in ipairs({ "off", "on" }) do
+      for _, ground in ipairs(M.GROUNDS) do
         for _, edge in ipairs(M.EDGES) do
           for _, layout in ipairs({ "left", "surround" }) do
             for _, v in ipairs(M.VARIANTS) do
               for _, scale in ipairs({ 1, 3 }) do
                 local pt, points = M.page({ pattern = { [p.name] = 1 }, pattern_ground = ground, pattern_edge = edge,
                   layout = layout, lines = layout == "surround" and LINES or nil, pattern_outer = v.outer,
-                  pattern_hero = v.hero, pattern_scale = scale, mix = { density = 10 } })
+                  pattern_hero = v.hero, pattern_scale = scale, mix = { density = 10 }, backdrop = M.BACKDROP })
                 local where = string.format("%s ground=%s edge=%s %s outer=%s hero=%s scale=%s", p.name, ground, edge,
                   layout, v.outer, v.hero or "none", scale)
                 cells[#cells + 1] = { where = where, points = #points, kept = pt.pattern.cells }

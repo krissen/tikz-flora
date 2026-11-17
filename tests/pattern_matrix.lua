@@ -29,6 +29,49 @@
 --   nofill    the lines finish fills nothing
 --   saturation  saturation 0 greys the fields and the ground in every
 --             colourway, and more saturation never takes chroma away
+--   tiling    khatam's stars meet tip to tip and the crosses fill the rest
+--             of the plane, measured on the cells' own outlines
+--   onecolour no hexagram star is painted in two colours: every fill that
+--             lies inside a star has that star's one colour
+--   onpanel   when the ground is one panel, everything the cells paint on
+--             the paper lies on it
+--   holes     no cell the field leaves out has every neighbour kept (the
+--             page's edge is hard, edge=cell)
+--   between   a plate that lies between cells runs along their outlines
+--             (its gaps: tests/test_pattern_protect.lua)
+--
+-- M.knot(filter) runs the knot field (pat_celtic.lua's bleed and inset)
+-- over both knot patterns x layout x mode x backdrop, holding it to
+--   units     no strand ending loose inside the page
+--
+-- M.fadeunder(filter) runs every pattern with a ground x ground x
+-- backdrop x colourway under edge=fade, holding it to
+--   fadeunder a faded cell's colours lie between its whole colours and
+--             what is painted under it (the ground's piece or panel there,
+--             else the page), as shown
+--
+-- M.defaults(filter) runs every pattern key with a default x the patterns
+-- with a lacquer finish (M.LACQUER) x each finish they take x backdrop,
+-- holding it to
+--   defaults  a key written out at its default, or set to another value and
+--             then back to its default, paints the page the key left out
+--             paints
+--
+-- M.unitdraw(filter) runs every pattern whose cells fall as units (c.group)
+-- under ends=whole x edge x layout x backdrop x seed, holding it to
+--   unitdraw  a unit falls on one draw: every kept cell of a unit was
+--             judged with the same draw
+--
+-- M.groundtime(filter, frames) runs every pattern with a ground x ground
+-- x layout x backdrop, holding it to
+--   groundtime the ground under a cell is never born after it: by the
+--             progression's births, and in spec.grow frames
+--
+-- M.reweave(filter) runs every pattern that reweaves its field's edge x
+-- edge x ground x layout x backdrop, holding it to
+--   reweave   the drawing woven again keeps the edge's treatment: every
+--             cell of it that the first drawing kept, other than a turn,
+--             has the share that drawing gave it (edge=fade's paling)
 
 local Paint = require("flora.paint")
 local Compose = require("flora.compose")
@@ -40,6 +83,18 @@ local Inks = require("flora.inks")
 local Rng = require("flora.rng")
 
 local M = {}
+local Units = dofile("tests/pattern_units.lua")
+local Panel = dofile("tests/pattern_panel.lua")
+
+-- How many of the kept cells have no kept cell near them: nearer than
+-- 1.6 times the usual distance to a cell's nearest kept neighbour.
+function M.isolated(kept)
+  local cells = {}
+  for _, k in ipairs(kept) do cells[#cells + 1] = k.cell end
+  if #cells < 2 then return 0 end
+  local info = Pattern.field_edges(cells, kept, {})
+  return info.isolated
+end
 
 local function key(c) return string.format("%.4f,%.4f,%.4f", c[1], c[2], c[3]) end
 
@@ -72,10 +127,13 @@ end
 
 -- Paint one page, recording the pattern group's paint calls.
 local function paint(spec)
-  local rec = { fills = {}, strokes = {} }
+  local rec = { fills = {}, strokes = {}, fillpaths = {} }
   local fill, stroke = Paint.fill, Paint.stroke
   Paint.fill = function(self, cmds, rgb, ...)
-    if self.group and self.group.tag == "pattern" then rec.fills[#rec.fills + 1] = rgb end
+    if self.group and self.group.tag == "pattern" then
+      rec.fills[#rec.fills + 1] = rgb
+      rec.fillpaths[#rec.fillpaths + 1] = { cmds = cmds, rgb = rgb }
+    end
     return fill(self, cmds, rgb, ...)
   end
   Paint.stroke = function(self, cmds, rgb, ...)
@@ -90,9 +148,16 @@ local function paint(spec)
   return rec
 end
 
-local function page(name, setup)
+-- The matrix's page from a whole setup line.
+local function page_of(setup)
+  local spec = { width = 300, height = 240, text = { x0 = 130, y0 = 30, x1 = 280, y1 = 210 }, seed = 7, layout = "left" }
+  Settings.to_spec(Settings.parse(setup), spec)
+  return spec
+end
+
+local function page(name, setup, layout)
   local spec = { width = 300, height = 240, text = { x0 = 130, y0 = 30, x1 = 280, y1 = 210 }, seed = 7,
-    layout = "left", pattern = { [name] = 1 }, pattern_edge = "cell" }
+    layout = layout or "left", pattern = { [name] = 1 }, pattern_edge = "cell" }
   Settings.to_spec(Settings.merge(Settings.from_spec(spec), Settings.parse(setup)), spec)
   return spec
 end
@@ -107,6 +172,152 @@ end
 local ROLE_OF = { band = "band", band0 = "band", line = "band", line0 = "band", core = "core", a = "a", b = "b",
   accent = "accent", ground = "ground", dark = "ground", paper = "paper", page = "paper" }
 
+-- The points of a path of moves and lines (K.path's).
+local function points(cmds)
+  local P = {}
+  for _, c in ipairs(cmds) do
+    if c[1] == "m" or c[1] == "l" then P[#P + 1] = { c[2], c[3] } end
+  end
+  return P
+end
+local function area(P)
+  local s = 0
+  for i = 1, #P do
+    local p, q = P[i], P[i % #P + 1]
+    s = s + p[1] * q[2] - q[1] * p[2]
+  end
+  return math.abs(s) / 2
+end
+local function inside(P, x, y)
+  local hit = false
+  for i = 1, #P do
+    local p, q = P[i], P[i % #P + 1]
+    if (p[2] > y) ~= (q[2] > y) and x < p[1] + (y - p[2]) / (q[2] - p[2]) * (q[1] - p[1]) then hit = not hit end
+  end
+  return hit
+end
+
+-- khatam's tiling, on its own cells: four stars about a cross, and the
+-- cross between them. The stars and the cross fill the period's square
+-- exactly (their areas sum to a squared, as they cannot overlap where
+-- every cross corner is a star's corner), and each star's tip is its
+-- neighbour's.
+function M.tiling(p, a)
+  a = a or 28
+  local cells = p.cells({ x0 = 0, y0 = 0, x1 = 3 * a, y1 = 3 * a, size = a, style = {} })
+  local at = {}
+  for _, c in ipairs(cells) do at[string.format("%.3f,%.3f", c.x, c.y)] = c end
+  local function cell(x, y) return at[string.format("%.3f,%.3f", x, y)] end
+  local c00, c10, c01, c11 = cell(a, a), cell(2 * a, a), cell(a, 2 * a), cell(2 * a, 2 * a)
+  if not (c00 and c10 and c01 and c11) then return "the cells do not stand on the lattice" end
+  local cross
+  for _, pl in ipairs(c00.plates or {}) do if pl.between then cross = points(pl[1]) end end
+  if not cross then return "no cross between the stars" end
+  local star = points(c00.star)
+  local sum = area(star) + area(cross)
+  if math.abs(sum - a * a) > 1e-6 * a * a then
+    return string.format("a star and a cross cover %.4f of the period's square", sum / (a * a))
+  end
+  local corners = {}
+  for _, c in ipairs({ c00, c10, c01, c11 }) do for _, q in ipairs(points(c.star)) do corners[#corners + 1] = q end end
+  for _, q in ipairs(cross) do
+    local near = math.huge
+    for _, r in ipairs(corners) do near = math.min(near, math.sqrt((q[1] - r[1]) ^ 2 + (q[2] - r[2]) ^ 2)) end
+    if near > 1e-6 * a then return string.format("a corner of the cross lies %.3f pt from every star", near) end
+  end
+  local tip = { a + a / 2, a }
+  local function has(c) for _, q in ipairs(points(c.star)) do if math.abs(q[1] - tip[1]) + math.abs(q[2] - tip[2]) < 1e-6 * a then return true end end end
+  if not (has(c00) and has(c10)) then return "two neighbouring stars do not meet tip to tip" end
+  return nil
+end
+
+-- The cells of the drawing the field left out though every neighbour of
+-- theirs is kept, on the page. Neighbours are as M.isolated's.
+function M.holes(info)
+  local all, keptat = info.all or {}, {}
+  for _, k in ipairs(info.kept) do keptat[k.cell] = true end
+  if #all < 2 then return 0 end
+  local nd = Pattern.field_edges(all, {}, {}).nd
+  local n = 0
+  for _, c in ipairs(all) do
+    if not keptat[c] and info.onpage and info.onpage[c] then
+      local nb, kept = 0, 0
+      for _, o in ipairs(all) do
+        if o ~= c and (o.x - c.x) ^ 2 + (o.y - c.y) ^ 2 <= nd * nd then
+          nb = nb + 1
+          if keptat[o] then kept = kept + 1 end
+        end
+      end
+      if nb >= 3 and kept == nb then n = n + 1 end
+    end
+  end
+  return n
+end
+
+-- The plates laid between cells whose edges do not each lie on an edge of
+-- one of the cells they lie between.
+local function on_segment(q, a, b, eps)
+  local dx, dy = b[1] - a[1], b[2] - a[2]
+  local L2 = dx * dx + dy * dy
+  local t = L2 > 0 and ((q[1] - a[1]) * dx + (q[2] - a[2]) * dy) / L2 or 0
+  if t < -eps or t > 1 + eps then return false end
+  local px, py = a[1] + t * dx, a[2] + t * dy
+  return (q[1] - px) ^ 2 + (q[2] - py) ^ 2 <= eps * eps
+end
+function M.between(info)
+  local at = {}
+  for _, k in ipairs(info.kept) do at[Pattern.cell_key(k.cell)] = k.cell end
+  local bad = 0
+  for _, k in ipairs(info.kept) do
+    for _, pl in ipairs(k.cell.plates or {}) do
+      local cells = {}
+      for _, q in ipairs(pl.between or {}) do cells[#cells + 1] = at[Pattern.cell_key({ x = q[1], y = q[2] })] end
+      -- Only the plates the field lays: every cell they lie between kept.
+      if pl.between and #cells == #pl.between then
+        local P = points(pl[1])
+        local ok = true
+        for i = 1, #P do
+          local p1, p2 = P[i], P[i % #P + 1]
+          local found = false
+          for _, c in ipairs(cells) do
+            local V = c.verts
+            for j = 1, #V do
+              local a, b = V[j], V[j % #V + 1]
+              if on_segment(p1, a, b, 1e-6) and on_segment(p2, a, b, 1e-6) then found = true end
+            end
+          end
+          if not found then ok = false end
+        end
+        if not ok then bad = bad + 1 end
+      end
+    end
+  end
+  return bad
+end
+
+-- Fills inside each kept star of more than one colour (hexagram).
+local function colours_per_star(kept, fillpaths)
+  local bad = 0
+  for _, k in ipairs(kept) do
+    local P = k.cell.verts
+    local seen, n = {}, 0
+    for _, f in ipairs(fillpaths) do
+      local Q = points(f.cmds)
+      if #Q > 0 then
+        local cx, cy = 0, 0
+        for _, q in ipairs(Q) do cx, cy = cx + q[1], cy + q[2] end
+        cx, cy = cx / #Q, cy / #Q
+        if inside(P, cx, cy) then
+          local kk = key(f.rgb)
+          if not seen[kk] then seen[kk] = true; n = n + 1 end
+        end
+      end
+    end
+    if n > 1 then bad = bad + 1 end
+  end
+  return bad
+end
+
 function M.run(floors, filter)
   local cells, failures = {}, {}
   local function fail(c, what, msg)
@@ -114,7 +325,7 @@ function M.run(floors, filter)
   end
   for _, p in ipairs(Patterns.list) do
     for _, cw in ipairs(Inks.colourway_order) do
-      for _, ground in ipairs({ "off", "on" }) do
+      for _, ground in ipairs({ "auto", "panel", "cells" }) do
       for _, finish in ipairs({ "filled", "lines" }) do
         if not filter or filter(p.name, cw, finish) then
           local seen = {}
@@ -123,6 +334,7 @@ function M.run(floors, filter)
             local rec = paint(spec)
             local base = rec.pt.pattern.inks
             local c = { pattern = p.name, colourway = cw, backdrop = bd, finish = finish, ground = ground }
+            c.kept = #rec.pt.pattern.kept
             cells[#cells + 1] = c
             local roles = role_colours(base)
             -- The page's own colour, for a halo that parts two strands.
@@ -165,8 +377,68 @@ function M.run(floors, filter)
             end
             -- nofill
             if finish == "lines" and #rec.fills > 0 then fail(c, "nofill", #rec.fills .. " fills under the lines finish") end
+            -- tiling
+            if p.name == "khatam" then
+              local why = M.tiling(p)
+              if why then fail(c, "tiling", why) end
+            end
+            -- onecolour
+            if p.name == "hexagram_lattice" and finish == "filled" then
+              local bad = colours_per_star(rec.pt.pattern.kept, rec.fillpaths)
+              if bad > 0 then fail(c, "onecolour", bad .. " stars painted in more than one colour") end
+            end
             -- ground
             if (rec.pt.pattern.holes or 0) > 0 then fail(c, "ground", rec.pt.pattern.holes .. " cells without their piece of the ground") end
+            -- edge: the ground ends as its key says: none on paper under
+            -- auto, one panel under panel (and auto on a dark backdrop).
+            local gfills = 0
+            if base.ground then for _, x in ipairs(rec.fills) do if key(x) == key(base.ground) then gfills = gfills + 1 end end end
+            local has_ground = false
+            for _, r in ipairs(p.roles) do if r == "ground" then has_ground = true end end
+            if has_ground and finish == "filled" then
+              if ground == "auto" and bd == "light" and base.ground then fail(c, "edge", "a ground on paper under ground=auto") end
+              if (ground == "panel" or (ground == "auto" and bd == "dark")) and gfills ~= 1 then
+                fail(c, "edge", gfills .. " pieces of ground where one panel belongs")
+              end
+            end
+            -- units: no kolam dot without its loop, no celtic strand ending
+            -- loose inside the page (truchet's tiles are not closed, and
+            -- not held to it).
+            if p.name == "sikku_kolam" or p.name:match("^celtic") then
+              local lone, open = Units.count(rec.pt.pattern.kept, { 3, 3, spec.width - 3, spec.height - 3 })
+              c.lone, c.open = lone, open
+              if lone > 0 then fail(c, "units", lone .. " dots without their loop") end
+              if open > 0 then fail(c, "units", open .. " line ends meeting no other") end
+            end
+            -- onpanel: with the ground as one panel, all the cells paint
+            -- lies on it (as far as it lies on the paper).
+            if finish == "filled" and base.ground and (ground == "panel" or (ground == "auto" and bd == "dark")) then
+              local _, res = Panel.check_page(spec)
+              c.off_panel = res.worst
+              if res.cells > 0 then fail(c, "onpanel", string.format("%d cells paint up to %.2f pt off the panel", res.cells, res.worst)) end
+            end
+            -- holes: a cell the field left out with every neighbour kept.
+            -- The matrix's page has a hard edge (edge=cell), where only the
+            -- text, the hero and the page leave cells out, and none of those
+            -- leaves out a cell whose neighbours all stand.
+            if finish == "filled" then
+              local h = M.holes(rec.pt.pattern)
+              c.holes = h
+              if h > 0 then fail(c, "holes", h .. " cells left out with every neighbour kept") end
+            end
+            -- between: a plate that lies between cells runs along their
+            -- outlines, so the field ends along the cells. It does not keep
+            -- the plate clear: something may lie inside it, clear of every
+            -- cell round it. The plate keeps its own gaps (pattern.lua's
+            -- plate; tests/test_pattern_protect.lua).
+            local bad_between = M.between(rec.pt.pattern)
+            if bad_between > 0 then fail(c, "between", bad_between .. " plates between cells that leave their outlines") end
+            -- fragments: kept cells with no kept neighbour.
+            local iso = M.isolated(rec.pt.pattern.kept)
+            c.isolated = #rec.pt.pattern.kept > 0 and iso / #rec.pt.pattern.kept or 0
+            if floors.isolated and c.isolated > floors.isolated then
+              fail(c, "fragments", string.format("%.1f %% of the cells stand alone", 100 * c.isolated))
+            end
             -- contrast: the band against what it lies on, as shown
             local back = Color.backdrop(spec.backdrop)
             local function shown(rgb)
@@ -277,6 +549,541 @@ function M.run(floors, filter)
   end
   M.saturation_cells = sat_cells
   return cells, failures
+end
+
+-- The knot as one panel over its field (pat_celtic.lua's field panel,
+-- celtic_knot's default under ends=closed, and ends=bleed): no strand ends
+-- loose inside the page, in any layout. Under bleed the plait is cut by the
+-- paper's edge, which the count leaves out (3 pt of it).
+function M.knot(filter)
+  local cells, failures = {}, {}
+  for _, name in ipairs({ "celtic_knot" }) do
+    for _, layout in ipairs({ "left", "right", "centered", "surround" }) do
+      for _, mode in ipairs({ "closed", "bleed" }) do
+        for _, bd in ipairs({ "light", "dark" }) do
+          if not filter or filter(name, layout, mode) then
+            local spec = page(name, "colourway=tsuki-mi, ends=" .. mode .. ", backdrop=" .. bd, layout)
+            local rec = paint(spec)
+            local lone, open = Units.count(rec.pt.pattern.kept, { 3, 3, spec.width - 3, spec.height - 3 })
+            local c = { pattern = name, layout = layout, mode = mode, backdrop = bd, kept = #rec.pt.pattern.kept, open = open }
+            cells[#cells + 1] = c
+            if open > 0 or lone > 0 then
+              failures[#failures + 1] = string.format("%s %s %s %s: units: %d line ends meeting no other", name, layout, mode, bd, open)
+            end
+            if c.kept == 0 and layout ~= "right" then
+              failures[#failures + 1] = string.format("%s %s %s %s: units: no cell kept", name, layout, mode, bd)
+            end
+          end
+        end
+      end
+    end
+  end
+  return cells, failures
+end
+
+-- finish=lacquer over every pattern x colourway (tsuki-mi, ember,
+-- usu-zumi) x backdrop, against the patterns meant to take it (M.LACQUER,
+-- named here and not read from the modules, so a module that claims it
+-- wrongly is caught). On those: the ground is one panel (one fill of the
+-- ground's colour), the bands are painted in the gold ink itself, the
+-- bands are lines at half width, and a ground the page sets itself goes
+-- before the panel. On any other: the page is the filled page byte for
+-- byte, and it says why. Returns cells, failures.
+M.LACQUER = { sikku_kolam = true, asanoha = true }
+function M.lacquer(filter)
+  local cells, failures = {}, {}
+  for _, p in ipairs(Patterns.list) do
+    if not filter or filter(p.name) then
+      for _, cw in ipairs({ "tsuki-mi", "ember", "usu-zumi" }) do
+        for _, bd in ipairs({ "light", "dark" }) do
+          local where = string.format("%s %s %s", p.name, cw, bd)
+          local spec = page(p.name, "colourway=" .. cw .. ", finish=lacquer, backdrop=" .. bd)
+          local rec = paint(spec)
+          local info = rec.pt.pattern
+          local base = info.inks
+          cells[#cells + 1] = { pattern = p.name, colourway = cw, backdrop = bd }
+          if Pattern.takes(p, "lacquer") ~= (M.LACQUER[p.name] or false) then
+            failures[#failures + 1] = where .. ": lacquer: the catalog's finishes do not say what the pattern takes"
+          end
+          if M.LACQUER[p.name] then
+            local eff = Pattern.finish_spec(spec, p)
+            local gf = 0
+            if base.ground then for _, x in ipairs(rec.fills) do if key(x) == key(base.ground) then gf = gf + 1 end end end
+            if not base.ground or gf ~= 1 then failures[#failures + 1] = where .. ": lacquer: " .. gf .. " ground fills where one panel belongs" end
+            -- The bands as painted are the gold ink itself (the one Paint:stroke
+            -- gilds), not a colour made from it.
+            local gold, lit = 0, 0
+            for _, x in ipairs(rec.strokes) do
+              if x == Paint.palette.gold then gold = gold + 1 elseif x == base.band then lit = lit + 1 end
+            end
+            if base.band ~= Paint.palette.gold or gold == 0 or lit > 0 then
+              failures[#failures + 1] = string.format("%s: lacquer: the bands are painted in %d gold and %d other strokes, not the gold ink", where, gold, lit)
+            end
+            if eff.pattern_bands ~= "line" or eff.pattern_bandwidth ~= 0.5 then failures[#failures + 1] = where .. ": lacquer: the bands are not lines at half width" end
+            if info.warnings then failures[#failures + 1] = where .. ": lacquer: a warning on a pattern with a ground" end
+            -- A ground the page sets goes before the panel.
+            local own = paint(page(p.name, "colourway=" .. cw .. ", finish=lacquer, ground=cells, backdrop=" .. bd))
+            local gf2 = 0
+            local g2 = own.pt.pattern.inks.ground
+            if g2 then for _, x in ipairs(own.fills) do if key(x) == key(g2) then gf2 = gf2 + 1 end end end
+            if gf2 <= 1 then failures[#failures + 1] = where .. ": lacquer: ground=cells set on the page lost to the panel" end
+          else
+            local filled = paint(page(p.name, "colourway=" .. cw .. ", finish=filled, backdrop=" .. bd))
+            if rec.pt:body() ~= filled.pt:body() then failures[#failures + 1] = where .. ": lacquer: a pattern without a ground is not its filled page" end
+            if not (info.warnings and info.warnings[1]) then failures[#failures + 1] = where .. ": lacquer: no warning on a pattern without a ground" end
+          end
+        end
+      end
+    end
+  end
+  return cells, failures
+end
+
+-- Whether (x, y) lies on path `cmds` (its subpaths, Bezier control
+-- polygons and circles), within `slack`.
+local function on_path(cmds, x, y, slack)
+  local subs, cur = {}, nil
+  local function walk(cs)
+    for _, c in ipairs(cs) do
+      if type(c[1]) == "table" then walk(c)
+      elseif c[1] == "o" then
+        if math.sqrt((c[2] - x) ^ 2 + (c[3] - y) ^ 2) <= c[4] + slack then subs.hit = true end
+      elseif c[1] == "m" then cur = { { c[2], c[3] } }; subs[#subs + 1] = cur
+      elseif c[1] ~= "z" then
+        if not cur then cur = {}; subs[#subs + 1] = cur end
+        for i = 2, #c, 2 do cur[#cur + 1] = { c[i], c[i + 1] } end
+      end
+    end
+  end
+  walk(cmds)
+  if subs.hit then return true end
+  for _, P in ipairs(subs) do
+    local inside, j = false, #P
+    for i = 1, #P do
+      local a, b = P[i], P[j]
+      if (a[2] > y) ~= (b[2] > y) and x < (b[1] - a[1]) * (y - a[2]) / (b[2] - a[2]) + a[1] then inside = not inside end
+      local dx, dy = a[1] - b[1], a[2] - b[2]
+      local L2 = dx * dx + dy * dy
+      local t = L2 > 0 and math.max(0, math.min(1, ((x - b[1]) * dx + (y - b[2]) * dy) / L2)) or 0
+      if math.sqrt((x - b[1] - t * dx) ^ 2 + (y - b[2] - t * dy) ^ 2) <= slack then return true end
+      j = i
+    end
+    if inside then return true end
+  end
+  return false
+end
+local function lab(c)
+  local L, Ch, h = Color.lch(c)
+  local r = math.rad(h or 0)
+  return L, Ch * math.cos(r), Ch * math.sin(r)
+end
+local function de(p, q)
+  local a1, b1, c1 = lab(p)
+  local a2, b2, c2 = lab(q)
+  return math.sqrt((a1 - a2) ^ 2 + (b1 - b2) ^ 2 + (c1 - c2) ^ 2)
+end
+
+-- A page under edge=fade painted twice, as it is and with every cell whole
+-- (Pattern.cell_inks at a share of 1): for each faded cell, its colours as
+-- shown, paired with the whole ones, and the ground painted under its
+-- centre on the paper (the last of the ground's pieces or panel there,
+-- found by the paths Pattern.edge_pieces hands out), else the page.
+local function fade_pages(spec)
+  local Progression = require("flora.progression")
+  -- The field as loaded now (a mutation may have put another in its place).
+  local Pattern = require("flora.pattern")
+  local function run(whole)
+    local out, grounds, share = {}, {}, nil
+    local cur
+    local fill, stroke, part, ep, ci = Paint.fill, Paint.stroke, Progression.part, Pattern.edge_pieces, Pattern.cell_inks
+    local tagged = setmetatable({}, { __mode = "k" })
+    Pattern.edge_pieces = function(mode, f, info)
+      local r = ep(mode, f, info)
+      if r.panel then tagged[r.panel] = true end
+      if r.piece then
+        local piece = r.piece
+        r.piece = function(...)
+          local q, col = piece(...)
+          if q then tagged[q] = true end
+          return q, col
+        end
+      end
+      return r
+    end
+    Pattern.cell_inks = function(base, a, hero, ...)
+      share = a
+      return ci(base, whole and 1 or a, hero, ...)
+    end
+    local function rec(self, cmds, rgb)
+      if not (self.group and self.group.tag == "pattern") then return end
+      if tagged[cmds] then grounds[#grounds + 1] = { cmds = cmds, rgb = self:ink(rgb) }
+      elseif cur then out[#out + 1] = { rgb = self:ink(rgb), at = cur, a = share, under = #grounds } end
+    end
+    Paint.fill = function(self, cmds, rgb, ...) rec(self, cmds, rgb); return fill(self, cmds, rgb, ...) end
+    Paint.stroke = function(self, cmds, rgb, ...) rec(self, cmds, rgb); return stroke(self, cmds, rgb, ...) end
+    Progression.part = function(pt, k, a, b, d, fn, ...)
+      return part(pt, k, a, b, d, function()
+        local u = cur
+        if k == "pattern" or k == "pattern_line" or k == "pattern_ground" then cur = a end
+        local ok, r = pcall(fn)
+        cur = u
+        if not ok then error(r, 0) end
+        return r
+      end, ...)
+    end
+    Paint.reset_resources()
+    local ok, pt = pcall(Compose.page, spec)
+    Paint.fill, Paint.stroke, Progression.part, Pattern.edge_pieces, Pattern.cell_inks = fill, stroke, part, ep, ci
+    if not ok then error(pt, 0) end
+    return pt, out, grounds
+  end
+  local pt, faded, grounds = run(false)
+  local _, whole = run(true)
+  return pt, faded, whole, grounds
+end
+
+M.FADE_COLOURWAYS = { "tsuki-mi", "ember", "usu-zumi", "winter" }
+function M.fadeunder(filter)
+  local pages, compared, failures = 0, 0, {}
+  for _, p in ipairs(Patterns.list) do
+    local has = false
+    for _, r in ipairs(p.roles) do if r == "ground" then has = true end end
+    if has and (not filter or filter(p.name)) then
+      for _, ground in ipairs({ "auto", "off", "panel", "motif", "round", "cells" }) do
+        for _, bd in ipairs({ "light", "dark" }) do
+          for _, cw in ipairs(M.FADE_COLOURWAYS) do
+            local spec = page(p.name, "colourway=" .. cw .. ", edge=fade, ends=cut, ground=" .. ground .. ", backdrop=" .. bd)
+            spec.mix = { density = 2 }
+            local pt, faded, whole, grounds = fade_pages(spec)
+            pages = pages + 1
+            local where = string.format("%s ground=%s %s %s", p.name, ground, bd, cw)
+            if #faded ~= #whole then
+              failures[#failures + 1] = where .. ": fadeunder: the whole page paints " .. #whole .. " colours, the faded one " .. #faded
+            else
+              local paper = pt:ink(Paint.palette.paper)
+              local bad = 0
+              for i, f in ipairs(faded) do
+                if f.a and f.a < 1 then
+                  -- What lies under the cell's centre as it is painted: the
+                  -- last ground laid there before it, else the page.
+                  local under
+                  local x = math.max(0, math.min(spec.width, f.at[1]))
+                  local y = math.max(0, math.min(spec.height, f.at[2]))
+                  for g = f.under, 1, -1 do
+                    if on_path(grounds[g].cmds, x, y, 1) then under = grounds[g].rgb; break end
+                  end
+                  under = under or paper
+                  local w = whole[i].rgb
+                  local d = de(w, under)
+                  compared = compared + 1
+                  if de(f.rgb, under) > d + 2e-3 or de(f.rgb, w) > d + 2e-3 then bad = bad + 1 end
+                end
+              end
+              if bad > 0 then failures[#failures + 1] = string.format("%s: fadeunder: %d faded colours not between their whole colour and what lies under them", where, bad) end
+            end
+          end
+        end
+      end
+    end
+  end
+  return pages, compared, failures
+end
+
+-- Each key with its default (Settings.PATTERN's) and another value.
+M.DEFAULTS = {
+  { "ground", "cells" }, { "ends", "cut" }, { "bands", "strap" }, { "bandwidth", "2" }, { "starfill", "split" },
+  { "gapfill", "paper" }, { "alternate", "rows" }, { "panels", "on" }, { "lighten", "0.3" }, { "finish", "lines" },
+  { "outer", "margin" }, { "edge", "cell" }, { "hero", "rosette" }, { "scale", "2" }, { "saturation", "1" },
+}
+function M.defaults(filter)
+  local pages, failures = 0, {}
+  local function body(setup)
+    pages = pages + 1
+    return paint(page_of(setup)).pt:body()
+  end
+  for _, p in ipairs(Patterns.list) do
+    if M.LACQUER[p.name] and (not filter or filter(p.name)) then
+      for _, fin in ipairs(Pattern.finishes_of(p)) do
+        for _, bd in ipairs({ "light", "dark" }) do
+          for _, k in ipairs(M.DEFAULTS) do
+            local key, other = k[1], k[2]
+            local default = tostring(Settings.PATTERN[key])
+            if not (key == "finish" and fin ~= "filled") then
+              local base = "pattern=" .. p.name .. ", colourway=tsuki-mi, backdrop=" .. bd .. (key == "finish" and "" or ", finish=" .. fin)
+              local want = body(base)
+              for _, case in ipairs({ { "written", ", " .. key .. "=" .. default }, { "reset", ", " .. key .. "=" .. other .. ", " .. key .. "=" .. default } }) do
+                if body(base .. case[2]) ~= want then
+                  failures[#failures + 1] = string.format("%s finish=%s %s: defaults: %s=%s %s paints another page than the key left out", p.name, fin, bd, key, default, case[1])
+                end
+              end
+            end
+          end
+        end
+      end
+    end
+  end
+  return pages, failures
+end
+
+M.UNIT_SEEDS = { 1, 2, 3, 4, 5, 6 }
+function M.unitdraw(filter)
+  local pages, units, failures = 0, 0, {}
+  for _, p in ipairs(Patterns.list) do
+    if not filter or filter(p.name) then
+      for _, edge in ipairs({ "dissolve", "cell", "fade" }) do
+        for _, layout in ipairs({ "left", "right", "centered", "surround" }) do
+          for _, bd in ipairs({ "light", "dark" }) do
+            for _, seed in ipairs(M.UNIT_SEEDS) do
+              local spec = page(p.name, "colourway=tsuki-mi, ends=whole, edge=" .. edge .. ", backdrop=" .. bd, layout)
+              spec.seed = seed
+              local info = paint(spec).pt.pattern
+              pages = pages + 1
+              local draw, split = {}, 0
+              for _, k in ipairs(info.kept) do
+                local g = k.cell.group
+                if g and k.r then
+                  if draw[g] == nil then draw[g] = k.r; units = units + 1
+                  elseif draw[g] ~= k.r then split = split + 1 end
+                end
+              end
+              if split > 0 then
+                failures[#failures + 1] = string.format("%s edge=%s %s %s seed=%d: unitdraw: %d cells judged with another draw than their unit", p.name, edge, layout, bd, seed, split)
+              end
+            end
+          end
+        end
+      end
+    end
+  end
+  return pages, units, failures
+end
+
+-- A page's ground and cells over time: every progression part the field
+-- paints (kind, anchor, birth), which of them lay the ground (the paths
+-- Pattern.edge_pieces hands out), and, for a spec.grow frame, what of each
+-- was painted.
+local function timed(spec)
+  local Progression = require("flora.progression")
+  local Pattern = require("flora.pattern")
+  local parts, grounds, cells = {}, {}, {}
+  local cur
+  local fill, stroke, part, ep = Paint.fill, Paint.stroke, Progression.part, Pattern.edge_pieces
+  local tagged = setmetatable({}, { __mode = "k" })
+  Pattern.edge_pieces = function(mode, f, info)
+    local r = ep(mode, f, info)
+    if r.panel then tagged[r.panel] = true end
+    if r.piece then
+      local piece = r.piece
+      r.piece = function(...)
+        local q, col = piece(...)
+        if q then tagged[q] = true end
+        return q, col
+      end
+    end
+    return r
+  end
+  local function rec(self, cmds)
+    if not (self.group and self.group.tag == "pattern") then return end
+    if tagged[cmds] then grounds[#grounds + 1] = { cmds = cmds, birth = cur and cur.birth }
+    elseif cur and (cur.kind == "pattern" or cur.kind == "pattern_line") then
+      if not cur.seen then cur.seen = true; cells[#cells + 1] = cur end
+    elseif not cur and spec.grow then
+      -- A grow frame paints without progression parts: each shape is a
+      -- cell's, placed at its control points' middle.
+      local x, y, n = 0, 0, 0
+      local function walk(cs)
+        for _, c in ipairs(cs) do
+          if type(c[1]) == "table" then walk(c)
+          elseif c[1] == "o" then x, y, n = x + c[2], y + c[3], n + 1
+          elseif c[1] ~= "z" then for i = 2, #c, 2 do x, y, n = x + c[i], y + c[i + 1], n + 1 end end
+        end
+      end
+      walk(cmds)
+      if n > 0 then cells[#cells + 1] = { at = { x / n, y / n } } end
+    end
+  end
+  Paint.fill = function(self, cmds, ...) rec(self, cmds); return fill(self, cmds, ...) end
+  Paint.stroke = function(self, cmds, ...) rec(self, cmds); return stroke(self, cmds, ...) end
+  Progression.part = function(pt, k, a, b, d, fn, ...)
+    return part(pt, k, a, b, d, function()
+      local u = cur
+      cur = { kind = k, at = a, birth = b }
+      parts[#parts + 1] = cur
+      local ok, r = pcall(fn)
+      cur = u
+      if not ok then error(r, 0) end
+      return r
+    end, ...)
+  end
+  Paint.reset_resources()
+  local ok, pt = pcall(Compose.page, spec)
+  Paint.fill, Paint.stroke, Progression.part, Pattern.edge_pieces = fill, stroke, part, ep
+  if not ok then error(pt, 0) end
+  return pt, cells, grounds
+end
+
+-- The ground laid last under (x, y) of `grounds`, its index, or nil.
+local function last_under(grounds, x, y)
+  for g = #grounds, 1, -1 do
+    if on_path(grounds[g].cmds, x, y, 1) then return g end
+  end
+end
+
+-- Every pattern with a ground x ground x layout x backdrop, timed: each
+-- cell part (its construction lines and its painting) is born no earlier
+-- than the ground that lies under its middle on the paper, by the
+-- progression's births; and in spec.grow frames 0, 0.1 ... 1 that ground
+-- is painted whenever the part is. Returns the pages, the cell parts
+-- checked, failures by form (panel, piece) and the failures.
+M.GROW = { 0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1 }
+function M.groundtime(filter, frames)
+  local pages, checked, by, failures = 0, 0, {}, {}
+  for _, p in ipairs(Patterns.list) do
+    local has = false
+    for _, r in ipairs(p.roles) do if r == "ground" then has = true end end
+    if has and (not filter or filter(p.name)) then
+      for _, ground in ipairs({ "auto", "off", "panel", "motif", "round", "cells" }) do
+        local form = (ground == "panel" or ground == "auto") and "panel" or "piece"
+        for _, layout in ipairs({ "left", "right", "centered", "surround" }) do
+          for _, bd in ipairs({ "light", "dark" }) do
+            local setup = "colourway=tsuki-mi, ground=" .. ground .. ", backdrop=" .. bd
+            local where = string.format("%s ground=%s %s %s", p.name, ground, layout, bd)
+            local spec = page(p.name, setup, layout)
+            local _, cells, grounds = timed(spec)
+            pages = pages + 1
+            local late, worst = 0, 0
+            for _, c in ipairs(cells) do
+              local x = math.max(0, math.min(spec.width, c.at[1]))
+              local y = math.max(0, math.min(spec.height, c.at[2]))
+              local g = last_under(grounds, x, y)
+              if g then
+                checked = checked + 1
+                local gb = grounds[g].birth or 0
+                if gb > c.birth + 1e-9 then late = late + 1; worst = math.max(worst, gb - c.birth) end
+              end
+            end
+            if late > 0 then
+              by[form] = (by[form] or 0) + 1
+              failures[#failures + 1] = string.format("%s: groundtime: %d cell parts born before the ground under them (by up to %.3f)", where, late, worst)
+            end
+            -- The frames: what a frame paints of the cells and the ground.
+            for _, gr in ipairs(frames or {}) do
+              local fs = page(p.name, setup, layout)
+              fs.grow = gr
+              local _, fc, fg = timed(fs)
+              local bare = 0
+              for _, c in ipairs(fc) do
+                local x = math.max(0, math.min(spec.width, c.at[1]))
+                local y = math.max(0, math.min(spec.height, c.at[2]))
+                -- The ground the finished page lays there, and whether this
+                -- frame paints it.
+                local g = last_under(grounds, x, y)
+                if g and not last_under(fg, x, y) then bare = bare + 1 end
+              end
+              if bare > 0 then
+                by[form .. " (frames)"] = (by[form .. " (frames)"] or 0) + 1
+                failures[#failures + 1] = string.format("%s grow=%.1f: groundtime: %d cell parts painted with no ground under them", where, gr, bare)
+              end
+            end
+          end
+        end
+      end
+    end
+  end
+  return pages, checked, by, failures
+end
+
+-- The pages of M.reweave: the field drawn once (pattern_opts.reweave =
+-- false) and woven again, kolam by its closed ends, celtic_knot (whose
+-- closed ends are its field panel) by pattern_opts. Returns the pages, the
+-- cells compared and the failures.
+M.EDGES = { "dissolve", "cell", "fade", "border", "guilloche" }
+function M.reweave(filter)
+  local pages, compared, failures = 0, 0, {}
+  local function shares(name, setup, layout, opts)
+    local spec = page(name, setup, layout)
+    spec.pattern_opts = opts
+    local by = {}
+    for _, k in ipairs(paint(spec).pt.pattern.kept) do by[Pattern.cell_key(k.cell)] = k end
+    return by
+  end
+  for _, p in ipairs(Patterns.list) do
+    if p.reweave and (not filter or filter(p.name)) then
+      local ends = p.field_panel and "cut" or "closed"
+      local woven = p.field_panel and { reweave = true } or nil
+      for _, edge in ipairs(M.EDGES) do
+        for _, ground in ipairs({ "auto", "off", "panel", "motif", "round", "cells" }) do
+          for _, layout in ipairs({ "left", "right", "centered", "surround" }) do
+            for _, bd in ipairs({ "light", "dark" }) do
+              local setup = "colourway=tsuki-mi, edge=" .. edge .. ", ground=" .. ground .. ", ends=" .. ends .. ", backdrop=" .. bd
+              local first = shares(p.name, setup, layout, { reweave = false })
+              local again = shares(p.name, setup, layout, woven)
+              pages = pages + 1
+              local bad = 0
+              for key, k in pairs(again) do
+                local f = first[key]
+                if f and not k.turn then
+                  compared = compared + 1
+                  if math.abs(f.a - k.a) > 1e-9 then bad = bad + 1 end
+                end
+              end
+              if bad > 0 then
+                failures[#failures + 1] = string.format("%s edge=%s ground=%s %s %s: reweave: %d cells lose their share", p.name, edge, ground, layout, bd, bad)
+              end
+            end
+          end
+        end
+      end
+    end
+  end
+  return pages, compared, failures
+end
+
+-- density=0 paints nothing of the pattern: no cell and no ground, over
+-- every pattern x ground (auto, panel, cells) x ends (closed, bleed) x
+-- backdrop x finish it takes. Returns the pages, and the failures.
+function M.density0(filter)
+  local pages, failures = 0, {}
+  for _, p in ipairs(Patterns.list) do
+    if not filter or filter(p.name) then
+      for _, ground in ipairs({ "auto", "panel", "cells" }) do
+        for _, ends in ipairs({ "closed", "bleed" }) do
+          for _, bd in ipairs({ "light", "dark" }) do
+            for _, fin in ipairs(Pattern.finishes_of(p)) do
+              local spec = page(p.name, "colourway=tsuki-mi, ground=" .. ground .. ", ends=" .. ends .. ", finish=" .. fin .. ", backdrop=" .. bd)
+              spec.mix = { density = 0 }
+              local rec = paint(spec)
+              pages = pages + 1
+              local n = #rec.fills + #rec.strokes
+              if n > 0 then
+                failures[#failures + 1] = string.format("%s ground=%s ends=%s %s %s: density0: %d shapes painted", p.name, ground, ends, bd, fin, n)
+              end
+            end
+          end
+        end
+      end
+    end
+  end
+  return pages, failures
+end
+
+-- Each alias of `expect` (alias -> pattern) against its pattern, on the
+-- matrix's page, light and dark, named in the spec's pattern weights and in
+-- a setup line. Returns the pages compared and those that differ.
+function M.aliases(expect)
+  local n, bad = 0, {}
+  for alias, target in pairs(expect) do
+    for _, bd in ipairs({ "light", "dark" }) do
+      local want = paint(page(target, "colourway=tsuki-mi, backdrop=" .. bd)).pt:body()
+      local raw = paint(page(alias, "colourway=tsuki-mi, backdrop=" .. bd)).pt:body()
+      local line = paint(page(target, "pattern=" .. alias .. ", colourway=tsuki-mi, backdrop=" .. bd)).pt:body()
+      for _, got in ipairs({ { "spec", raw }, { "setup line", line } }) do
+        n = n + 1
+        if got[2] ~= want then bad[#bad + 1] = string.format("%s (%s, %s) does not paint as %s", alias, got[1], bd, target) end
+      end
+    end
+  end
+  return n, bad
 end
 
 return M

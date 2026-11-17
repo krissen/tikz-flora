@@ -9,7 +9,10 @@
 -- spec-slide.lua. Every page is built as the mixer builds it (the opening
 -- seed 11, the left page 4 for the fields, the right page 3 for the heroes,
 -- which sit over stars_8_4), with the variant's settings on light paper
--- and on the dark backdrop. ONLY limits the run to the variants named
+-- and on the dark backdrop; a variant's `layout` replaces the page's left
+-- and the slide's right, moves the text block where that layout puts it,
+-- and writes the moved text's boxes beside the page (<pattern>.text); a
+-- variant's `grow` renders that frame of the growth (spec.grow). ONLY limits the run to the variants named
 -- (comma-separated).
 --
 -- Writes OUTDIR/<variant>/<backdrop>/<pattern>.pdf (and hero-<name>.pdf,
@@ -49,7 +52,7 @@ end
 -- The page for `setup` (a \florasetup key list) on the baked page, as
 -- tools/preview.lua builds it with "fresh": the page's own settings
 -- without its inks, then the setup's.
-local function page_spec(page, layout, setup, backdrop)
+local function page_spec(page, layout, setup, backdrop, opts)
   local spec = load(page)
   spec.seed = Init.seed(tostring(SEED), tonumber(page) or 1)
   local own = Settings.from_spec(spec, Settings.fresh_keys())
@@ -58,7 +61,34 @@ local function page_spec(page, layout, setup, backdrop)
   Settings.to_spec(set, spec)
   spec.layout = layout
   spec.ornaments = {}
+  spec.pattern_opts = opts
   return spec
+end
+
+-- For a variant with its own layout the text block (and its lines) moves
+-- as that layout sets it: flush with the far margin under left, flush with
+-- the near one under right, centred under centered and surround. The
+-- baked page's narrower margin is kept.
+local function place_text(spec, layout)
+  local t, W = spec.text, spec.width
+  local m = math.min(t.x0, W - t.x1)
+  local x0
+  if layout == "left" then x0 = W - m - (t.x1 - t.x0)
+  elseif layout == "right" then x0 = m
+  else x0 = (W - (t.x1 - t.x0)) / 2 end
+  local dx = x0 - t.x0
+  spec.text = { x0 = t.x0 + dx, y0 = t.y0, x1 = t.x1 + dx, y1 = t.y1 }
+  for _, l in ipairs(spec.lines or {}) do l.x0, l.x1 = l.x0 + dx, l.x1 + dx end
+end
+
+-- The text block as boxes (its lines, or the block), beside a page drawn
+-- with its text moved, for the sheets to draw in place of the text.
+local function write_text(spec, file)
+  local f = assert(io.open(file, "w"))
+  f:write(string.format("%.2f %.2f\n", spec.width, spec.height))
+  local boxes = spec.lines and #spec.lines > 0 and spec.lines or { spec.text }
+  for _, b in ipairs(boxes) do f:write(string.format("%.2f %.2f %.2f %.2f\n", b.x0, b.y0, b.x1, b.y1)) end
+  f:close()
 end
 
 local function mkdir(p) os.execute("mkdir -p '" .. p .. "'") end
@@ -129,15 +159,22 @@ for _, v in ipairs(V.variants) do
       local dir = outdir .. "/" .. v.name .. "/" .. bd
       mkdir(dir)
       for _, p in ipairs(Patterns.list) do
-        local spec = page_spec("4", "left", "pattern=" .. p.name .. ", " .. v.setup, bd)
+        if v.patterns and not v.patterns[p.name] then goto skip end
+        local spec = page_spec("4", v.layout or "left", "pattern=" .. p.name .. ", " .. v.setup, bd, v.opts)
+        if v.layout then place_text(spec, v.layout); write_text(spec, dir .. "/" .. p.name .. ".text") end
+        spec.grow = v.grow
         render(spec, dir .. "/" .. p.name .. ".pdf")
         measure(v.name, bd, p, spec)
         if v.slide then
-          render(page_spec("slide", "right", "pattern=" .. p.name .. ", " .. v.setup, bd), dir .. "/slide-" .. p.name .. ".pdf")
+          local sspec = page_spec("slide", v.layout or "right", "pattern=" .. p.name .. ", " .. v.setup, bd, v.opts)
+          if v.layout then place_text(sspec, v.layout); write_text(sspec, dir .. "/slide-" .. p.name .. ".text") end
+          sspec.grow = v.grow
+          render(sspec, dir .. "/slide-" .. p.name .. ".pdf")
         end
+        ::skip::
       end
-      for _, h in ipairs({ "rosette", "phyllotaxis", "rose", "guilloche" }) do
-        render(page_spec("3", "right", "pattern=stars_8_4, hero=" .. h .. ", " .. v.setup, bd), dir .. "/hero-" .. h .. ".pdf")
+      for _, h in ipairs(v.patterns and {} or { "rosette", "phyllotaxis", "rose", "guilloche" }) do
+        render(page_spec("3", "right", "pattern=stars_8_4, hero=" .. h .. ", " .. v.setup, bd, v.opts), dir .. "/hero-" .. h .. ".pdf")
       end
     end
   end

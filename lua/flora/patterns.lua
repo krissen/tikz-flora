@@ -27,10 +27,15 @@
 --          colour); it paints with no other. A pattern listing ground
 --          gives each cell's piece of it, the cell's `under` path or its
 --          `tile`, which the field paints under every cell under
---          ground=on. A cell that lies on its neighbours'
+--          ground=cells. A cell that lies on its neighbours'
 --          pieces and has none of its own says `rests = true`. A cell's
---          `plates`, {path, "a" or "b"} pairs, are fields that tile the
---          plane, painted with the ground.
+--          `plates`, {path, "a", "b" or "accent"} pairs, are fields that
+--          tile the plane, painted with the ground. A plate that lies
+--          between cells names their centres in `between`, and is laid
+--          only when all of them are kept.
+--   role_setup  optional: for a role that only one of the pattern's own
+--          looks paints, the settings that give that look (the accent of
+--          hexagram_lattice under alternate=three)
 --   scale  its cell size in pt at scale=1
 --   cells(env) -> list of cells covering env's box {x0, y0, x1, y1} at
 --          cell size env.size, drawing from env.rng. A cell is
@@ -61,7 +66,7 @@ local M = { list = {}, by_name = {}, tags = {} }
 M.ROLES = { band = true, core = true, a = true, b = true, accent = true, ground = true, paper = true }
 
 local MODULES = {
-  "flora.pat_stars", "flora.pat_asanoha", "flora.pat_kikko", "flora.pat_shippo", "flora.pat_seigaiha", "flora.pat_kolam", "flora.pat_circles", "flora.pat_truchet", "flora.pat_penrose", "flora.pat_celtic", "flora.pat_celtic_panels",
+  "flora.pat_stars", "flora.pat_asanoha", "flora.pat_kikko", "flora.pat_shippo", "flora.pat_seigaiha", "flora.pat_kolam", "flora.pat_circles", "flora.pat_truchet", "flora.pat_penrose", "flora.pat_celtic",
   "flora.pat_hexagram", "flora.pat_khatam", "flora.pat_crosses",
   "flora.pat_rosette",
 }
@@ -81,6 +86,17 @@ end
 for _, m in ipairs(MODULES) do M.register(require(m)) end
 table.sort(M.list, function(a, b) return a.name < b.name end)
 
+-- Names kept for patterns that became another: each picks the pattern it
+-- names, paints it pixel for pixel as that one, and is listed nowhere
+-- (not in M.list, the catalog or the mixer). celtic_panels' knot panels
+-- became celtic_knot's one closed panel per field (the geometry work's
+-- ORDER #18).
+M.aliases = { celtic_panels = "celtic_knot" }
+for alias, target in pairs(M.aliases) do M.by_name[alias] = M.by_name[target] end
+
+-- The pattern a name stands for: its own, or an alias's.
+function M.canonical(name) return M.aliases[name] or name end
+
 -- Every name pattern={...} accepts: pattern names, then tags.
 function M.known()
   local names, tags = {}, {}
@@ -95,6 +111,9 @@ end
 -- opt-in pattern has only its own name's weight, else that of `symbol`.
 function M.weight(weights, p)
   if weights[p.name] ~= nil then return weights[p.name] end
+  for alias, target in pairs(M.aliases) do
+    if target == p.name and weights[alias] ~= nil then return weights[alias] end
+  end
   if p.opt_in then return weights.symbol or 0 end
   local w = 0
   for _, t in ipairs(p.tags) do

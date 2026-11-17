@@ -16,8 +16,8 @@
 -- a paper-coloured halo that cuts the under strand where they cross.
 --
 -- This module is the weave: no mirrors inside the field, so the strands
--- run straight and plait over the whole page. pat_celtic_panels.lua uses
--- the same engine with mirrors laid out as knot panels.
+-- run straight and plait over the page, or (the field's panel, below)
+-- over the field as one closed panel.
 
 local K = require("flora.pat_kit")
 local Paint = require("flora.paint")
@@ -150,7 +150,36 @@ function M.cells_with(env, make_inner)
   local a = env.size
   local gx, gy = floor(env.x0 / a) - 1, floor(env.y0 / a) - 1
   local nx, ny = ceil(env.x1 / a) + 1 - gx, ceil(env.y1 / a) + 1 - gy
-  local loops = M.trace(nx, ny, make_inner and make_inner(gx, gy, nx, ny, env.rng) or nil)
+  local inner, alive, group
+  if make_inner then inner, alive, group = make_inner(gx, gy, nx, ny, env.rng) end
+  -- Under a second drawing (pattern.lua's reweave) every crossing the
+  -- field dropped is a mirror, so the strands turn back at the field's
+  -- edge instead of ending there.
+  local blocked = env.blocked and function(X, Y) return env.blocked((gx + X / 2) * a, (gy + Y / 2) * a) end
+  local walls = inner
+  if blocked then walls = function(X, Y) return blocked(X, Y) or (inner and inner(X, Y)) or false end end
+  local loops = M.trace(nx, ny, walls)
+  if blocked then
+    -- A strand wholly among dropped crossings is dropped with them.
+    local live = {}
+    for _, pts in ipairs(loops) do
+      for _, q in ipairs(pts) do
+        if not blocked(q.X, q.Y) then live[#live + 1] = pts; break end
+      end
+    end
+    loops = live
+  end
+  if alive then
+    -- A layout's own panels (M.panels): a strand with no crossing inside a
+    -- panel lies wholly in the space between them and is not drawn.
+    local live = {}
+    for _, pts in ipairs(loops) do
+      for _, q in ipairs(pts) do
+        if alive(q.X, q.Y) then live[#live + 1] = pts; break end
+      end
+    end
+    loops = live
+  end
   local halfwidth = WIDTH / SCALE * a * HALO / 2
   local by_point, out = {}, {}
   for _, pts in ipairs(loops) do
@@ -173,6 +202,7 @@ function M.cells_with(env, make_inner)
         c = { x = x, y = y, pad = PAD * a, under = {}, over = {}, under_core = {}, over_core = {}, halo = {}, lines = {},
           verts = { { x - r, y - r }, { x + r, y - r }, { x + r, y + r }, { x - r, y + r } },
           paint = paint, construct = construct }
+        if group then c.group, c.fixed = group(p.X, p.Y), true end
         by_point[k] = c
         out[#out + 1] = c
       end
@@ -206,13 +236,120 @@ function M.cells_with(env, make_inner)
   return out
 end
 
+-- ------------------------------------------------------------ The field's panel
+-- The knot as one closed panel filling the field (the geometry work's
+-- ORDERs #13 and #18, after the sketches y-06 and y-08): the field is
+-- taken as whole grid squares, every edge between a square of the field
+-- and one outside it is a mirror, so the strands turn back in loops there
+-- and none ends loose, and inside the plait runs plain. The ends key
+-- (pattern.lua sets env.field_panel) says where the field ends:
+--   closed (the default)  the panel turns back half a unit inside the
+--                         paper's edges as well as at the text: a
+--                         finished panel filling the field
+--   bleed                 the panel runs a unit past the paper's edges,
+--                         so the plait is cut by the paper there and turns
+--                         back only at the text, the hero and whatever
+--                         else the field keeps clear of (under
+--                         outer=margin the same as closed, at the margin)
+-- The panel's cells keep clear of the text without thinning toward it.
+
+-- The field as whole grid squares: a square belongs to
+-- it when it lies on the field's side, inside the paper (or a unit past
+-- its edges under bleed, half a unit inside them under inset) and far
+-- enough from everything the field keeps clear of that a strand turning
+-- back at its edge stays clear too.
+function M.field_inner(env, mode)
+  local a, room = env.size, env.room
+  return function(gx, gy)
+    local function inside(i, j)
+      if not room then return false end
+      local x0, y0, x1, y1 = i * a, j * a, (i + 1) * a, (j + 1) * a
+      -- A turn stands out a quarter unit past the square's edge, the cell
+      -- round it a quarter more, and the band reaches past that.
+      local clear = room.gap + room.reach + 0.6 * a + 0.5
+      local t, side = room.text, room.side
+      if side and side.left and not side.right and x1 > t.x0 - clear then return false end
+      if side and side.right and not side.left and x0 < t.x1 + clear then return false end
+      if side and side.left and side.right and x1 > t.x0 - clear and x0 < t.x1 + clear then return false end
+      local bleed = mode == "bleed" and room.outer ~= "margin"
+      local m = bleed and -a or (room.outer == "margin" and 4 or 0) + room.reach + 0.6 * a
+      if x0 < m or x1 > room.W - m or y0 < m then return false end
+      -- The page's painted top is a content edge (a header) unless it is
+      -- the paper's own.
+      local mt = (bleed and room.top >= room.H) and -a or room.reach + 0.6 * a + (room.top < room.H and room.gap or 0)
+      if y1 > room.top - mt then return false end
+      for _, r in ipairs(room.avoid or {}) do
+        if x1 > r[1] - clear and x0 < r[3] + clear and y1 > r[2] - clear and y0 < r[4] + clear then return false end
+      end
+      local h = room.hero
+      if h then
+        local dx = math.max(x0 - h[1], 0, h[1] - x1)
+        local dy = math.max(y0 - h[2], 0, h[2] - y1)
+        if math.sqrt(dx * dx + dy * dy) < h[3] + clear then return false end
+      end
+      return true
+    end
+    local memo, memo2 = {}, {}
+    local function raw(i, j)
+      local k = i * 100003 + j
+      if memo[k] == nil then memo[k] = inside(i, j) end
+      return memo[k]
+    end
+    -- Only squares in some two-by-two block of the field: a strip one unit
+    -- wide (beside a short line of text, say) would be a lone rope, not
+    -- plait.
+    local function sq(i, j)
+      local k = i * 100003 + j
+      if memo2[k] == nil then
+        local ok = false
+        if raw(i, j) then
+          for _, d in ipairs({ { 0, 0 }, { -1, 0 }, { 0, -1 }, { -1, -1 } }) do
+            local a0, b0 = i + d[1], j + d[2]
+            if raw(a0, b0) and raw(a0 + 1, b0) and raw(a0, b0 + 1) and raw(a0 + 1, b0 + 1) then ok = true end
+          end
+        end
+        memo2[k] = ok
+      end
+      return memo2[k]
+    end
+    -- Doubled coordinates: an edge midpoint between two squares of the
+    -- field is a crossing; every other one is a mirror.
+    local function both(X, Y)
+      local x, y = gx + X / 2, gy + Y / 2
+      if X % 2 == 0 then
+        local j = math.floor(y)
+        return sq(x - 1, j) and sq(x, j)
+      end
+      local i = math.floor(x)
+      return sq(i, y - 1) and sq(i, y)
+    end
+    local function inner(X, Y) return not both(X, Y) end
+    local function alive(X, Y) return both(X, Y) end
+    local function group() return "field" end
+    return inner, alive, group
+  end
+end
+
+function M.cells(env)
+  local mode = env.field_panel
+  if mode == "bleed" or mode == "inset" then
+    return M.cells_with(env, M.field_inner(env, mode))
+  end
+  return M.cells_with(env, nil)
+end
+
 return {
   name = "celtic_knot",
   title = "Celtic knotwork, mirror curves with alternating over/under crossings",
-  tags = { "celtic", "insular", "interlace", "knot" },
+  tags = { "celtic", "insular", "interlace", "knot", "panel" },
   roles = { "band", "accent", "paper" },
   scale = SCALE,
   width = WIDTH, core = 0.4, bands = "strap",
-  cells = function(env) return M.cells_with(env, nil) end,
+  cells = function(env) return M.cells(env) end,
+  -- The field is one closed panel under ends=closed (the default) and
+  -- bleed (pattern.lua's field_panel); under whole and cut the plait runs
+  -- over the field and falls away cell by cell, cut where it ends, and it
+  -- can be drawn again with the field's edge as a wall (reweave).
+  field_panel = true, reweave = true, ends = "closed",
   engine = M,
 }

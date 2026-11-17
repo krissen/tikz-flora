@@ -1,7 +1,7 @@
 <script>
   import { onMount } from "svelte";
   import { meta as loadMeta, render, show, px, drawnBy } from "./render.js";
-  import { setupLine, colourParts, documentFor, patternDefaults, patternParts, patternFromQuery, TITLE_PAGES, ARCHES } from "./setup.js";
+  import { setupLine, colourParts, documentFor, patternDefaults, patternParts, patternFromQuery, finishesFor, TITLE_PAGES, ARCHES } from "./setup.js";
   import InkPicker from "./InkPicker.svelte";
   import COLOURWAYS from "./colourways.json";
   import { face } from "./ink.js";
@@ -68,6 +68,18 @@
     // (patterns.lua), so other groups neither list nor count it.
     for (const p of patterns) for (const t of p.tags) if (!p.opt_in || t === "symbol") (by[t] ??= []).push(p.name);
     return Object.entries(by).filter(([t, m]) => m.length > 1 && !patterns.some((p) => p.name === t)).sort(([a], [b]) => a.localeCompare(b));
+  });
+  // The values a pattern key offers for the pattern or group chosen: a
+  // finish only where every pattern the name can pick takes it (lacquer
+  // needs a ground, catalog.patterns[].finishes).
+  let offered = $derived.by(() => {
+    const out = { ...pat.choices };
+    if (out.finish) out.finish = finishesFor(pattern.name, out.finish, meta);
+    return out;
+  });
+  // A finish the pattern no longer takes falls back to the default.
+  $effect(() => {
+    if (meta && offered.finish && pattern.finish && !offered.finish.includes(pattern.finish)) pattern.finish = pat.defaults.finish;
   });
   // The pattern's name as a line of the catalog's title, without its description.
   const shortTitle = (p) => p.title.split(", ")[0];
@@ -341,7 +353,7 @@
           {#if pat.choices[k]}
             {#if k === "hero"}<p class="hint">Corner motif: one large radial motif at a top corner, which the cells give way to.</p>{/if}
             <div class="choices" role="group" aria-label={PATTERN_LABELS[k] ?? k} data-pattern-key={k}>
-              {#each pat.choices[k] as v}
+              {#each offered[k] as v}
                 <button type="button" aria-pressed={pattern[k] === v} disabled={!pattern.name}
                   title={aboutOf(k)} onclick={() => { pattern[k] = v; changed(); }}>{v}</button>
               {/each}
