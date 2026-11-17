@@ -1236,6 +1236,22 @@ function M.paint(spec, pt)
     end
   end
   choose(cells)
+  -- No kept cell stands alone: one whose every neighbour on the page the
+  -- field left out (a crumb the edge's thinning leaves, more often the
+  -- smaller the cells) is left out too, its piece of the ground kept as a
+  -- dissolved cell's. A layout that places itself (c.fixed) keeps its own.
+  if #kept > 1 then
+    local lone = M.field_edges(cells, kept, onpage)
+    local keep2 = {}
+    for _, k in ipairs(kept) do
+      if lone.share[k] == 0 and not k.cell.fixed then
+        if base.ground then bare[#bare + 1] = { cell = k.cell, a = 1, jitter = k.jitter } end
+      else
+        keep2[#keep2 + 1] = k
+      end
+    end
+    kept = keep2
+  end
   -- Reweave: the pattern is drawn again with the field's edge as its own
   -- border (pat_celtic.lua, pat_kolam.lua close their lines there), so no
   -- line ends loose; every cell of the second drawing that is placed is
