@@ -196,6 +196,10 @@ local function period(p)
     local d = (c.x - B / 2) ^ 2 + (c.y - B / 2) ^ 2
     if d < bd then bd, c0 = d, c end
   end
+  if not c0 then
+    period_cache[p.name] = { note = "no cells" }
+    return period_cache[p.name]
+  end
   local cand = {}
   for _, c in ipairs(cells) do
     local tx, ty = c.x - c0.x, c.y - c0.y
