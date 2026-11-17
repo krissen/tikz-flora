@@ -71,11 +71,11 @@ H.check(grown.grow==.25,'spec.grow not preserved')
 -- A plan with no parts (a page that paints nothing that grows: here an
 -- empty list of marks painted alone) renders at every stage.
 do
-  local s=spec('left'); s.marks_only={}
-  Paint.reset_resources(); local plan=P.plan(s)
-  H.check(#plan.parts==0 and #plan.timeline==0,'a page with nothing growing has no parts')
+  local bare=spec('left'); bare.marks_only={}
+  Paint.reset_resources(); local empty=P.plan(bare)
+  H.check(#empty.parts==0 and #empty.timeline==0,'a page with nothing growing has no parts')
   for _,t in ipairs({0,.5,1}) do
-    local ok,err=pcall(P.render,plan,t)
+    local ok,err=pcall(P.render,empty,t)
     H.check(ok,string.format('a plan with no parts must render at %.1f: %s',t,tostring(err)))
   end
 end

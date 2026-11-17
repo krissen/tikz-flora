@@ -40,7 +40,7 @@ H.check(preview(with({ tune = tuned }), "doc", "fresh").tune == nil, "fresh kept
 -- The standalone progression tool shares the same seed rule.
 local planned
 package.loaded["flora.progression"] = {
-  plan = function(s) planned = s; return { api_version = 1, parts = {}, area = 0 } end,
+  plan = function(spec) planned = spec; return { api_version = 1, parts = {}, area = 0 } end,
   stages = function() return {} end,
 }
 local f = assert(io.open(path, "w"))

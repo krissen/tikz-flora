@@ -77,9 +77,9 @@ do
   for k, f in pairs(Settings.SPEC) do
     if f:match("^pattern_") then H.check(Settings.PATTERN[k] ~= nil, "pattern key missing from Settings.PATTERN: " .. k) end
   end
-  for k, d in pairs(Settings.PATTERN) do
+  for k, default in pairs(Settings.PATTERN) do
     H.check(Settings.SPEC[k] and Settings.SPEC[k]:match("^pattern_"), "Settings.PATTERN names a non-pattern key: " .. k)
-    H.check(Settings.parse(k .. "=" .. tostring(d))[k] == d, "default of " .. k .. " does not parse")
+    H.check(Settings.parse(k .. "=" .. tostring(default))[k] == default, "default of " .. k .. " does not parse")
   end
   local listed = {}
   for _, p in ipairs(require("flora.catalog").build().pattern_keys) do listed[p.key] = true end

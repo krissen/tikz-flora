@@ -53,7 +53,6 @@ do
   local before = Tune.color.palette.leaves
   H.check(page(2, nil, { leaves = "warm" }):code() ~= page(2):code(), "palette leaves=warm changed nothing")
   H.check(Tune.color.palette.leaves == before, "palette override leaked into tune")
-  local Mix = require("flora.mix")
   pcall(Mix.with_palette, { leaves = "warm" }, function() error("boom") end)
   H.check(Tune.color.palette.leaves == before, "palette override leaked after an error")
 end
