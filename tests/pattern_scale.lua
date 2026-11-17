@@ -25,7 +25,7 @@ local M = {}
 
 -- The floor and the ceiling as the engine sets them when this file loads:
 -- the checks' expectation, kept apart from the engine they check.
-local FACTOR_FLOOR, CEIL = Pattern.factor_floor, Pattern.FIELD_SCALE.ceil
+local FACTOR_FLOOR, CEIL, REF = Pattern.factor_floor, Pattern.FIELD_SCALE.ceil, Pattern.FIELD_SCALE.ref
 
 -- Page formats in pt (width, height), each with a text block placed for
 -- the layout so that the governing strip is `strip` wide: the one strip
@@ -64,11 +64,11 @@ function M.run(only)
   local cells, fails = {}, {}
   for _, p in ipairs(Patterns.list) do
     if not only or only[p.name] then
-      local want = FS.ref / p.scale
+      local want = REF / p.scale
       for _, fmt in ipairs(M.FORMATS) do
         for _, layout in ipairs(M.LAYOUTS) do
           for _, r in ipairs(M.RATIOS) do
-            local spec = M.spec(fmt, layout, r * FS.ref, p.name)
+            local spec = M.spec(fmt, layout, r * REF, p.name)
             local pt = draw(spec)
             local P = pt.pattern
             if not P then
@@ -76,7 +76,7 @@ function M.run(only)
             else
               local lo = FACTOR_FLOOR(spec, p)
               local hi = CEIL or math.huge
-              local across = r * FS.ref / P.size
+              local across = r * REF / P.size
               cells[#cells + 1] = { pattern = p.name, format = fmt[1], layout = layout, ratio = r, across = across,
                 factor = P.factor }
               if r >= lo and r <= hi and math.abs(across - want) > 1e-9 * want then
@@ -93,11 +93,11 @@ function M.run(only)
         end
       end
       -- The reference page, with the field scale on and off.
-      local spec = M.spec(M.FORMATS[1], "left", FS.ref, p.name)
+      local spec = M.spec(M.FORMATS[1], "left", REF, p.name)
       local _, on = draw(spec)
       local was = FS.enabled
       FS.enabled = false
-      local _, off = draw(M.spec(M.FORMATS[1], "left", FS.ref, p.name))
+      local _, off = draw(M.spec(M.FORMATS[1], "left", REF, p.name))
       FS.enabled = was
       if on ~= off then
         fails[#fails + 1] = p.name .. ": reference: the reference page is drawn otherwise with the field scale on"

@@ -6,6 +6,12 @@ local M = dofile("tests/pattern_matrix.lua")
 local Patterns = require("flora.patterns")
 local Pattern = require("flora.pattern")
 
+-- The matrix's page (300 x 240 pt, its strip 124 pt) holds each pattern at
+-- its own size, as its floors and mutations were measured: the field scale
+-- would draw it at 0.82 of that (left) and at the floor (centered). The
+-- field scale has its own checks below.
+Pattern.FIELD_SCALE.enabled = false
+
 -- The floors, set after measuring the colourways (geo-roles3 report). The
 -- band stands 0.18 to 0.76 off its surface in OKLab L; the lowest is
 -- tsuki-mi's, whose soft contour is the mocks' own (0.25 off their ochre,
@@ -522,6 +528,7 @@ end, function() kikko.cells = kikko_cells2 end)
 -- across every governing strip within the floor and the ceiling, and the
 -- reference page as it was drawn before the scale followed the field.
 do
+  Pattern.FIELD_SCALE.enabled = true
   local S = dofile("tests/pattern_scale.lua")
   local scells, sfails = S.run()
   H.check(#scells == #Patterns.list * #S.FORMATS * #S.LAYOUTS * #S.RATIOS, "field scale cells: " .. #scells)
@@ -545,9 +552,9 @@ do
   scale_caught("periods", function() Pattern.field_factor = function() return 1 end end,
     function() Pattern.field_factor = factor end)
   -- The reference drifts by a hundredth.
-  scale_caught("reference", function()
-    Pattern.field_factor = function(spec, p) return factor(spec, p) * 1.01 end
-  end, function() Pattern.field_factor = factor end)
+  local ref = Pattern.FIELD_SCALE.ref
+  scale_caught("reference", function() Pattern.FIELD_SCALE.ref = ref * 1.01 end,
+    function() Pattern.FIELD_SCALE.ref = ref end)
   -- No floor and no ceiling.
   local floor = Pattern.factor_floor
   local ceil = Pattern.FIELD_SCALE.ceil

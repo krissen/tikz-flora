@@ -9,6 +9,13 @@ local Paint = require("flora.paint")
 local P = require("flora.progression")
 local Rng = require("flora.rng")
 
+-- These checks run on pages whose field (114 pt beside the text) is
+-- narrower than the field scale's reference, and they read the pattern at
+-- its own size: the growth tells construction lines by their 0.40 pt and
+-- counts a frame's bytes as it grows. The field scale has its own checks
+-- (tests/pattern_scale.lua, in the pattern matrix).
+require("flora.pattern").FIELD_SCALE.enabled = false
+
 -- Settings.
 local s = Settings.parse("pattern=asanoha, edge=fade, outer=margin, scale=1.5")
 H.check(s.pattern.asanoha == 1 and s.edge == "fade" and s.outer == "margin" and s.scale == 1.5, "pattern keys parse")

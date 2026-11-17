@@ -7,6 +7,12 @@
 local H = dofile("tests/helper.lua")
 local M = dofile("tests/pattern_protect.lua")
 
+-- The reservations are placed on cells at known positions (a cross at
+-- 168, 168 between stars at 112 and 224) and pieces of the ground, at the
+-- pattern's own size and the scale key's 2 and 4; the field scale would
+-- move them. It has its own checks (tests/pattern_scale.lua).
+require("flora.pattern").FIELD_SCALE.enabled = false
+
 -- Four whole stars round a cross, and a reservation inside the cross only:
 -- every star clears it by more than the gap, the cross does not.
 do
