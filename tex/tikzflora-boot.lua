@@ -30,4 +30,6 @@ table.insert(package.searchers, 2, function(name)
   return table.concat(tried)
 end)
 
+-- The one global the package sets: tikzflora.sty calls it from \directlua.
+---@diagnostic disable-next-line: lowercase-global
 flora = require("flora.init")
