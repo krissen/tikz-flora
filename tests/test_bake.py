@@ -7,7 +7,7 @@ import sys
 import tempfile
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "tools"))
-import bake_tune as B  # noqa: E402
+import bake_tune as B
 
 failures = 0
 

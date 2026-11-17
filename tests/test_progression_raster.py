@@ -2,12 +2,13 @@
 
 Run python3 tests/test_progression_raster.py from the repository root.
 """
-from concurrent.futures import ThreadPoolExecutor
-from pathlib import Path
-from struct import iter_unpack
 import subprocess
 import tempfile
 import time
+from concurrent.futures import ThreadPoolExecutor
+from itertools import pairwise
+from pathlib import Path
+from struct import iter_unpack
 
 from PIL import Image, ImageChops, ImageFilter
 
@@ -143,7 +144,7 @@ def main():
         with ThreadPoolExecutor(max_workers=4) as pool:
             images = list(pool.map(raster, paths))
         changes = [sum(max(pixel) > 3 for pixel in pixels(ImageChops.difference(a, b)))
-                   for a, b in zip(images, images[1:])]
+                   for a, b in pairwise(images)]
         assert min(changes) > 0, 'a stage failed to change visible pixels'
         areas = list(map(painted, images))
         assert areas[0] == 0, 'zero progression paints visible content'

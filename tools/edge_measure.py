@@ -65,7 +65,7 @@ def main(out):
             res.append({**r, "ragged": "", "steps": "", "fragments": ""})
             continue
         e = np.array([np.max(np.where(m[y])[0]) for y in rowsp], dtype=float)
-        win = max(3, int(round(3 * cell)))
+        win = max(3, round(3 * cell))
         k = np.ones(win) / win
         s = np.convolve(np.pad(e, win // 2, mode="edge"), k, mode="same")[win // 2: win // 2 + len(e)]
         length = np.sum(np.sqrt(1 + np.diff(e) ** 2))

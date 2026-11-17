@@ -22,15 +22,15 @@
 # specimens, which take a fraction of a second, run alongside them.
 import json
 import os
-import tempfile
 import subprocess
 import sys
+import tempfile
 import threading
 import time
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "tools"))
-import bake_tune  # noqa: E402
+import bake_tune
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 TEX_BIN = os.path.dirname(bake_tune.TEXLUA)
