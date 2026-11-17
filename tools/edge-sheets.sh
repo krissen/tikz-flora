@@ -74,11 +74,8 @@ sheet "enhet__sikku_kolam" sikku_kolam t-10 "sikku_kolam: what falls away at the
   "unit-today=Today" "unit-units=Each loop with its dots" "unit-closed=Loops closed at the edge" "unit-symmetric=Closed, in symmetric panels"
 sheet "enhet__celtic_knot" celtic_knot y-08 "celtic_knot: what falls away at the edge" "tsuki-mi" \
   "unit-today=Today" "unit-closed=Strands closed at the edge"
-sheet "enhet__celtic_panels" celtic_panels y-06 "celtic_panels: what falls away at the edge" "tsuki-mi" \
-  "unit-today=Today" "unit-units=Whole panels" "unit-closed=Strands closed at the edge"
 for p in hexagram_lattice greek_crosses penrose_rhombs khatam; do
   case $p in hexagram_lattice) m=y-02 ;; greek_crosses) m=y-04 ;; penrose_rhombs) m=t-05 ;; khatam) m=y-03 ;; esac
   sheet "form__$p" "$p" "$m" "$p: the form should carry, not the fill" "tsuki-mi ember" \
-    "form-today=Today" "form-lighter=B1 Lighter fields" "form-straps=B2 Broad light bands" \
-    "form-sparse=B3 Fewer filled cells" "form-light-straps=B4 Lighter fields and broad bands (own proposal)"
+    "form-today=Today" "form-lighter=B1 Lighter fields"
 done

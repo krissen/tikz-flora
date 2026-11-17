@@ -25,8 +25,8 @@ end
 -- many cells as the mock shows across), prototype options (pattern.lua's
 -- pattern_opts) and settings of its own after SETUP. The sides of the y and f mocks come from
 -- their measured periods: y-02 6.15 periods of hexagram's 30 pt, y-03
--- 6.15 of khatam's 28, y-04 14.65 arm widths of the crosses' 12, y-06 and
--- y-08 8 grid units of the knotwork's 16, f-14 (its pattern, 182 px
+-- 6.15 of khatam's 28, y-04 14.65 arm widths of the crosses' 12, y-08 8
+-- grid units of the knotwork's 16, f-14 (its pattern, 182 px
 -- square) 2.9 periods of the rosettes' 30. t-05 is 400 pt: measured on
 -- the mock, its rhombs' edge is 1.65 times shorter than the 240 pt the
 -- first sheet gave.
@@ -38,7 +38,7 @@ local MOCKS = {
   { "y-02", "hexagram_lattice", 184 },
   { "y-03", "khatam", 172 },
   { "y-03__split", "khatam", 172, nil, "starfill=split" }, { "y-03__paper", "khatam", 172, nil, "gapfill=paper" },
-  { "y-04", "greek_crosses", 176 }, { "y-06", "celtic_panels", 129 }, { "y-08", "celtic_knot", 129 },
+  { "y-04", "greek_crosses", 176 }, { "y-08", "celtic_knot", 129 },
   { "f-14", "rosette_lattice", 87 },
   -- Hexagram in a large crop, three periods across, and its keys.
   { "y-02__big", "hexagram_lattice", 90 },
@@ -46,10 +46,8 @@ local MOCKS = {
   { "y-02__big-rows", "hexagram_lattice", 90, nil, "alternate=rows" },
   { "y-02__big-three", "hexagram_lattice", 90, nil, "alternate=three" },
   { "y-02__big-lines", "hexagram_lattice", 90, nil, "finish=lines" },
-  -- The knot panels: y-06 and y-08 are 278 px, 8.97 of their 31 px units.
-  { "y-06__panel", "celtic_panels", 144 }, { "y-08__panel", "celtic_knot", 144 },
-  { "y-06__one", "celtic_panels", 144, { knot = "one", reweave = false, units = true } },
-  { "y-08__one", "celtic_knot", 144, { knot = "one", reweave = false, units = true } },
+  -- The knot panel: y-08 is 278 px, 8.97 of its 31 px units.
+  { "y-08__panel", "celtic_knot", 144 },
   -- The two new heroes beside the two they are not to be taken for.
   { "t-09__new", "hero=turned_circles", 200 }, { "t-01__new", "hero=circle_disc", 200 },
   -- Asanoha on a ground, in thin gold lines.

@@ -1,8 +1,7 @@
 #!/bin/sh
 # ORDER #15's sheets (tools/edge15_variants.lua rendered into OUT/render15),
 # one question each, into OUT/sheets15: the knot field at the paper's edge
-# with magnified crops; celtic_knot as the field's panel beside
-# celtic_panels' squares; the ground as cells and as one panel; the star
+# with magnified crops; the ground as cells and as one panel; the star
 # patterns' defaults and keys; gold on a ground; tsuki-mi's contour on the
 # dark backdrop. The text block is drawn as grey bars where the layout puts
 # it (pattern_roles.lua's .text).
@@ -129,28 +128,6 @@ magick "$MOCKS/y-08.webp" -resize 260x260 -background "$BG" -gravity north -spli
 magick "$T/kmock.png" "$T/kgrid.png" -background "$BG" -gravity north +append +repage "$SH/flata__kant.png"
 title "$SH/flata__kant.png" "The knot field as one panel: (i) running off the paper's edge, (ii) closing just inside it; 160 x 90 mm, then A4, then crops at four times the A4 scale"
 echo "sheet: $SH/flata__kant.png"
-
-# --- flata__namn: celtic_knot as the field's panel, celtic_panels as squares.
-rows=""
-n=0
-for size in slide page; do
-  set --
-  for cw in tsuki-mi ember; do
-    for bd in light dark; do
-      fk=celtic_knot; fp=celtic_panels
-      [ $size = slide ] && fk=slide-celtic_knot && fp=slide-celtic_panels
-      set -- "$@" "n15-field__$cw|$bd|$fk|celtic_knot: the field's one panel, (ii) ($cw, $bd)" \
-        "n15-squares__$cw|$bd|$fp|celtic_panels: squares of 7 units, a unit apart ($cw, $bd)"
-    done
-  done
-  h=150; [ $size = page ] && h=300
-  n=$((n + 1)); row "$T/n$n.png" "$h" "$@"
-  rows="$rows $T/n$n.png"
-done
-# shellcheck disable=SC2086
-stack "$SH/flata__namn.png" $rows
-title "$SH/flata__namn.png" "celtic_knot as the field's one panel beside celtic_panels as squares; the same page and layout, 160 x 90 mm above, A4 below"
-echo "sheet: $SH/flata__namn.png"
 
 # --- grund__on: the ground as a piece under every cell, and as one panel.
 rows=""

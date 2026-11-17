@@ -20,7 +20,7 @@ for _, cw in ipairs({ "tsuki-mi", "usu-zumi", "ember" }) do
 end
 
 -- What falls away as a unit.
-local UNIT = { "sikku_kolam", "celtic_knot", "celtic_panels" }
+local UNIT = { "sikku_kolam", "celtic_knot" }
 add("unit-today__tsuki-mi", "colourway=tsuki-mi", {}, UNIT)
 add("unit-units__tsuki-mi", "colourway=tsuki-mi", { units = true }, UNIT)
 add("unit-closed__tsuki-mi", "colourway=tsuki-mi", { reweave = true }, UNIT)
@@ -32,9 +32,6 @@ local LIGHT = { ["tsuki-mi"] = "fielda=ina-ho:0.84:0.3, fieldb=sui-gyoku:0.78:0.
 for _, cw in ipairs({ "tsuki-mi", "ember" }) do
   add("form-today__" .. cw, "colourway=" .. cw, {}, FORM)
   add("form-lighter__" .. cw, "colourway=" .. cw .. ", patternpalette={" .. LIGHT[cw] .. "}", {}, FORM)
-  add("form-straps__" .. cw, "colourway=" .. cw .. ", bandwidth=2.2", { strap_all = true }, FORM)
-  add("form-sparse__" .. cw, "colourway=" .. cw, { sparse = true }, FORM)
-  add("form-light-straps__" .. cw, "colourway=" .. cw .. ", bandwidth=2.2, patternpalette={" .. LIGHT[cw] .. "}", { strap_all = true }, FORM)
 end
 
 return { variants = variants }

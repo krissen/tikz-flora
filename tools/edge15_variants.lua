@@ -1,7 +1,6 @@
 -- The variants of ORDER #15's sheets (tools/edge15-sheets.sh): the knot
--- field running off the paper (bleed) or closing inside it (inset) in every
--- layout; celtic_knot as the field's panel beside celtic_panels' squares;
--- the ground as cells and as a panel; khatam's and hexagram's defaults and
+-- field running off the paper (ends=bleed) or closing inside it
+-- (ends=closed) in every layout; the ground as cells and as a panel; khatam's and hexagram's defaults and
 -- keys; gold on a ground; and tsuki-mi's contour on the dark backdrop at
 -- three strengths. Each a \florasetup line and prototype options, on the
 -- A4 page and the slide.
@@ -17,11 +16,9 @@ for _, cw in ipairs({ "tsuki-mi", "ember" }) do
   local c = "colourway=" .. cw
   for _, layout in ipairs({ "left", "right", "centered", "surround" }) do
     for _, m in ipairs({ "bleed", "inset" }) do
-      add("k15-" .. m .. "-" .. layout .. "__" .. cw, c, { knot = m, reweave = false }, { "celtic_knot" }, layout)
+      add("k15-" .. m .. "-" .. layout .. "__" .. cw, c .. ", ends=" .. (m == "bleed" and "bleed" or "closed"), {}, { "celtic_knot" }, layout)
     end
   end
-  add("n15-field__" .. cw, c, { knot = "inset", reweave = false }, { "celtic_knot" })
-  add("n15-squares__" .. cw, c, { knot = "several", reweave = false, units = true }, { "celtic_panels" })
   for _, g in ipairs({ "cells", "panel" }) do
     add("g15-" .. g .. "__" .. cw, c .. ", ground=" .. g, {}, { "sikku_kolam", "asanoha", "rosette_lattice" })
   end

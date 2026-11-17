@@ -1,6 +1,6 @@
 -- The variants of ORDER #13's sheets (tools/edge13-sheets.sh): the knot
--- field as one panel, running off the paper (bleed) or closing inside it
--- (inset), in every layout; khatam's and hexagram's new defaults and their
+-- field as one panel, running off the paper (ends=bleed) or closing inside
+-- it (ends=closed), in every layout; khatam's and hexagram's new defaults and their
 -- keys; asanoha in gold on a ground. Each a \florasetup line and prototype
 -- options, on the A4 page and the slide.
 
@@ -14,7 +14,7 @@ for _, cw in ipairs({ "tsuki-mi", "ember" }) do
   local c = "colourway=" .. cw
   for _, layout in ipairs({ "left", "right", "centered", "surround" }) do
     for _, m in ipairs({ "bleed", "inset" }) do
-      add("k13-" .. m .. "-" .. layout .. "__" .. cw, c, { knot = m, reweave = false }, { "celtic_knot" }, layout)
+      add("k13-" .. m .. "-" .. layout .. "__" .. cw, c .. ", ends=" .. (m == "bleed" and "bleed" or "closed"), {}, { "celtic_knot" }, layout)
     end
   end
   add("s13-default__" .. cw, c, {}, { "khatam", "hexagram_lattice" })

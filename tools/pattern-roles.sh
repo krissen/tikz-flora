@@ -100,7 +100,7 @@ mock_of() {
   case "$1" in
     stars_8_4) echo t-03 ;; asanoha) echo t-11 ;; penrose_rhombs) echo t-05 ;; truchet) echo t-06 ;;
     sikku_kolam) echo t-10 ;; overlapping_circles) echo t-01 ;; hexagram_lattice) echo y-02 ;;
-    khatam) echo y-03 ;; greek_crosses) echo y-04 ;; celtic_knot) echo y-08 ;; celtic_panels) echo y-06 ;;
+    khatam) echo y-03 ;; greek_crosses) echo y-04 ;; celtic_knot) echo y-08 ;;
     rosette_lattice) echo f-14 ;; hero-rosette) echo t-08 ;; hero-phyllotaxis) echo t-07 ;;
     hero-rose) echo t-13 ;; hero-guilloche) echo t-09 ;; *) echo "" ;;
   esac
