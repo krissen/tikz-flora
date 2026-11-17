@@ -29,6 +29,7 @@ bench:
 test:
     for f in tests/test_*.lua; do texlua "$f" || exit 1; done
     {{PYTHON}} -I tests/test_bake.py
+    {{PYTHON}} -I tests/test_lint.py
 
 # Lint the Lua (lua-language-server, .luarc.json), the Python (ruff, and
 # pyright when installed) and tools/*.sh (shellcheck). .lint-exempt lists the
