@@ -345,7 +345,7 @@ do
   f:close()
   for _, m in ipairs({
     { "the knot's fixed cells", "local ok = dens > 0 and d >= gap", "local ok = d >= gap", "celtic_knot" },
-    { "an empty panel", "if #grounded > 0 and plate(", "if true and plate(", "asanoha" },
+    { "an empty panel", "if #grounded > 0 then", "if true then", "asanoha" },
   }) do
     local i, j = src:find(m[2], 1, true)
     H.check(i ~= nil, "mutation: the line is gone from pattern.lua: " .. m[2])
@@ -355,6 +355,39 @@ do
       package.loaded["flora.pattern"] = real
       H.check(#mf > 0, "the density0 check missed " .. m[1])
       if os.getenv("FLORA_MATRIX_VERBOSE") then print(string.format("mutation density0 %s: %d failures", m[1], #mf)) end
+    end
+  end
+end
+
+-- The ground under a cell is never laid after it: by the progression's
+-- births on every pattern with a ground, and in grow frames on asanoha;
+-- and the check fails when the panel waits for the first cell the
+-- generator lists, or a piece for its cell's painting.
+do
+  local pages, checked, _, fs = M.groundtime()
+  H.check(pages == 144, "groundtime pages: " .. pages)
+  H.check(checked > 0, "groundtime checked no cells")
+  for _, f in ipairs(fs) do H.check(false, f) end
+  local fp, _, _, ffs = M.groundtime(function(n) return n == "asanoha" end, M.GROW)
+  for _, f in ipairs(ffs) do H.check(false, f) end
+  if os.getenv("FLORA_MATRIX_VERBOSE") then print(string.format("groundtime: %d pages, %d cell parts, %d failures; frames on asanoha: %d pages, %d failures", pages, checked, #fs, fp, #ffs)) end
+  local real = package.loaded["flora.pattern"]
+  local f = io.open("lua/flora/pattern.lua")
+  local src = f:read("a")
+  f:close()
+  local line = "if plate(g.anchor, g.at, "
+  for _, m in ipairs({
+    { "the panel laid with the first cell listed", "if plate(g.anchor, g.form == \"panel\" and g.k.painted or g.at, " },
+    { "a piece laid with its cell's painting", "if plate(g.anchor, g.form == \"piece\" and g.k.painted or g.at, " },
+  }) do
+    local i, j = src:find(line, 1, true)
+    H.check(i ~= nil, "mutation: the line is gone from pattern.lua: " .. line)
+    if i then
+      package.loaded["flora.pattern"] = assert(load(src:sub(1, i - 1) .. m[2] .. src:sub(j + 1), "@pattern.lua (mutated)"))()
+      local _, _, _, mf = M.groundtime(function(n) return n == "asanoha" end, { 0.1 })
+      package.loaded["flora.pattern"] = real
+      H.check(#mf > 0, "the groundtime check missed " .. m[1])
+      if os.getenv("FLORA_MATRIX_VERBOSE") then print(string.format("mutation groundtime %s: %d failures", m[1], #mf)) end
     end
   end
 end

@@ -50,6 +50,11 @@
 --             what is painted under it (the ground's piece or panel there,
 --             else the page), as shown
 --
+-- M.groundtime(filter, frames) runs every pattern with a ground x ground
+-- x layout x backdrop, holding it to
+--   groundtime the ground under a cell is never born after it: by the
+--             progression's births, and in spec.grow frames
+--
 -- M.reweave(filter) runs every pattern that reweaves its field's edge x
 -- edge x ground x layout x backdrop, holding it to
 --   reweave   the drawing woven again keeps the edge's treatment: every
@@ -763,6 +768,141 @@ function M.fadeunder(filter)
     end
   end
   return pages, compared, failures
+end
+
+-- A page's ground and cells over time: every progression part the field
+-- paints (kind, anchor, birth), which of them lay the ground (the paths
+-- Pattern.edge_pieces hands out), and, for a spec.grow frame, what of each
+-- was painted.
+local function timed(spec)
+  local Progression = require("flora.progression")
+  local Pattern = require("flora.pattern")
+  local parts, grounds, cells = {}, {}, {}
+  local cur
+  local fill, stroke, part, ep = Paint.fill, Paint.stroke, Progression.part, Pattern.edge_pieces
+  local tagged = setmetatable({}, { __mode = "k" })
+  Pattern.edge_pieces = function(mode, f, info)
+    local r = ep(mode, f, info)
+    if r.panel then tagged[r.panel] = true end
+    if r.piece then
+      local piece = r.piece
+      r.piece = function(...)
+        local q, col = piece(...)
+        if q then tagged[q] = true end
+        return q, col
+      end
+    end
+    return r
+  end
+  local function rec(self, cmds)
+    if not (self.group and self.group.tag == "pattern") then return end
+    if tagged[cmds] then grounds[#grounds + 1] = { cmds = cmds, birth = cur and cur.birth }
+    elseif cur and (cur.kind == "pattern" or cur.kind == "pattern_line") then
+      if not cur.seen then cur.seen = true; cells[#cells + 1] = cur end
+    elseif not cur and spec.grow then
+      -- A grow frame paints without progression parts: each shape is a
+      -- cell's, placed at its control points' middle.
+      local x, y, n = 0, 0, 0
+      local function walk(cs)
+        for _, c in ipairs(cs) do
+          if type(c[1]) == "table" then walk(c)
+          elseif c[1] == "o" then x, y, n = x + c[2], y + c[3], n + 1
+          elseif c[1] ~= "z" then for i = 2, #c, 2 do x, y, n = x + c[i], y + c[i + 1], n + 1 end end
+        end
+      end
+      walk(cmds)
+      if n > 0 then cells[#cells + 1] = { at = { x / n, y / n } } end
+    end
+  end
+  Paint.fill = function(self, cmds, ...) rec(self, cmds); return fill(self, cmds, ...) end
+  Paint.stroke = function(self, cmds, ...) rec(self, cmds); return stroke(self, cmds, ...) end
+  Progression.part = function(pt, k, a, b, d, fn, ...)
+    return part(pt, k, a, b, d, function()
+      local u = cur
+      cur = { kind = k, at = a, birth = b }
+      parts[#parts + 1] = cur
+      local ok, r = pcall(fn)
+      cur = u
+      if not ok then error(r, 0) end
+      return r
+    end, ...)
+  end
+  Paint.reset_resources()
+  local ok, pt = pcall(Compose.page, spec)
+  Paint.fill, Paint.stroke, Progression.part, Pattern.edge_pieces = fill, stroke, part, ep
+  if not ok then error(pt, 0) end
+  return pt, cells, grounds
+end
+
+-- The ground laid last under (x, y) of `grounds`, its index, or nil.
+local function last_under(grounds, x, y)
+  for g = #grounds, 1, -1 do
+    if on_path(grounds[g].cmds, x, y, 1) then return g end
+  end
+end
+
+-- Every pattern with a ground x ground x layout x backdrop, timed: each
+-- cell part (its construction lines and its painting) is born no earlier
+-- than the ground that lies under its middle on the paper, by the
+-- progression's births; and in spec.grow frames 0, 0.1 ... 1 that ground
+-- is painted whenever the part is. Returns the pages, the cell parts
+-- checked, failures by form (panel, piece) and the failures.
+M.GROW = { 0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1 }
+function M.groundtime(filter, frames)
+  local pages, checked, by, failures = 0, 0, {}, {}
+  for _, p in ipairs(Patterns.list) do
+    local has = false
+    for _, r in ipairs(p.roles) do if r == "ground" then has = true end end
+    if has and (not filter or filter(p.name)) then
+      for _, ground in ipairs({ "auto", "off", "panel", "motif", "round", "cells" }) do
+        local form = (ground == "panel" or ground == "auto") and "panel" or "piece"
+        for _, layout in ipairs({ "left", "right", "centered", "surround" }) do
+          for _, bd in ipairs({ "light", "dark" }) do
+            local setup = "colourway=tsuki-mi, ground=" .. ground .. ", backdrop=" .. bd
+            local where = string.format("%s ground=%s %s %s", p.name, ground, layout, bd)
+            local spec = page(p.name, setup, layout)
+            local _, cells, grounds = timed(spec)
+            pages = pages + 1
+            local late, worst = 0, 0
+            for _, c in ipairs(cells) do
+              local x = math.max(0, math.min(spec.width, c.at[1]))
+              local y = math.max(0, math.min(spec.height, c.at[2]))
+              local g = last_under(grounds, x, y)
+              if g then
+                checked = checked + 1
+                local gb = grounds[g].birth or 0
+                if gb > c.birth + 1e-9 then late = late + 1; worst = math.max(worst, gb - c.birth) end
+              end
+            end
+            if late > 0 then
+              by[form] = (by[form] or 0) + 1
+              failures[#failures + 1] = string.format("%s: groundtime: %d cell parts born before the ground under them (by up to %.3f)", where, late, worst)
+            end
+            -- The frames: what a frame paints of the cells and the ground.
+            for _, gr in ipairs(frames or {}) do
+              local fs = page(p.name, setup, layout)
+              fs.grow = gr
+              local _, fc, fg = timed(fs)
+              local bare = 0
+              for _, c in ipairs(fc) do
+                local x = math.max(0, math.min(spec.width, c.at[1]))
+                local y = math.max(0, math.min(spec.height, c.at[2]))
+                -- The ground the finished page lays there, and whether this
+                -- frame paints it.
+                local g = last_under(grounds, x, y)
+                if g and not last_under(fg, x, y) then bare = bare + 1 end
+              end
+              if bare > 0 then
+                by[form .. " (frames)"] = (by[form .. " (frames)"] or 0) + 1
+                failures[#failures + 1] = string.format("%s grow=%.1f: groundtime: %d cell parts painted with no ground under them", where, gr, bare)
+              end
+            end
+          end
+        end
+      end
+    end
+  end
+  return pages, checked, by, failures
 end
 
 -- The pages of M.reweave: the field drawn once (pattern_opts.reweave =

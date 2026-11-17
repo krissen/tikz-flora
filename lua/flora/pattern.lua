@@ -1190,13 +1190,14 @@ function M.paint(spec, pt)
   -- and stroked 0.6 wide). One that does not is left out, and the paper
   -- (or what lies under it) shows there.
   local PLATE_REACH = 0.3
-  local function plate(c, k, path, colour, form)
+  -- A plate is laid at growth time `at`, anchored at cell c.
+  local function plate(c, at, path, colour, form)
     if not fits(form, subpath_shapes(path), PLATE_REACH) then return false end
     local function draw() lit(function() pt:fill(path, colour, 1); pt:stroke(path, colour, 0.6, 1) end) end
     if grow then
-      if grow >= k.painted then draw() end
+      if grow >= at then draw() end
     else
-      Progression.part(pt, "pattern_ground", { c.x, c.y }, k.painted, BAND, draw, nil, { no_area = true })
+      Progression.part(pt, "pattern_ground", { c.x, c.y }, at, BAND, draw, nil, { no_area = true })
     end
     return true
   end
@@ -1216,23 +1217,42 @@ function M.paint(spec, pt)
   local below = {}
   if base.ground then
     local K = require("flora.pat_kit")
+    -- The ground to lay, in order: the panel, or each grounded cell's
+    -- piece (which fades with its cell toward the page).
+    local laying = {}
     if pieces.panel then
       -- The panel lies under the pattern's cells; with none (density=0)
       -- there is no pattern, and no panel.
-      local first = grounded[1] or { cell = { x = 0, y = 0 }, painted = 0 }
-      if #grounded > 0 and plate(first.cell, first, pieces.panel, M.cell_inks(base, 1).ground, "panel") then
-        below[1] = { shapes = subpath_shapes(pieces.panel), colour = M.cell_inks(base, 1).ground }
+      if #grounded > 0 then
+        laying[1] = { k = grounded[1] or { cell = { x = 0, y = 0 }, birth = 0 }, path = pieces.panel,
+          colour = M.cell_inks(base, 1).ground, form = "panel" }
       end
     else
       for _, k in ipairs(grounded) do
         local c = k.cell
-        -- A piece fades with its cell toward the page.
         local under, colour = pieces.piece(k, c.under or (c.tile and K.path(c.tile)), M.cell_inks(base, k.a).ground)
-        if under then
-          if plate(c, k, under, colour, "piece") then
-            below[#below + 1] = { shapes = subpath_shapes(under), colour = colour }
-          end
+        if under then laying[#laying + 1] = { k = k, path = under, colour = colour, form = "piece" }
         elseif not c.rests and not pieces.drops then holes = holes + 1 end
+      end
+    end
+    -- When each is laid: never after any cell that lies on it. A piece is
+    -- laid with its own cell's first lines (its birth), or earlier, with
+    -- the earliest cell whose middle (on the paper) lies on it, a cell that
+    -- rests on it included; the panel with the earliest cell of all.
+    for _, g in ipairs(laying) do
+      g.shapes = subpath_shapes(g.path)
+      g.at, g.anchor = g.k.birth, g.k.cell
+    end
+    for _, k in ipairs(grounded) do
+      local x = math.max(0, math.min(W, k.cell.x))
+      local y = math.max(0, math.min(top, k.cell.y))
+      for _, g in ipairs(laying) do
+        if k.birth < g.at and (g.form == "panel" or covers(g.shapes, x, y, 1)) then g.at, g.anchor = k.birth, k.cell end
+      end
+    end
+    for _, g in ipairs(laying) do
+      if plate(g.anchor, g.at, g.path, g.colour, g.form) then
+        below[#below + 1] = { shapes = g.shapes, colour = g.colour }
       end
     end
   end
@@ -1271,7 +1291,7 @@ function M.paint(spec, pt)
       for _, pl in ipairs(k.cell.plates or {}) do
         local ik = M.cell_inks(base, k.a, nil, under_of(k))
         local colour = pl[2] == "accent" and ik.accent or ik.fill[pl[2] == "b" and 2 or 1]
-        if between_ok(pl) then plate(k.cell, k, pl[1], colour, pl.between and "between" or "plate") end
+        if between_ok(pl) then plate(k.cell, k.painted, pl[1], colour, pl.between and "between" or "plate") end
       end
     end
   end

@@ -57,16 +57,38 @@ local function paint(spec)
   local parts, colours, kind, anchor, share, target = {}, {}, nil, nil, nil, nil
   local fill, stroke, part = Paint.fill, Paint.stroke, Progression.part
   local Pattern = require("flora.pattern")
-  local cell_inks = Pattern.cell_inks
+  local cell_inks, ep = Pattern.cell_inks, Pattern.edge_pieces
+  local fade_of
   Pattern.cell_inks = function(base, a, hero, to, ...)
     share, target = a, to or (not hero and base.fade) or Paint.palette.paper
+    fade_of = base.fade
     return cell_inks(base, a, hero, to, ...)
   end
-  local function rec(self, rgb)
-    if self.group and self.group.tag == "pattern" and CELL[kind] then colours[#colours + 1] = { self:ink(rgb), anchor, share, target and self:ink(target) } end
+  -- A piece of the ground is laid after the field has taken every piece's
+  -- inks, so its share is its own cell's, kept with its path; it fades
+  -- toward the page.
+  local piece_a = setmetatable({}, { __mode = "k" })
+  Pattern.edge_pieces = function(mode, f, info)
+    local r = ep(mode, f, info)
+    if r.piece then
+      local piece = r.piece
+      r.piece = function(k, ...)
+        local q, col = piece(k, ...)
+        if q then piece_a[q] = k.a end
+        return q, col
+      end
+    end
+    return r
   end
-  Paint.fill = function(self, cmds, rgb, ...) rec(self, rgb); return fill(self, cmds, rgb, ...) end
-  Paint.stroke = function(self, cmds, rgb, ...) rec(self, rgb); return stroke(self, cmds, rgb, ...) end
+  local function rec(self, cmds, rgb)
+    if self.group and self.group.tag == "pattern" and CELL[kind] then
+      local a, to = share, target
+      if piece_a[cmds] then a, to = piece_a[cmds], fade_of end
+      colours[#colours + 1] = { self:ink(rgb), anchor, a, to and self:ink(to) }
+    end
+  end
+  Paint.fill = function(self, cmds, rgb, ...) rec(self, cmds, rgb); return fill(self, cmds, rgb, ...) end
+  Paint.stroke = function(self, cmds, rgb, ...) rec(self, cmds, rgb); return stroke(self, cmds, rgb, ...) end
   Progression.part = function(pt, k, a, birth, duration, fn, ...)
     if CELL[k] then parts[#parts + 1] = { k, birth, duration } end
     return part(pt, k, a, birth, duration, function()
@@ -81,7 +103,7 @@ local function paint(spec)
   Paint.reset_resources()
   local ok, pt = pcall(Compose.page, spec)
   Paint.fill, Paint.stroke, Progression.part = fill, stroke, part
-  Pattern.cell_inks = cell_inks
+  Pattern.cell_inks, Pattern.edge_pieces = cell_inks, ep
   if not ok then error(pt, 0) end
   return pt, parts, colours
 end
