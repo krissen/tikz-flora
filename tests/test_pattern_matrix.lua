@@ -359,6 +359,30 @@ do
   end
 end
 
+-- A key written out at its default paints the page the key left out
+-- paints, and the check fails when lacquer fills in its own values only
+-- for keys left out.
+do
+  local pages, fs = M.defaults()
+  H.check(pages > 0, "defaults painted no page")
+  for _, f in ipairs(fs) do H.check(false, f) end
+  if os.getenv("FLORA_MATRIX_VERBOSE") then print(string.format("defaults: %d pages, %d failures", pages, #fs)) end
+  local real = package.loaded["flora.pattern"]
+  local f = io.open("lua/flora/pattern.lua")
+  local src = f:read("a")
+  f:close()
+  local line = "return v == nil or v == Settings.PATTERN[k] or tonumber(v) ~= nil and tonumber(v) == tonumber(Settings.PATTERN[k])"
+  local i, j = src:find(line, 1, true)
+  H.check(i ~= nil, "mutation: the line is gone from pattern.lua: " .. line)
+  if i then
+    package.loaded["flora.pattern"] = assert(load(src:sub(1, i - 1) .. "return v == nil" .. src:sub(j + 1), "@pattern.lua (mutated)"))()
+    local _, mf = M.defaults()
+    package.loaded["flora.pattern"] = real
+    H.check(#mf > 0, "the defaults check missed lacquer reading a written default as the page's own choice")
+    if os.getenv("FLORA_MATRIX_VERBOSE") then print(string.format("mutation defaults lacquer fills in only keys left out: %d failures", #mf)) end
+  end
+end
+
 -- A unit falls on one draw, and the check fails when each of its cells is
 -- judged on a draw of its own again.
 do

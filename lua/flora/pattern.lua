@@ -440,9 +440,17 @@ function M.finish_spec(spec, p)
   if not M.takes(p, "lacquer") then
     return out, string.format("finish=lacquer: %s does not take it, so it is painted with its usual finish", p.name)
   end
-  if out[S.ground] == nil then out[S.ground] = "panel" end
-  if out[S.bands] == nil then out[S.bands] = "line" end
-  if out[S.bandwidth] == nil then out[S.bandwidth] = 0.5 end
+  -- Lacquer gives a key its own value unless the page chose another: a key
+  -- left out and a key written out at its default (Settings.PATTERN, auto
+  -- for ground and bands, 1 for bandwidth; a later ground=auto that resets
+  -- an earlier ground=cells) are the same page.
+  local function unset(k)
+    local v = out[S[k]]
+    return v == nil or v == Settings.PATTERN[k] or tonumber(v) ~= nil and tonumber(v) == tonumber(Settings.PATTERN[k])
+  end
+  if unset("ground") then out[S.ground] = "panel" end
+  if unset("bands") then out[S.bands] = "line" end
+  if unset("bandwidth") then out[S.bandwidth] = 0.5 end
   local pal = {}
   for k, v in pairs(spec.patternpalette or {}) do pal[k] = v end
   pal.band = "gold"

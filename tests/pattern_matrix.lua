@@ -50,6 +50,13 @@
 --             what is painted under it (the ground's piece or panel there,
 --             else the page), as shown
 --
+-- M.defaults(filter) runs every pattern key with a default x the patterns
+-- with a lacquer finish (M.LACQUER) x each finish they take x backdrop,
+-- holding it to
+--   defaults  a key written out at its default, or set to another value and
+--             then back to its default, paints the page the key left out
+--             paints
+--
 -- M.unitdraw(filter) runs every pattern whose cells fall as units (c.group)
 -- under ends=whole x edge x layout x backdrop x seed, holding it to
 --   unitdraw  a unit falls on one draw: every kept cell of a unit was
@@ -139,6 +146,13 @@ local function paint(spec)
   if not ok then error(pt, 0) end
   rec.pt = pt
   return rec
+end
+
+-- The matrix's page from a whole setup line.
+local function page_of(setup)
+  local spec = { width = 300, height = 240, text = { x0 = 130, y0 = 30, x1 = 280, y1 = 210 }, seed = 7, layout = "left" }
+  Settings.to_spec(Settings.parse(setup), spec)
+  return spec
 end
 
 local function page(name, setup, layout)
@@ -773,6 +787,42 @@ function M.fadeunder(filter)
     end
   end
   return pages, compared, failures
+end
+
+-- Each key with its default (Settings.PATTERN's) and another value.
+M.DEFAULTS = {
+  { "ground", "cells" }, { "ends", "cut" }, { "bands", "strap" }, { "bandwidth", "2" }, { "starfill", "split" },
+  { "gapfill", "paper" }, { "alternate", "rows" }, { "panels", "on" }, { "lighten", "0.3" }, { "finish", "lines" },
+  { "outer", "margin" }, { "edge", "cell" }, { "hero", "rosette" }, { "scale", "2" }, { "saturation", "1" },
+}
+function M.defaults(filter)
+  local pages, failures = 0, {}
+  local function body(setup)
+    pages = pages + 1
+    return paint(page_of(setup)).pt:body()
+  end
+  for _, p in ipairs(Patterns.list) do
+    if M.LACQUER[p.name] and (not filter or filter(p.name)) then
+      for _, fin in ipairs(Pattern.finishes_of(p)) do
+        for _, bd in ipairs({ "light", "dark" }) do
+          for _, k in ipairs(M.DEFAULTS) do
+            local key, other = k[1], k[2]
+            local default = tostring(Settings.PATTERN[key])
+            if not (key == "finish" and fin ~= "filled") then
+              local base = "pattern=" .. p.name .. ", colourway=tsuki-mi, backdrop=" .. bd .. (key == "finish" and "" or ", finish=" .. fin)
+              local want = body(base)
+              for _, case in ipairs({ { "written", ", " .. key .. "=" .. default }, { "reset", ", " .. key .. "=" .. other .. ", " .. key .. "=" .. default } }) do
+                if body(base .. case[2]) ~= want then
+                  failures[#failures + 1] = string.format("%s finish=%s %s: defaults: %s=%s %s paints another page than the key left out", p.name, fin, bd, key, default, case[1])
+                end
+              end
+            end
+          end
+        end
+      end
+    end
+  end
+  return pages, failures
 end
 
 M.UNIT_SEEDS = { 1, 2, 3, 4, 5, 6 }
