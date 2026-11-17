@@ -80,7 +80,7 @@ def current_tune():
 def lualatex(job, tex, env_, outdir=OUT):
     run = subprocess.run(["lualatex", "-interaction=nonstopmode", "-halt-on-error",
                           f"-output-directory={outdir}", f"-jobname={job}", tex],
-                         cwd=ROOT, env=env_, capture_output=True, text=True)
+                         cwd=ROOT, env=env_, capture_output=True, text=True, check=False)
     if run.returncode != 0:
         with open(os.path.join(outdir, job + ".log"), errors="replace") as f:
             log = f.read()
@@ -138,7 +138,7 @@ def render_fast(values, seed, page):
     stem = fresh_png("flora")
     run = subprocess.run([os.path.join(TEX_BIN, "texlua"), "tools/preview.lua",
                           os.path.join(base_dir, f"spec-{page}.lua"), str(int(seed)), str(page), stem + ".pdf"],
-                         cwd=ROOT, env=env(tune_path), capture_output=True, text=True)
+                         cwd=ROOT, env=env(tune_path), capture_output=True, text=True, check=False)
     if run.returncode != 0:
         raise RuntimeError(run.stderr[-2500:])
     png = rasterize(stem + ".pdf", 1, stem)
@@ -176,7 +176,7 @@ def render_component(values, cid, seed):
     try:
         write_tune(tune_path, values)
         run = subprocess.run([os.path.join(TEX_BIN, "texlua"), "tools/component.lua", str(cid), str(int(seed)),
-                              stem + ".pdf"], cwd=ROOT, env=env(tune_path), capture_output=True, text=True)
+                              stem + ".pdf"], cwd=ROOT, env=env(tune_path), capture_output=True, text=True, check=False)
     finally:
         os.remove(tune_path)
     if run.returncode != 0:
@@ -233,17 +233,17 @@ class Handler(SimpleHTTPRequestHandler):
                 try:
                     return self.send_json(200, render(req["values"], req.get("seed", 1), req.get("page", 1),
                                                       bool(req.get("full"))))
-                except Exception as e:  # report compile failures to the page
+                except Exception as e:  # noqa: BLE001 report compile failures to the page
                     return self.send_json(500, {"error": str(e)})
         if self.path == "/api/component":
             try:
                 return self.send_json(200, render_component(req["values"], req["id"], req.get("seed", 1)))
-            except Exception as e:  # report draw failures to the page
+            except Exception as e:  # noqa: BLE001 report draw failures to the page
                 return self.send_json(500, {"error": str(e)})
         if self.path == "/api/bake":
             try:
                 changed = bake_tune.bake(req["values"])
-            except Exception as e:  # the file is left as it was
+            except Exception as e:  # noqa: BLE001 the file is left as it was
                 return self.send_json(500, {"error": f"tune.lua not changed: {e}"})
             return self.send_json(200, {"changed": changed, "local": os.path.exists(LOCAL)})
         if self.path == "/api/save":
