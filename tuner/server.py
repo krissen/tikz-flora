@@ -82,7 +82,8 @@ def lualatex(job, tex, env_, outdir=OUT):
                           f"-output-directory={outdir}", f"-jobname={job}", tex],
                          cwd=ROOT, env=env_, capture_output=True, text=True)
     if run.returncode != 0:
-        log = open(os.path.join(outdir, job + ".log"), errors="replace").read()
+        with open(os.path.join(outdir, job + ".log"), errors="replace") as f:
+            log = f.read()
         raise RuntimeError(log[-2500:])
 
 

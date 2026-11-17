@@ -34,7 +34,8 @@ def lightness(rgb):
 
 def main(out, band_l=0.40):
     out = Path(out)
-    rows = [r for r in csv.DictReader(open(out / "cells.tsv"), delimiter="\t") if r["ground"] == "off" and r["edge"] == "cell"]
+    with open(out / "cells.tsv") as f:
+        rows = [r for r in csv.DictReader(f, delimiter="\t") if r["ground"] == "off" and r["edge"] == "cell"]
     res = []
     for r in rows:
         name = f"{r['pattern']}__ground-off__cell"

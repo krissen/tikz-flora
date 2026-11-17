@@ -209,11 +209,13 @@ def bake(values, path=TUNE):
     paths = changed_leaves(values, old)
     if not paths:
         return []
-    text = open(path).read()
+    with open(path) as f:
+        text = f.read()
     spans = [(locate(text, p), literal(_get(values, p))) for p in paths]
     for (s, e), lit in sorted(spans, reverse=True):
         text = text[:s] + lit + text[e:]
-    original = open(path).read()
+    with open(path) as f:
+        original = f.read()
     with open(path, "w") as f:
         f.write(text)
     try:

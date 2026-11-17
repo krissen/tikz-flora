@@ -48,7 +48,8 @@ def components(mask):
 
 def main(out):
     out = Path(out)
-    rows = list(csv.DictReader(open(out / "cells.tsv"), delimiter="\t"))
+    with open(out / "cells.tsv") as f:
+        rows = list(csv.DictReader(f, delimiter="\t"))
     res = []
     for r in rows:
         name = f"{r['pattern']}__ground-{r['ground']}__{r['edge']}"
