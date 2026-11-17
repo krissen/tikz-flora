@@ -1068,12 +1068,20 @@ function M.paint(spec, pt)
     local groups = {}
     local verdict = {}
     for _, c in ipairs(list) do
+      -- Every cell takes its draws, so a cell outside any group draws as
+      -- it would with no groups; a cell of a group is judged by its
+      -- group's draw, the first of its cells', so the group falls or
+      -- stands at once, as far as its least free cell.
       local r, jitter = fall:next(), stagger:next()
+      local g
+      if opts.units and c.group then
+        g = groups[c.group] or { r = r, a = 1, placed = true }
+        groups[c.group] = g
+        r = g.r
+      end
       local placed, a, grounds = judge(c, r)
       verdict[#verdict + 1] = { c = c, placed = placed, a = a, grounds = grounds, jitter = jitter, r = r }
-      if opts.units and c.group then
-        local g = groups[c.group] or { r = r, a = 1, placed = true }
-        groups[c.group] = g
+      if g then
         if onpage[c] then
           g.placed = g.placed and placed
           if placed then g.a = math.min(g.a, a) end
@@ -1087,7 +1095,7 @@ function M.paint(spec, pt)
       if placed then
         offered = offered + 1
         if a > 0 then
-          kept[#kept + 1] = { cell = v.c, a = a, jitter = v.jitter }
+          kept[#kept + 1] = { cell = v.c, a = a, jitter = v.jitter, r = v.r }
         elseif v.grounds then
           -- A cell dissolved away still lays its piece of the ground, so the
           -- ground runs whole to the field's edge and the cells fall away

@@ -50,6 +50,11 @@
 --             what is painted under it (the ground's piece or panel there,
 --             else the page), as shown
 --
+-- M.unitdraw(filter) runs every pattern whose cells fall as units (c.group)
+-- under ends=whole x edge x layout x backdrop x seed, holding it to
+--   unitdraw  a unit falls on one draw: every kept cell of a unit was
+--             judged with the same draw
+--
 -- M.groundtime(filter, frames) runs every pattern with a ground x ground
 -- x layout x backdrop, holding it to
 --   groundtime the ground under a cell is never born after it: by the
@@ -768,6 +773,39 @@ function M.fadeunder(filter)
     end
   end
   return pages, compared, failures
+end
+
+M.UNIT_SEEDS = { 1, 2, 3, 4, 5, 6 }
+function M.unitdraw(filter)
+  local pages, units, failures = 0, 0, {}
+  for _, p in ipairs(Patterns.list) do
+    if not filter or filter(p.name) then
+      for _, edge in ipairs({ "dissolve", "cell", "fade" }) do
+        for _, layout in ipairs({ "left", "right", "centered", "surround" }) do
+          for _, bd in ipairs({ "light", "dark" }) do
+            for _, seed in ipairs(M.UNIT_SEEDS) do
+              local spec = page(p.name, "colourway=tsuki-mi, ends=whole, edge=" .. edge .. ", backdrop=" .. bd, layout)
+              spec.seed = seed
+              local info = paint(spec).pt.pattern
+              pages = pages + 1
+              local draw, split = {}, 0
+              for _, k in ipairs(info.kept) do
+                local g = k.cell.group
+                if g and k.r then
+                  if draw[g] == nil then draw[g] = k.r; units = units + 1
+                  elseif draw[g] ~= k.r then split = split + 1 end
+                end
+              end
+              if split > 0 then
+                failures[#failures + 1] = string.format("%s edge=%s %s %s seed=%d: unitdraw: %d cells judged with another draw than their unit", p.name, edge, layout, bd, seed, split)
+              end
+            end
+          end
+        end
+      end
+    end
+  end
+  return pages, units, failures
 end
 
 -- A page's ground and cells over time: every progression part the field

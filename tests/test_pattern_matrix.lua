@@ -359,6 +359,30 @@ do
   end
 end
 
+-- A unit falls on one draw, and the check fails when each of its cells is
+-- judged on a draw of its own again.
+do
+  local pages, units, fs = M.unitdraw(function(n) return n == "sikku_kolam" or n == "celtic_knot" end)
+  H.check(pages == 288, "unitdraw pages: " .. pages)
+  H.check(units > 0, "unitdraw found no kept unit")
+  for _, f in ipairs(fs) do H.check(false, f) end
+  if os.getenv("FLORA_MATRIX_VERBOSE") then print(string.format("unitdraw: %d pages, %d kept units, %d failures", pages, units, #fs)) end
+  local real = package.loaded["flora.pattern"]
+  local f = io.open("lua/flora/pattern.lua")
+  local src = f:read("a")
+  f:close()
+  local line = "        r = g.r\n"
+  local i, j = src:find(line, 1, true)
+  H.check(i ~= nil, "mutation: the line is gone from pattern.lua: r = g.r")
+  if i then
+    package.loaded["flora.pattern"] = assert(load(src:sub(1, i - 1) .. src:sub(j + 1), "@pattern.lua (mutated)"))()
+    local _, _, mf = M.unitdraw(function(n) return n == "sikku_kolam" end)
+    package.loaded["flora.pattern"] = real
+    H.check(#mf > 0, "the unitdraw check missed cells of a unit judged on draws of their own")
+    if os.getenv("FLORA_MATRIX_VERBOSE") then print(string.format("mutation unitdraw a draw per cell: %d failures", #mf)) end
+  end
+end
+
 -- The ground under a cell is never laid after it: by the progression's
 -- births on every pattern with a ground, and in grow frames on asanoha;
 -- and the check fails when the panel waits for the first cell the
