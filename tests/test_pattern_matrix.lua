@@ -6,12 +6,6 @@ local M = dofile("tests/pattern_matrix.lua")
 local Patterns = require("flora.patterns")
 local Pattern = require("flora.pattern")
 
--- The matrix's page (300 x 240 pt, its strip 124 pt) holds each pattern at
--- its own size, as its floors and mutations were measured: the field scale
--- would draw it at 0.82 of that (left) and at the floor (centered). The
--- field scale has its own checks below.
-Pattern.FIELD_SCALE.enabled = false
-
 -- The floors, set after measuring the colourways (geo-roles3 report). The
 -- band stands 0.18 to 0.76 off its surface in OKLab L; the lowest is
 -- tsuki-mi's, whose soft contour is the mocks' own (0.25 off their ochre,
@@ -222,13 +216,28 @@ do
     function() Pattern.on_panel = on_panel end)
 end
 
--- A hole in the field: one hexagram star in eleven placed as though it
--- reached into the text, its neighbours kept round it.
+-- The cell of `list` nearest a point well inside the field's strip on the
+-- matrix's page (three tenths of the way from the paper's edge to the
+-- text, halfway up), where the field is whole, whatever the cells' size.
+local function mid_cell(list, env)
+  local t = env.room and env.room.text
+  local x, y = (t and t.x0 or env.x1) * 0.3, ((env.room and env.room.H) or env.y1) / 2
+  local best, bd
+  for _, c in ipairs(list) do
+    local d = (c.x - x) ^ 2 + (c.y - y) ^ 2
+    if not bd or d < bd then best, bd = c, d end
+  end
+  return best
+end
+
+-- A hole in the field: a hexagram star inside the field placed as though
+-- it reached into the text, its neighbours kept round it.
 local hex_cells2 = hexagram.cells
 caught("holes", "hexagram_lattice", function()
   hexagram.cells = function(env)
     local out = hex_cells2(env)
-    for i, c in ipairs(out) do if i % 11 == 0 then c.pad = 1000 end end
+    local c = mid_cell(out, env)
+    if c then c.pad = 1000 end
     return out
   end
 end, function() hexagram.cells = hex_cells2 end)
@@ -514,13 +523,25 @@ do
   if os.getenv("FLORA_MATRIX_VERBOSE") then print(string.format("mutation alias: %d of 4 pages differ", #bad2)) end
 end
 
--- Cells standing alone: one cell in 23 kept.
+-- A cell standing alone.
 local kikko_cells2 = kikko.cells
 caught("fragments", "kikko", function()
   kikko.cells = function(env)
-    local out, sparse = kikko_cells2(env), {}
-    for i, c in ipairs(out) do if i % 23 == 0 then sparse[#sparse + 1] = c end end
-    return sparse
+    -- A cell inside the field with every cell round it (within four times
+    -- the cells' spacing) taken away: it stands alone in a clearing.
+    local out = kikko_cells2(env)
+    local c = mid_cell(out, env)
+    if not c then return out end
+    local near = math.huge
+    for _, o in ipairs(out) do
+      local d = (o.x - c.x) ^ 2 + (o.y - c.y) ^ 2
+      if o ~= c and d > 1e-6 and d < near then near = d end
+    end
+    local keep = {}
+    for _, o in ipairs(out) do
+      if o == c or (o.x - c.x) ^ 2 + (o.y - c.y) ^ 2 > 4 * near * 4 then keep[#keep + 1] = o end
+    end
+    return keep
   end
 end, function() kikko.cells = kikko_cells2 end)
 
