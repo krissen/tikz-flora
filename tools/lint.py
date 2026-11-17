@@ -26,7 +26,8 @@ import tempfile
 import urllib.parse
 import urllib.request
 
-ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+# LINT_ROOT points the run at another tree; tests/test_lint.py uses it.
+ROOT = os.environ.get("LINT_ROOT") or os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 INSTALL = {
     "lua-language-server": "brew install lua-language-server",
