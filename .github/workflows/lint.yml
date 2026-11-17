@@ -5,6 +5,9 @@ name: lint
 # ruff.toml, pyrightconfig.json; .lint-exempt lists files not yet clean).
 # numpy and Pillow are installed only so pyright can resolve the imports of
 # the measuring tools. Every version is pinned.
+# The paths filter below skips the job on a pull request that touches none of
+# them; were the job ever a required status check, such a pull request would
+# wait for it for ever, so the filter must go first.
 on:
   pull_request:
     paths:
