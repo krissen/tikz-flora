@@ -1184,6 +1184,11 @@ function M.paint(spec, pt)
     end
     return true, a, dens > 0 and d >= gap and edge == "dissolve", dens > 0 and d >= gap, share
   end
+  -- Each place's share in the first drawing (judge's last value), by cell
+  -- key, for a reweave to keep (below): only where the cell there was clear
+  -- of the text, for judge gives a cell nearer than the gap no share of
+  -- its own.
+  local first_share = {}
   local function choose(list)
     kept, offered, bare = {}, 0, {}
     -- Cells that fall away as units: one draw and one verdict per group,
@@ -1203,7 +1208,8 @@ function M.paint(spec, pt)
         groups[c.group] = g
         r = g.r
       end
-      local placed, a, grounds = judge(c, r)
+      local placed, a, grounds, free, share = judge(c, r)
+      if free then first_share[M.cell_key(c)] = share end
       verdict[#verdict + 1] = { c = c, placed = placed, a = a, grounds = grounds, jitter = jitter, r = r }
       if g then
         if onpage[c] then
@@ -1235,11 +1241,20 @@ function M.paint(spec, pt)
   -- line ends loose; every cell of the second drawing that is placed is
   -- kept, with the share judge gives it, as any cell keeps (edge=fade
   -- pales it toward the text). A turn the edge mode would leave out takes
-  -- judge's share without that choice.
+  -- judge's share without that choice. Either takes the share its place
+  -- had in the first drawing, not one measured on its woven form: a cell
+  -- that closes its lines against the wall reaches less far, and would
+  -- otherwise pale differently from the same cell unwoven (at small cells,
+  -- where more of them lie on the fade). A turn at a place whose first cell
+  -- was not clear of the text exists only in its woven form, and takes the
+  -- share measured on it.
   local weaves = 0
   if opts.reweave and p.reweave then
-    local keep = {}
-    for _, k in ipairs(kept) do keep[M.cell_key(k.cell)] = k.cell end
+    local keep, first_a = {}, {}
+    for _, k in ipairs(kept) do
+      keep[M.cell_key(k.cell)] = k.cell
+      first_a[M.cell_key(k.cell)] = k.a
+    end
     env.blocked = function(x, y) return not keep[M.cell_key({ x = x, y = y })] end
     -- A line turning back at the edge draws its turn in the cell beyond
     -- it. Where that cell may not be painted (too near the text) the kept
@@ -1266,8 +1281,9 @@ function M.paint(spec, pt)
         -- A turn may lie where the edge mode would leave no cell (edge=cell's
         -- margin): it is painted so long as it keeps clear of the text.
         local placed, a, _, clear, share = judge(c, 0)
-        if placed and a > 0 then list[#list + 1] = { c = c, a = a }
-        elseif clear then list[#list + 1] = { c = c, a = share, turn = true }
+        local ck = M.cell_key(c)
+        if placed and a > 0 then list[#list + 1] = { c = c, a = first_a[ck] or a }
+        elseif clear then list[#list + 1] = { c = c, a = first_share[ck] or share, turn = true }
         elseif onpage[c] then
           failed[#failed + 1] = c
         end
