@@ -1,0 +1,3 @@
+# ruff's own rule set, unchanged: nothing here asks for more, and nothing in
+# the repo needed less. CI pins the version (.github/workflows/lint.yml).
+required-version = ">=0.17"
