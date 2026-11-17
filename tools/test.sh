@@ -7,6 +7,8 @@
 set -e
 cd "$(dirname "$0")/.."
 FAST="core grow leaf letters plant settings reserve prepare_spec render_page support inline headpiece header_mark"
+# The test names are plain words; the lists are split on purpose.
+# shellcheck disable=SC2086,SC2046,SC2012
 case "$1" in
   fast) set -- $FAST bake ;;
   "") set -- $(ls tests/test_*.lua | sed 's|tests/test_||; s|\.lua$||') bake ;;

@@ -113,6 +113,8 @@ row() {
   montage -font "$FONT" $@ -tile 6x -geometry 220x220+3+3 -pointsize 11 -background '#d8d4cc' "$out"
 }
 
+# The names are the tool's own renders, plain ASCII.
+# shellcheck disable=SC2012
 names=$(ls "$OUT/render/original/light" | sed 's/\.pdf$//' | grep -v '^slide-')
 for n in $names; do
   rows=""
@@ -121,6 +123,8 @@ for n in $names; do
     for cw in ember original autumn; do for bd in light dark; do
       f="$BEFORE/${cw}-${bd}__$n.png"; [ -f "$f" ] && t="$t -label before_${cw}_${bd} $f"
     done; done
+    # $t is a list of arguments, split on purpose.
+    # shellcheck disable=SC2086
     if [ -n "$t" ]; then row "$OUT/tmp/row-before.png" $t; rows="$rows $OUT/tmp/row-before.png"; fi
   fi
   for kind in "" -lines; do
@@ -128,6 +132,7 @@ for n in $names; do
     for cw in ember original autumn; do for bd in light dark; do
       t="$t -label now${kind}_${cw}_${bd} $OUT/tiles/${cw}${kind}__${bd}__$n.png"
     done; done
+    # shellcheck disable=SC2086
     row "$OUT/tmp/row-now$kind.png" $t
     rows="$rows $OUT/tmp/row-now$kind.png"
   done
