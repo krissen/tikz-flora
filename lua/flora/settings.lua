@@ -57,6 +57,8 @@ M.about = {
   { "alternate", "auto, off, rows, three", "Whether a star pattern's stars take turns in the fields (hexagram_lattice): auto (the default) and off lay every star in the first field; rows alternate the first and second field row by row; three deal the first field, the second and the accent so that no two touching stars share one." },
   { "lighten", "0 to 1", "Lightens a pattern's fields toward the paper: 0 (the default) keeps their inks' lightness, 1 makes them nearly the paper." },
   { "bandwidth", "0.25 to 4", "The width of a pattern's bands and lines, as a factor of its own." },
+  { "framewidth", "4 to 40", "A prototype, for layout=frame: the width in mm of the pattern's band round the paper's edge, the same on all four sides (12 by default)." },
+  { "frameinner", "cells, rule, dissolve", "A prototype, for layout=frame: how the band ends toward the text: whole cells (the default), cells cut along a straight ruled edge, or cells falling away." },
   { "cache", "true, false",
     "true (the default) keeps each page's flora in a folder <jobname>-flora beside the PDF, so a later compile reuses it; false grows every page afresh." },
 }
@@ -180,6 +182,17 @@ end)
 M.define("outer", function(v)
   if require("flora.pattern").outers[v] then return v end
   return nil, "outer must be bleed or margin"
+end)
+
+M.define("framewidth", function(v)
+  local n = tonumber(v)
+  if n and n >= 4 and n <= 40 then return n end
+  return nil, "framewidth must be a number of mm from 4 to 40"
+end)
+
+M.define("frameinner", function(v)
+  if require("flora.pattern").frame_inners[v] then return v end
+  return nil, "frameinner must be cells, rule or dissolve"
 end)
 
 M.define("scale", function(v)
@@ -587,6 +600,7 @@ M.SPEC = {
   finish = "pattern_finish", bands = "pattern_bands", bandwidth = "pattern_bandwidth", ground = "pattern_ground",
   ends = "pattern_ends", panels = "pattern_panels", lighten = "pattern_lighten",
   starfill = "pattern_starfill", gapfill = "pattern_gapfill", alternate = "pattern_alternate",
+  framewidth = "frame_width", frameinner = "frame_inner",
 }
 -- The pattern keys besides `pattern` itself, by key -> default. A mixer's
 -- pattern state, its \florasetup line and the preview's spec all carry

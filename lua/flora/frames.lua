@@ -37,6 +37,10 @@ local M = {}
 M.order = { "left", "right", "centered", "split", "title", "surround", "flank", "wreath", "bouquet", "scrollwork" }
 M.layouts = {}
 for _, k in ipairs(M.order) do M.layouts[k] = true end
+-- frame, a prototype: a band of a pattern round the paper's edge
+-- (pattern.lua's M.frame_band). It is not in M.order, so the guide does not
+-- list it; a page that grows flora under it is laid out as surround.
+M.layouts.frame = true
 
 -- What each layout does, for the guide (catalog.lua).
 M.about = {
@@ -273,6 +277,7 @@ local function layout_frames(spec)
   if layout == "split" then
     layout = (spec.page or 1) % 2 == 1 and "right" or "left"
   end
+  if layout == "frame" then layout = "surround" end
   if layout == "left" then
     return { { spec = spec } }
   elseif layout == "right" then
