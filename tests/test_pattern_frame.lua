@@ -1,9 +1,10 @@
--- layout=frame, the pattern as a band round the paper's edge
--- (pattern.lua's M.frame_band): its cells moved about the paper's centre
--- paint what they painted before, moved; the band keeps clear of the
--- text block, meets the paper alike on opposite sides and runs to the
--- paper's top under a top inset and a frame title; and the frame keys
--- leave every other layout as it was.
+-- The frame band (band.lua, pattern.lua's M.frame_band): cells moved about
+-- the paper's centre paint what they painted before, moved; the band's
+-- invariants hold over every pattern, width, paper, edge and backdrop
+-- (tests/pattern_band.lua), and each of them fails when the engine is
+-- broken the way it guards against; an edge the page leaves out is the
+-- pattern's own in a band, and edge=dissolve written out is not; and the
+-- band's keys leave every other layout as it was.
 local H = dofile("tests/helper.lua")
 local Patterns = require("flora.patterns")
 local Pattern = require("flora.pattern")
@@ -57,84 +58,148 @@ for _, p in ipairs(Patterns.list) do
   H.check(a == c, p.name .. ": moving cells changed a later drawing")
 end
 
--- A 16:9 slide, 160 x 90 mm, with 16 mm margins and a frame title under
--- the presentation theme's setup.
-local MM = 72 / 25.4
-local function slide(layout, extra)
-  local W, Hh, m = 160 * MM, 90 * MM, 16 * MM
-  local spec = {
-    width = W, height = Hh, text = { x0 = m, y0 = m, x1 = W - m, y1 = Hh - m },
-    lines = { { x0 = m, y0 = Hh - m - 14, x1 = m + 120, y1 = Hh - m } },
-    header_y = Hh - m, header = "margin", frametitle = true, frametitle_height = 16, top_inset = 20,
-    tune = { gesture = { header_clip = 1, header_gap = 12 } },
-    seed = 11, layout = layout, pattern = "kikko", ornaments = {},
-  }
-  for k, v in pairs(extra or {}) do spec[k] = v end
-  return spec
-end
-
-do
-  local spec = slide("frame", { frame_width = 12 })
-  local t = { x0 = spec.text.x0, y0 = spec.text.y0, x1 = spec.text.x1, y1 = spec.text.y1 }
-  local W, Hh = spec.width, spec.height
-  local pt = Compose.page(spec)
-  local q = pt.pattern
-  H.check(q.cells > 0, "frame: no cells")
-  local L, R, B, T = math.huge, -math.huge, math.huge, -math.huge
-  local top = 0
-  for _, k in ipairs(q.kept) do
-    local c = k.cell
-    H.check(Pattern.clearance(c, { t.x0, t.y0, t.x1, t.y1 }) - q.reach >= 6 - 1e-6,
-      string.format("frame: a cell at %.1f, %.1f lies nearer the text block than the gap", c.x, c.y))
-    for _, v in ipairs(c.verts) do L, R, B, T = math.min(L, v[1]), math.max(R, v[1]), math.min(B, v[2]), math.max(T, v[2]) end
-    if c.y > t.y1 and c.x > t.x0 and c.x < t.x1 then top = top + 1 end
-  end
-  H.check(top > 0, "frame: no band above the text under a top inset and a frame title")
-  H.check(math.abs(L - (W - R)) < 1e-6, string.format("frame: left %.3f and right %.3f differ", L, W - R))
-  H.check(math.abs(B - (Hh - T)) < 1e-6, string.format("frame: foot %.3f and top %.3f differ", B, Hh - T))
-end
+local Band = require("flora.band")
+local B = dofile("tests/pattern_band.lua")
 
 -- The repeats the whole rows are sized by: kikko's honeycomb repeats
 -- every three sides along x and every sqrt(3) sides along y.
+local function pattern(name)
+  for _, p in ipairs(Patterns.list) do if p.name == name then return p end end
+end
 do
-  local kikko
-  for _, p in ipairs(Patterns.list) do if p.name == "kikko" then kikko = p end end
-  local px, py = Pattern.periods(kikko)
-  H.check(px and math.abs(px - 3 * kikko.scale) < 1e-3, "kikko's repeat along x: " .. tostring(px))
-  H.check(py and math.abs(py - math.sqrt(3) * kikko.scale) < 1e-3, "kikko's repeat along y: " .. tostring(py))
+  local px, py = Pattern.periods(pattern("kikko"))
+  H.check(px and math.abs(px - 3 * pattern("kikko").scale) < 1e-3, "kikko's repeat along x: " .. tostring(px))
+  H.check(py and math.abs(py - math.sqrt(3) * pattern("kikko").scale) < 1e-3, "kikko's repeat along y: " .. tostring(py))
 end
 
--- frameinner=rows: a whole number of rows fills the band, each side's
--- cells lie wholly inside the band (asanoha's rows end in a straight
--- edge), and nothing comes nearer the text block than the gap.
+-- The matrix.
+local verbose = os.getenv("FLORA_MATRIX_VERBOSE")
+local cells, failures = B.run()
+if verbose then print(string.format("band: %d cells, %d failures", #failures == 0 and cells or cells, #failures)) end
+H.check(cells == #Patterns.list * #B.WIDTHS * #B.PAPERS * #B.EDGES * #B.BACKDROPS, "band cells: " .. cells)
+for i, f in ipairs(failures) do
+  if i > 40 then break end
+  H.check(false, string.format("band %s: %s: %s", f[1], f[2], f[3]))
+end
+
+-- Each invariant fails when the engine is broken as it guards against: on
+-- a smaller sweep, with one of the band's functions replaced.
+local SMALL = { patterns = { kikko = true, asanoha = true, stars_8_4 = true, greek_crosses = true },
+  widths = { 12 }, papers = { B.PAPERS[1] }, backdrops = { "light" } }
+local function mutant(name, fn, replacement, invariant, opts)
+  local orig = Pattern[fn]
+  Pattern[fn] = replacement(orig)
+  local _, fails = B.run(opts or SMALL)
+  Pattern[fn] = orig
+  local n = 0
+  for _, f in ipairs(fails) do if f[1] == invariant then n = n + 1 end end
+  H.check(n > 0, string.format("mutation %s: the %s invariant does not fail", name, invariant))
+end
+-- The field measured against nothing: the cells come into the text.
+mutant("no keep", "measure", function(orig) return function(shapes, reach, f, is_hero)
+  local g = {}
+  for k, v in pairs(f) do g[k] = v end
+  g.keep = {}
+  return orig(shapes, reach, g, is_hero)
+end end, "text")
+-- edge=border cut along the inner rectangle alone, not round the text.
+mutant("no text holes", "band_holes", function() return function(band) return { band.I } end end, "text")
+-- edge=border cut along a rectangle 3 pt larger than the inner one.
+mutant("cut off the band", "band_holes", function(orig) return function(band, keep, gap)
+  local out = orig(band, keep, gap)
+  local I = out[1]
+  out[1] = { I[1] - 3, I[2] - 3, I[3] + 3, I[4] + 3 }
+  return out
+end end, "width")
+mutant("crooked cut", "band_holes", function(orig) return function(band, keep, gap)
+  local out = orig(band, keep, gap)
+  local I = out[1]
+  out[1] = { I[1] + 2, I[2], I[3], I[4] }
+  return out
+end end, "straight")
+-- The lattice moved off the paper's centre.
+mutant("off centre", "shift_cells", function(orig) return function(cs, dx, dy) return orig(cs, dx + 2, dy) end end, "gaps")
+-- Whole rows laid a third of a repeat off the inner edge.
+mutant("rows off the edge", "row_phase", function(orig) return function(p, size, w, period, along)
+  local at, share = orig(p, size, w, period, along)
+  return at - period / 3, share
+end end, "rows")
+-- The band's field stopping 60 pt below the paper's top.
+mutant("top cut", "band_top", function() return function(_, Hh) return Hh - 60 end end, "top")
+-- Every warning given twice.
+mutant("warn twice", "warn", function(orig) return function(pt, msg)
+  orig(pt, msg)
+  table.insert(pt.pattern_warnings, msg)
+end end, "warn", { patterns = { penrose_rhombs = true }, widths = { 12 }, papers = { B.PAPERS[1] }, backdrops = { "light" } })
+-- And with the warnings: a hero, the patterns that do not carry a band.
 do
-  local spec = slide("frame", { frame_width = 12, frame_inner = "rows", pattern = "asanoha" })
-  local t = { spec.text.x0, spec.text.y0, spec.text.x1, spec.text.y1 }
-  local W, Hh = spec.width, spec.height
-  local w = 12 * MM
-  local pt = Compose.page(spec)
-  local q = pt.pattern
-  H.check(q.rows and q.rows >= 1, "rows: no row count")
-  H.check(q.cover and q.cover > 0.999, "rows: asanoha's whole rows leave the inner repeat uncovered: " .. tostring(q.cover))
-  local deepest = 0
-  for _, k in ipairs(q.kept) do
-    local c = k.cell
-    H.check(Pattern.clearance(c, t) >= 6, string.format("rows: a cell at %.1f, %.1f lies nearer the text block than the gap", c.x, c.y))
-    -- How far in from the nearest paper edge the cell reaches.
-    for _, v in ipairs(c.verts) do
-      local e = math.min(v[1], v[2], W - v[1], Hh - v[2])
-      deepest = math.max(deepest, e)
-    end
+  local orig = B.expected
+  B.expected = function(p, wmm, edge)
+    local out = orig(p, wmm, edge)
+    for i = #out, 1, -1 do if out[i] == "does not carry a frame band" then table.remove(out, i) end end
+    return out
   end
-  H.check(deepest <= w + 1e-3, string.format("rows: a cell reaches %.2f pt in, past the band's %.2f", deepest, w))
-  H.check(deepest >= w - 1e-3, string.format("rows: the rows end %.2f pt in, short of the band's %.2f", deepest, w))
+  local _, fails = B.run({ patterns = { khatam = true }, widths = { 8 }, papers = { B.PAPERS[1] }, backdrops = { "light" }, edges = { false } })
+  B.expected = orig
+  local n = 0
+  for _, f in ipairs(fails) do if f[1] == "warn" then n = n + 1 end end
+  H.check(n > 0, "khatam at 8 mm gives no warning, or the check does not see it")
+end
+do
+  local spec = B.spec("kikko", 12, B.PAPERS[1], false, "light")
+  spec.pattern_hero = "rosette"
+  local pt = Compose.page(spec)
+  local n = 0
+  for _, g in ipairs(pt.pattern_warnings or {}) do if g:find("is not drawn in a frame band", 1, true) then n = n + 1 end end
+  H.check(n == 1, "hero in a band: warned " .. n .. " times")
+  spec = B.spec("kikko", 12, B.PAPERS[1], "guilloche", "light")
+  pt = Compose.page(spec)
+  n = 0
+  for _, g in ipairs(pt.pattern_warnings or {}) do if g:find("has no form in a frame band", 1, true) then n = n + 1 end end
+  H.check(n == 1, "edge=guilloche in a band: warned " .. n .. " times")
+  H.check(pt.pattern.band and pt.pattern.band.inner == "rule", "edge=guilloche in a band: kikko is not laid with its own edge")
 end
 
--- The frame keys change nothing on a page of another layout.
+-- The edge a page leaves out is the pattern's own in a band; edge=dissolve
+-- written out (the key's default) is dissolve, into the margin.
 do
-  local a = Compose.page(slide("surround")):body()
-  local b = Compose.page(slide("surround", { frame_width = 8, frame_inner = "rows" })):body()
-  H.check(a == b, "surround: the frame keys changed the page")
+  local function inner(name, edge)
+    local pt = Compose.page(B.spec(name, 12, B.PAPERS[1], edge, "light"))
+    return pt.pattern.band and pt.pattern.band.inner or pt.pattern.inner
+  end
+  H.check(inner("kikko", false) == "rule", "kikko's own edge in a band is not border")
+  H.check(inner("truchet", false) == "rule", "truchet's own edge in a band is not border")
+  H.check(inner("asanoha", false) == "rows", "asanoha's own edge in a band is not rows")
+  H.check(inner("stars_8_4", false) == "rows", "stars_8_4's own edge in a band is not rows")
+  H.check(inner("celtic_knot", false) == "panel", "celtic_knot's own edge in a band is not its closed panel")
+  H.check(inner("kikko", "dissolve") == "margin", "edge=dissolve written out is not dissolve in a band")
+  H.check(inner("asanoha", "dissolve") == "margin", "edge=dissolve written out gives asanoha its own edge")
+  H.check(Band.default_edge("kikko") == Band.EDGE, "band.lua's default edge")
+end
+
+-- Under edge=cell on a dark backdrop the ground follows the cells
+-- (ground=auto); under border and whole rows it is a straight panel.
+do
+  local function ground(name, edge)
+    local spec = B.spec(name, 12, B.PAPERS[1], edge, "dark")
+    local pt = Compose.page(spec)
+    return pt.pattern
+  end
+  local q = ground("asanoha", "cell")
+  H.check(q.grounded > 0 and q.ground_edge == "cells", "asanoha edge=cell on dark: the ground does not follow its cells")
+  q = ground("asanoha", "border")
+  H.check(q.grounded > 0 and q.ground_edge == "panel", "asanoha edge=border on dark: the ground is not one straight panel")
+end
+
+-- The band's keys change nothing on a page of another layout.
+do
+  local function page(extra)
+    local spec = B.spec("kikko", 12, B.PAPERS[1], false, "light")
+    spec.layout, spec.frame_width = "surround", nil
+    for k, v in pairs(extra or {}) do spec[k] = v end
+    return Compose.page(spec):body()
+  end
+  H.check(page() == page({ frame_width = 8 }), "surround: the band's width changed the page")
 end
 
 H.done("test_pattern_frame")
