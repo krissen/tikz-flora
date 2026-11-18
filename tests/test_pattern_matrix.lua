@@ -209,20 +209,45 @@ caught("onecolour", "hexagram_lattice", function()
 end, function() hexagram.cells = hexagram_cells end)
 
 -- Cells standing off the ground's panel again: the field no longer holds
--- a cell to the panel, nor a turn to the field's side.
+-- a cell to the panel, nor a turn to the field's side, and the panel keeps
+-- 10 pt further from the text than the cells do, so some stand off it at
+-- any cell size (whether a cell happens to straddle the panel's own edge
+-- depends on the size).
 do
-  local on_panel = Pattern.on_panel
-  caught("onpanel", "sikku_kolam", function() Pattern.on_panel = function() return true end end,
-    function() Pattern.on_panel = on_panel end)
+  local on_panel, panel_path = Pattern.on_panel, Pattern.panel_path
+  caught("onpanel", "sikku_kolam", function()
+    Pattern.on_panel = function() return true end
+    Pattern.panel_path = function(f)
+      local g = {}
+      for k, v in pairs(f) do g[k] = v end
+      g.gap = f.gap + 10
+      return panel_path(g)
+    end
+  end, function() Pattern.on_panel, Pattern.panel_path = on_panel, panel_path end)
 end
 
--- A hole in the field: one hexagram star in eleven placed as though it
--- reached into the text, its neighbours kept round it.
+-- The cell of `list` nearest a point well inside the field's strip on the
+-- matrix's page (three tenths of the way from the paper's edge to the
+-- text, halfway up), where the field is whole, whatever the cells' size.
+local function mid_cell(list, env)
+  local t = env.room and env.room.text
+  local x, y = (t and t.x0 or env.x1) * 0.3, ((env.room and env.room.H) or env.y1) / 2
+  local best, bd
+  for _, c in ipairs(list) do
+    local d = (c.x - x) ^ 2 + (c.y - y) ^ 2
+    if not bd or d < bd then best, bd = c, d end
+  end
+  return best
+end
+
+-- A hole in the field: a hexagram star inside the field placed as though
+-- it reached into the text, its neighbours kept round it.
 local hex_cells2 = hexagram.cells
 caught("holes", "hexagram_lattice", function()
   hexagram.cells = function(env)
     local out = hex_cells2(env)
-    for i, c in ipairs(out) do if i % 11 == 0 then c.pad = 1000 end end
+    local c = mid_cell(out, env)
+    if c then c.pad = 1000 end
     return out
   end
 end, function() hexagram.cells = hex_cells2 end)
@@ -508,14 +533,74 @@ do
   if os.getenv("FLORA_MATRIX_VERBOSE") then print(string.format("mutation alias: %d of 4 pages differ", #bad2)) end
 end
 
--- Cells standing alone: one cell in 23 kept.
+-- A cell standing alone.
 local kikko_cells2 = kikko.cells
 caught("fragments", "kikko", function()
   kikko.cells = function(env)
-    local out, sparse = kikko_cells2(env), {}
-    for i, c in ipairs(out) do if i % 23 == 0 then sparse[#sparse + 1] = c end end
-    return sparse
+    -- A cell inside the field with every cell round it (within four times
+    -- the cells' spacing) taken away: it stands alone in a clearing.
+    local out = kikko_cells2(env)
+    local c = mid_cell(out, env)
+    if not c then return out end
+    local near = math.huge
+    for _, o in ipairs(out) do
+      local d = (o.x - c.x) ^ 2 + (o.y - c.y) ^ 2
+      if o ~= c and d > 1e-6 and d < near then near = d end
+    end
+    local keep = {}
+    for _, o in ipairs(out) do
+      if o == c or (o.x - c.x) ^ 2 + (o.y - c.y) ^ 2 > 4 * near * 4 then keep[#keep + 1] = o end
+    end
+    return keep
   end
 end, function() kikko.cells = kikko_cells2 end)
+
+-- The field scale (tests/pattern_scale.lua): the same number of cells
+-- across every governing strip within the floor and the ceiling, and the
+-- reference page as it was drawn before the scale followed the field.
+do
+  Pattern.FIELD_SCALE.enabled = true
+  local S = dofile("tests/pattern_scale.lua")
+  local scells, sfails = S.run()
+  H.check(#scells == #Patterns.list * #S.FORMATS * #S.LAYOUTS * #S.RATIOS, "field scale cells: " .. #scells)
+  for _, f in ipairs(sfails) do H.check(false, "field scale: " .. f) end
+  if os.getenv("FLORA_MATRIX_VERBOSE") then
+    print(string.format("field scale: %d cells, %d failures", #scells, #sfails))
+  end
+  -- Each mutation breaks one of them; the check must say so.
+  local few = { khatam = true, asanoha = true }
+  local function scale_caught(what, mutate, restore)
+    mutate()
+    local ok, _, fs = pcall(S.run, few)
+    restore()
+    local n = 0
+    for _, f in ipairs(ok and fs or {}) do if f:find(": " .. what .. ":", 1, true) then n = n + 1 end end
+    H.check(ok and n > 0, "the field scale check missed a broken " .. what .. " invariant")
+    if os.getenv("FLORA_MATRIX_VERBOSE") then print(string.format("mutation field scale %s: %d failures", what, n)) end
+  end
+  local factor, strip = Pattern.field_factor, Pattern.field_strip
+  -- The cells keep their own size whatever the field.
+  scale_caught("periods", function() Pattern.field_factor = function() return 1 end end,
+    function() Pattern.field_factor = factor end)
+  -- The reference drifts by a hundredth.
+  local ref = Pattern.FIELD_SCALE.ref
+  scale_caught("reference", function() Pattern.FIELD_SCALE.ref = ref * 1.01 end,
+    function() Pattern.FIELD_SCALE.ref = ref end)
+  -- No floor and no ceiling.
+  local floor = Pattern.factor_floor
+  local ceil = Pattern.FIELD_SCALE.ceil
+  scale_caught("bounds", function()
+    Pattern.factor_floor = function() return 0 end
+    Pattern.FIELD_SCALE.ceil = nil
+  end, function() Pattern.factor_floor = floor; Pattern.FIELD_SCALE.ceil = ceil end)
+  -- surround sized by its narrowest strip, not its widest.
+  scale_caught("periods", function()
+    Pattern.field_strip = function(spec)
+      if spec.layout ~= "surround" then return strip(spec) end
+      local t = spec.text
+      return math.min(t.x0 - 6, spec.width - t.x1 - 6, spec.height - t.y1 - 6, t.y0 - 6)
+    end
+  end, function() Pattern.field_strip = strip end)
+end
 
 H.done("pattern matrix")

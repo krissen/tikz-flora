@@ -30,8 +30,8 @@ local function paint(pt, c, ink)
 end
 
 local function construct(pt, c, ink)
-  pt:stroke(c.up, ink.line, 0.4, 1)
-  pt:stroke(c.down, ink.line, 0.4, 1)
+  pt:stroke(c.up, ink.line, K.cline(ink), 1)
+  pt:stroke(c.down, ink.line, K.cline(ink), 1)
 end
 
 local function triangle(x, y, R, a0)

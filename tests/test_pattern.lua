@@ -8,6 +8,24 @@ local Compose = require("flora.compose")
 local Paint = require("flora.paint")
 local P = require("flora.progression")
 local Rng = require("flora.rng")
+local Pattern = require("flora.pattern")
+
+-- How much a frame paints: its painting operators (strokes and fills). A
+-- frame's bytes are not a measure of it: a cell still being swept carries
+-- a clip wedge it drops when it is done, so a later frame can be shorter.
+local function painted(body)
+  local n = 0
+  for _ in body:gmatch("%s[SfBb]%*?%f[%s]") do n = n + 1 end
+  return n
+end
+
+-- The construction lines' width on spec's page for pattern `name`, as
+-- written into the PDF (" 0.30 w "): band_ink's, at the page's field factor.
+local function cline_op(spec, name)
+  local p = Patterns.by_name[name]
+  local ff = Pattern.field_factor(spec, p)
+  return string.format(" %.2f w ", Pattern.band_ink({}, p, spec, (spec.pattern_scale or 1) * ff, ff).cline)
+end
 
 -- Settings.
 local s = Settings.parse("pattern=asanoha, edge=fade, outer=margin, scale=1.5")
@@ -277,7 +295,7 @@ H.check(plain ~= inked, "the palette did not change the pattern's colours")
 -- paints more the later it is, nothing at 0, and the whole page at 1.
 do
   local sizes = {}
-  for _, g in ipairs({ 0, 0.3, 0.6, 0.9, 1 }) do sizes[#sizes + 1] = #page({ grow = g }):body() end
+  for _, g in ipairs({ 0, 0.3, 0.6, 0.9, 1 }) do sizes[#sizes + 1] = painted(page({ grow = g }):body()) end
   H.check(sizes[1] < sizes[2] and sizes[2] < sizes[3] and sizes[3] < sizes[4], "spec.grow frames do not grow")
   H.check(page({ grow = 1 }):body() == page():body(), "spec.grow = 1 differs from the page")
   H.check(#page({ grow = 0 }).out <= 4, "spec.grow = 0 painted cells")
@@ -504,14 +522,15 @@ for _, name in ipairs({ "overlapping_circles", "shippo", "seigaiha" }) do
   -- (the thin construction stroke follows the wedge), then once for its
   -- bands: its progress is the line's turn, or 1 and the band's.
   local last, sizes, seen = {}, {}, {}
+  local cline = cline_op(spec(), name)
   for _, g in ipairs({ 0.2, 0.4, 0.5, 0.6, 0.8 }) do
     Paint.reset_resources()
     local body = Compose.page(spec({ grow = g })):body()
-    sizes[#sizes + 1] = #body
+    sizes[#sizes + 1] = painted(body)
     local now = {}
     for _, w in ipairs(wedges(body)) do
       local key = string.format("%.2f,%.2f", w.x, w.y)
-      local band = not w.next:find(" 0.40 w ", 1, true)
+      local band = not w.next:find(cline, 1, true)
       local p = (band and 1 or 0) + w.f
       H.check(not now[key] or now[key] < 1 and p > 1, name .. ": a spec.grow cell swept twice at once")
       now[key] = p
@@ -716,7 +735,7 @@ for _, name in ipairs({ "rosette", "phyllotaxis", "rose", "guilloche" }) do
     for _, g in ipairs({ 0, 0.05, 0.2, 0.4, 0.6, 0.8, 0.95 }) do
       local s = spec(); s.grow = g
       Paint.reset_resources()
-      sizes[#sizes + 1] = #Compose.page(s):body()
+      sizes[#sizes + 1] = painted(Compose.page(s):body())
     end
     for i = 2, #sizes do H.check(sizes[i] > sizes[i - 1], name .. " " .. edge .. ": spec.grow frames do not grow") end
     local s = spec(); s.grow = 1

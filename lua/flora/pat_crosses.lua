@@ -19,7 +19,7 @@ local function paint(pt, c, ink)
 end
 
 local function construct(pt, c, ink)
-  pt:stroke(c.path, ink.line, 0.4, 1)
+  pt:stroke(c.path, ink.line, K.cline(ink), 1)
 end
 
 return {
@@ -29,8 +29,11 @@ return {
   roles = { "band", "a", "b", "accent", "core" },
   surface = true,
   opt_in = true,
-  scale = 36,
-  width = 1.2, bands = "strap",
+  -- Three arms' width a cell, 26 pt: 3.5 crosses across the reference
+  -- field (pattern.lua's FIELD_SCALE), where 36 gave a coarse 2.5. The
+  -- band keeps its share of the arm: 1.2 pt at 36.
+  scale = 26,
+  width = 1.2 * 26 / 36, bands = "strap",
   cells = function(env)
     local u = env.size / 3
     local lo_i, hi_i, lo_j, hi_j = math.huge, -math.huge, math.huge, -math.huge

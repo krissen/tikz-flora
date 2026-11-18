@@ -13,7 +13,7 @@ local function paint(pt, c, ink)
 end
 
 local function construct(pt, c, ink)
-  pt:stroke(c.edges, ink.line, 0.4, 1, { many = true })
+  pt:stroke(c.edges, ink.line, K.cline(ink), 1, { many = true })
 end
 
 local function seg(a, b) return { { "m", a[1], a[2] }, { "l", b[1], b[2] } } end

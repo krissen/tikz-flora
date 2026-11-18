@@ -33,7 +33,7 @@ local function paint_dot(pt, c, ink)
 end
 
 local function construct(pt, c, ink)
-  pt:stroke(c.path, ink.line, 0.4, 1)
+  pt:stroke(c.path, ink.line, K.cline(ink), 1)
 end
 
 local function key(x, y) return string.format("%.1f,%.1f", x, y) end
@@ -47,7 +47,11 @@ return {
   finishes = { "lacquer" },
   -- A dark ground, as in the mock (t-10).
   ground = 0.31,
-  scale = 14,
+  -- The dots 16 pt apart: 9.4 across the reference field (pattern.lua's
+  -- FIELD_SCALE), where 14 drew a fine 10.7. The band keeps its 1.6 pt, so
+  -- it stays under the width at which its core would show (pat_kit.lua's
+  -- CORE_MIN) and the lines keep their colour.
+  scale = 16,
   width = 1.6, core = 0.45, bands = "strap",
   -- It can be drawn again with the field's edge as a wall (pattern.lua),
   -- and by default is, in symmetric panels (the ends and panels keys).

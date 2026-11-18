@@ -287,7 +287,13 @@ function M.sweep(filter, opts)
                 local x, y = f.find(pt0.pattern or { kept = {} })
                 local c = { form = f.form, pattern = p.name, where = where, overlaps = 0, found = x ~= nil }
                 if x then
-                  local pt1, o = M.overlaps(spec({ { x - 4, y - 4, x + 4, y + 4 } }))
+                  -- 8 pt square at the cells' size this sweep was measured
+                  -- at (the pattern's own times the plan's scale), in step
+                  -- with the cells as the field makes them larger or
+                  -- smaller.
+                  local size = pt0.pattern and pt0.pattern.size
+                  local h = 4 * (size and size / (p.scale * scale) or 1)
+                  local pt1, o = M.overlaps(spec({ { x - h, y - h, x + h, y + h } }))
                   c.overlaps = #o
                   c.unfit = (pt0.pattern and pt0.pattern.unfit or 0) + (pt1.pattern and pt1.pattern.unfit or 0)
                   if c.unfit > 0 then failures[#failures + 1] = where .. ": kept cells left out at painting: " .. c.unfit end

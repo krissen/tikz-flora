@@ -67,8 +67,8 @@ local function paint(pt, c, ink)
 end
 
 local function construct(pt, c, ink)
-  pt:stroke(c.square, ink.line, 0.4, 1)
-  pt:stroke(c.diamond, ink.line, 0.4, 1)
+  pt:stroke(c.square, ink.line, K.cline(ink), 1)
+  pt:stroke(c.diamond, ink.line, K.cline(ink), 1)
 end
 
 -- The star's outline about (x, y), tip radius r: sixteen points, a tip and

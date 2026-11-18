@@ -8,16 +8,25 @@ local H = dofile("tests/helper.lua")
 local M = dofile("tests/pattern_protect.lua")
 
 -- Four whole stars round a cross, and a reservation inside the cross only:
--- every star clears it by more than the gap, the cross does not.
+-- every star clears it by more than the gap, the cross does not. (The
+-- page's widest strip, 344 pt at its foot, is past the field scale's
+-- ceiling: the cells are khatam's own at scale 4, 112 pt.)
 do
-  local spec = { width = 400, height = 400, text = { x0 = 20, y0 = 350, x1 = 380, y1 = 390 }, seed = 7, layout = "surround",
-    pattern = { khatam = 1 }, pattern_scale = 4, pattern_edge = "cell", mix = { density = 10 }, reserve = { { 164, 164, 172, 172 } },
-    lines = { { x0 = 20, y0 = 380, x1 = 100, y1 = 390 } } }
-  local pt, o = M.overlaps(spec)
+  local function spec(reserve)
+    return { width = 400, height = 400, text = { x0 = 20, y0 = 350, x1 = 380, y1 = 390 }, seed = 7, layout = "surround",
+      pattern = { khatam = 1 }, pattern_scale = 4, pattern_edge = "cell", mix = { density = 10 }, reserve = reserve,
+      lines = { { x0 = 20, y0 = 380, x1 = 100, y1 = 390 } } }
+  end
+  -- The stars sit on the lattice of the cells' size a (112 pt at khatam's
+  -- own size and scale 4), the cross between four of them at 1.5 a.
+  local a = M.overlaps(spec(nil)).pattern.size
+  local m, h = 1.5 * a, 4 * a / 112
+  local pt, o = M.overlaps(spec({ { m - h, m - h, m + h, m + h } }))
   local stars = 0
   for _, k in ipairs(pt.pattern.kept) do
     local c = k.cell
-    if (c.x == 112 or c.x == 224) and (c.y == 112 or c.y == 224) then stars = stars + 1 end
+    local function on(v) return math.abs(v - a) < 1e-6 or math.abs(v - 2 * a) < 1e-6 end
+    if on(c.x) and on(c.y) then stars = stars + 1 end
   end
   H.check(stars == 4, "the four stars round the cross stand: " .. stars)
   H.check(#o == 0, "a plate between cells keeps clear of a reservation inside it: " .. #o .. " overlaps")

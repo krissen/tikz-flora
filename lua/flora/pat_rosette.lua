@@ -55,8 +55,8 @@ local function paint(pt, c, ink)
 end
 
 local function construct(pt, c, ink)
-  if c.straps then pt:stroke(c.straps, ink.line, 0.4, 1, { many = true }) end
-  pt:stroke({ { "o", c.x, c.y, c.R } }, ink.line, 0.4, 1)
+  if c.straps then pt:stroke(c.straps, ink.line, K.cline(ink), 1, { many = true }) end
+  pt:stroke({ { "o", c.x, c.y, c.R } }, ink.line, K.cline(ink), 1)
 end
 
 -- The outline of a grid point's cell: the polygon round its rosette's

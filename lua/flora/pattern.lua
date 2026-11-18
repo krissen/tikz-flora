@@ -44,6 +44,46 @@ local GAP, BORDER_GAP, OUTER_MARGIN = 6, 12, 4
 -- The edges that frame the text, and how far their cells keep from it.
 local FRAMED = { border = BORDER_GAP, guilloche = 18 }
 
+-- The field scale: a pattern's cells are sized to the field they stand
+-- in, so that a pattern looks the same against its field on any page.
+-- The cell size is p.scale times the scale key times the field factor,
+-- the width of the field's governing strip (M.field_strip) over `ref`.
+--
+--   ref       the governing strip the patterns' own sizes (p.scale) are
+--             drawn for: the left margin of a 160 x 90 mm slide whose
+--             text block starts 55 mm from the paper's left edge
+--             (156.49014 pt), less GAP. On that strip the factor is
+--             exactly 1 and a page is drawn as before there was one.
+--   ceil      the largest factor (nil for none): a field wider than the
+--             reference does not make the cells larger than their own.
+--   floor     the smallest factor, for every pattern. Below about half its
+--             own size a pattern's lines draw closer than a screen's or a
+--             printer's finest line keeps apart, and the field darkens
+--             (tools/pattern-scale-floor.sh measures it).
+--   keep_core whether a pattern whose straps show a light core at its own
+--             size keeps it: the factor stays above the one at which the
+--             strap would become one solid line (pat_kit.lua's CORE_MIN and
+--             CONTOUR_MIN; stars_8_4 at 0.66, truchet 0.57, celtic_knot
+--             0.48 at bandwidth 1).
+--   min_factor a pattern's own smallest factor (by name), over both.
+--   follow    whether the fine lines follow the factor too: the line
+--             character's width (linew) and the construction lines
+--             (cline, 0.4 pt at factor 1), never thinner than min_line.
+--             The bands follow it either way, as they follow the key.
+--
+-- These are the one place the numbers live; tools/pattern_scale.lua
+-- renders pages with other values.
+M.FIELD_SCALE = {
+  enabled = true,
+  ref = 156.49014 - GAP,
+  ceil = 1,
+  floor = 0.5,
+  keep_core = true,
+  min_factor = {},
+  follow = true,
+  min_line = 0.25,
+}
+
 local function rect_dist(x, y, r)
   local dx = math.max(r[1] - x, 0, x - r[3])
   local dy = math.max(r[2] - y, 0, y - r[4])
@@ -600,18 +640,28 @@ function M.cell_inks(base, a, hero, to)
   }
 end
 
--- The band character on `ink`: width (the full width), bands, corefrac
--- and linew (the line character's width), for pattern p at scale `k`.
-local function band_ink(ink, p, spec, k)
+-- The band character on `ink`: width (the full width), bands, corefrac,
+-- linew (the line character's width) and cline (the construction lines'
+-- width), for pattern p at scale `k` (the scale key times the field
+-- factor) and, under M.FIELD_SCALE.follow, field factor `ff` for the fine
+-- lines (1 when not given).
+local function band_ink(ink, p, spec, k, ff)
   local f = key(spec, "bandwidth")
   ink.width = (p.width or p.scale / 6) * k * f
+  local FS = M.FIELD_SCALE
+  local lf = (FS.follow and ff) or 1
+  local function fine(w)
+    if lf == 1 then return w end
+    return math.max(FS.min_line or 0, w * lf)
+  end
+  ink.cline = fine(require("flora.pat_kit").CONSTRUCT_LINE)
   -- Under the lines finish a pattern may read better with another band
   -- character than its filled one (its `lines_bands`).
   local bands = key(spec, "bands")
   if bands == "auto" then bands = (key(spec, "finish") == "lines" and p.lines_bands) or p.bands or "strap" end
   ink.bands = bands
   ink.corefrac = p.core or 0.45
-  ink.linew = (p.line or 0.6) * f
+  ink.linew = fine((p.line or 0.6) * f)
   return ink
 end
 M.band_ink = band_ink
@@ -921,6 +971,67 @@ function M.lays(form, shapes, reach, f)
   return ok and d >= f.gap
 end
 
+-- The field's governing strip, in pt: the width of the strip beside the
+-- text for a layout with one side (left, right, split's side), the
+-- narrower of the two for centered, and the widest of the four round the
+-- text block for a layout that takes the whole page (surround and the
+-- others), whose narrowest (a slide's top or foot) may be under a cell
+-- wide. Each is measured to the text block (spec.text) less GAP, whatever
+-- the edge key keeps; the measured lines and reservations are not counted,
+-- so a page with several blocks of text or a reserved corner is sized by
+-- its text block alone. nil when no strip has any width.
+function M.field_strip(spec)
+  local t, W, H = spec.text, spec.width, spec.height
+  if not (t and W and H) then return nil end
+  local side = sides(spec)
+  local L, R = t.x0 - GAP, W - t.x1 - GAP
+  local w
+  if side and side.left and side.right then w = math.min(L, R)
+  elseif side and side.left then w = L
+  elseif side and side.right then w = R
+  else w = math.max(L, R, H - t.y1 - GAP, t.y0 - GAP) end
+  if not w or w <= 0 then return nil end
+  return w
+end
+
+-- The field factor for pattern p on spec's page (M.FIELD_SCALE): the
+-- governing strip over the reference, within the ceiling and the floors.
+-- 1 for a page with no strip to measure, or with the field scale off.
+function M.field_factor(spec, p)
+  local FS = M.FIELD_SCALE
+  if not FS.enabled then return 1 end
+  local w = M.field_strip(spec)
+  if not w then return 1 end
+  local f = w / FS.ref
+  if FS.ceil and f > FS.ceil then f = FS.ceil end
+  local lo = M.factor_floor(spec, p)
+  if f < lo then f = lo end
+  return f
+end
+
+-- The smallest field factor for pattern p on spec's page: the floor, the
+-- factor below which its straps lose the core they show at its own size
+-- (under keep_core), and its own min_factor, whichever is largest.
+function M.factor_floor(spec, p)
+  local FS = M.FIELD_SCALE
+  local lo = FS.floor or 0
+  if p and FS.min_factor and FS.min_factor[p.name] then lo = math.max(lo, FS.min_factor[p.name]) end
+  if p and FS.keep_core then
+    local K = require("flora.pat_kit")
+    local ink = band_ink({}, p, spec, key(spec, "scale"))
+    if ink.bands == "strap" and K.core_shows(ink.width, ink.corefrac) then
+      -- The core shows at ink.width and not at 0; bisect for the factor.
+      local a, b = 0, 1
+      for _ = 1, 30 do
+        local m = (a + b) / 2
+        if K.core_shows(ink.width * m, ink.corefrac) then b = m else a = m end
+      end
+      lo = math.max(lo, b)
+    end
+  end
+  return lo
+end
+
 function M.paint(spec, pt)
   local rng = Rng.new(spec.seed or 1)
   local p = Patterns.pick(rng:fork("choose pattern"), weights(spec.pattern))
@@ -936,9 +1047,14 @@ function M.paint(spec, pt)
   local side = sides(spec)
   local edge = key(spec, "edge")
   local outer = key(spec, "outer")
-  local k_scale = key(spec, "scale")
+  -- The cells' scale: the scale key times the field factor. The hero and
+  -- the frames round the text keep the key's alone: they belong to the
+  -- page and its text, not to the field's cells.
+  local k_key = key(spec, "scale")
+  local ff = M.field_factor(spec, p)
+  local k_scale = k_key * ff
   local size = p.scale * k_scale
-  local width = band_ink({}, p, spec, k_scale).width
+  local width = band_ink({}, p, spec, k_scale, ff).width
   local dens = Mix.weight(spec.mix, "density")
   local gap = FRAMED[edge] or GAP
   -- The room the field has beside the text sets how far it takes to thin.
@@ -1068,6 +1184,11 @@ function M.paint(spec, pt)
     end
     return true, a, dens > 0 and d >= gap and edge == "dissolve", dens > 0 and d >= gap, share
   end
+  -- Each place's share in the first drawing (judge's last value), by cell
+  -- key, for a reweave to keep (below): only where the cell there was clear
+  -- of the text, for judge gives a cell nearer than the gap no share of
+  -- its own.
+  local first_share = {}
   local function choose(list)
     kept, offered, bare = {}, 0, {}
     -- Cells that fall away as units: one draw and one verdict per group,
@@ -1087,7 +1208,8 @@ function M.paint(spec, pt)
         groups[c.group] = g
         r = g.r
       end
-      local placed, a, grounds = judge(c, r)
+      local placed, a, grounds, free, share = judge(c, r)
+      if free then first_share[M.cell_key(c)] = share end
       verdict[#verdict + 1] = { c = c, placed = placed, a = a, grounds = grounds, jitter = jitter, r = r }
       if g then
         if onpage[c] then
@@ -1114,16 +1236,44 @@ function M.paint(spec, pt)
     end
   end
   choose(cells)
+  -- No kept cell stands alone at a hard or fading edge: one whose every
+  -- neighbour on the page the field left out (a crumb the edge leaves where
+  -- the text's outline cuts the lattice, more often the smaller the cells)
+  -- is left out too, its piece of the ground kept as a dissolved cell's.
+  -- Under edge=dissolve the cells that stand alone near the text are the
+  -- dissolve itself and stay. A layout that places itself (c.fixed) keeps
+  -- its own.
+  if edge ~= "dissolve" and #kept > 1 then
+    local lone = M.field_edges(cells, kept, onpage)
+    local keep2 = {}
+    for _, k in ipairs(kept) do
+      if lone.share[k] == 0 and not k.cell.fixed then
+        if base.ground then bare[#bare + 1] = { cell = k.cell, a = 1, jitter = k.jitter } end
+      else
+        keep2[#keep2 + 1] = k
+      end
+    end
+    kept = keep2
+  end
   -- Reweave: the pattern is drawn again with the field's edge as its own
   -- border (pat_celtic.lua, pat_kolam.lua close their lines there), so no
   -- line ends loose; every cell of the second drawing that is placed is
   -- kept, with the share judge gives it, as any cell keeps (edge=fade
   -- pales it toward the text). A turn the edge mode would leave out takes
-  -- judge's share without that choice.
+  -- judge's share without that choice. Either takes the share its place
+  -- had in the first drawing, not one measured on its woven form: a cell
+  -- that closes its lines against the wall reaches less far, and would
+  -- otherwise pale differently from the same cell unwoven (at small cells,
+  -- where more of them lie on the fade). A turn at a place whose first cell
+  -- was not clear of the text exists only in its woven form, and takes the
+  -- share measured on it.
   local weaves = 0
   if opts.reweave and p.reweave then
-    local keep = {}
-    for _, k in ipairs(kept) do keep[M.cell_key(k.cell)] = k.cell end
+    local keep, first_a = {}, {}
+    for _, k in ipairs(kept) do
+      keep[M.cell_key(k.cell)] = k.cell
+      first_a[M.cell_key(k.cell)] = k.a
+    end
     env.blocked = function(x, y) return not keep[M.cell_key({ x = x, y = y })] end
     -- A line turning back at the edge draws its turn in the cell beyond
     -- it. Where that cell may not be painted (too near the text) the kept
@@ -1150,8 +1300,9 @@ function M.paint(spec, pt)
         -- A turn may lie where the edge mode would leave no cell (edge=cell's
         -- margin): it is painted so long as it keeps clear of the text.
         local placed, a, _, clear, share = judge(c, 0)
-        if placed and a > 0 then list[#list + 1] = { c = c, a = a }
-        elseif clear then list[#list + 1] = { c = c, a = share, turn = true }
+        local ck = M.cell_key(c)
+        if placed and a > 0 then list[#list + 1] = { c = c, a = first_a[ck] or a }
+        elseif clear then list[#list + 1] = { c = c, a = first_share[ck] or share, turn = true }
         elseif onpage[c] then
           failed[#failed + 1] = c
         end
@@ -1325,7 +1476,7 @@ function M.paint(spec, pt)
     end
   end
   for _, k in ipairs(kept) do
-    local c, ink = k.cell, band_ink(M.cell_inks(base, k.a, nil, under_of(k)), p, spec, k_scale)
+    local c, ink = k.cell, band_ink(M.cell_inks(base, k.a, nil, under_of(k)), p, spec, k_scale, ff)
     local birth, painted = k.birth, k.painted
     -- The same precondition for the cell itself, its outline and what it
     -- lays (M.footprint), as judge placed it.
@@ -1361,10 +1512,10 @@ function M.paint(spec, pt)
     end
   end
   if hero and fits("hero", { { circle = hero } }, 0) then
-    M.paint_hero(pt, hero, band_ink(M.cell_inks(base, 1, true), p, spec, k_scale), grow)
+    M.paint_hero(pt, hero, band_ink(M.cell_inks(base, 1, true), p, spec, k_key), grow)
   end
   if edge == "guilloche" and (not grow or grow >= 0.1) then
-    local ink = band_ink(M.cell_inks(base, 1, true), p, spec, k_scale)
+    local ink = band_ink(M.cell_inks(base, 1, true), p, spec, k_key)
     Progression.part(pt, "pattern_border", { text.x0, text.y0 }, 0, 0.2, function()
       require("flora.pattern_hero").paint_band(pt, text, gap / 2, 4, ink)
     end)
@@ -1375,13 +1526,14 @@ function M.paint(spec, pt)
     local frame = { { "m", text.x0 - o, text.y0 - o }, { "l", text.x1 + o, text.y0 - o },
       { "l", text.x1 + o, text.y1 + o }, { "l", text.x0 - o, text.y1 + o }, { "z" } }
     Progression.part(pt, "pattern_border", { text.x0, text.y0 }, 0, 0.2, function()
-      pt:stroke(frame, ink.band, width * 1.2, 1)
-      pt:stroke(frame, ink.accent, width * 0.45, 1)
+      local fw = band_ink({}, p, spec, k_key).width
+      pt:stroke(frame, ink.band, fw * 1.2, 1)
+      pt:stroke(frame, ink.accent, fw * 0.45, 1)
     end)
   end
   pt:end_group()
   pt.coverage = offered > 0 and #kept / offered or 0
-  pt.pattern = { name = p.name, cells = #kept, offered = offered, kept = kept, avoid = keep_rects, reach = width / 2, gap = gap, hero = hero, inks = base,
+  pt.pattern = { name = p.name, size = size, factor = ff, cells = #kept, offered = offered, kept = kept, avoid = keep_rects, reach = width / 2, gap = gap, hero = hero, inks = base,
     -- Every cell of the drawing, kept or not, and which lie on the page
     -- (for tests/pattern_matrix.lua's holes).
     all = cells, onpage = onpage, warnings = pt.pattern_warnings,
