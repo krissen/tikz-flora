@@ -209,11 +209,21 @@ caught("onecolour", "hexagram_lattice", function()
 end, function() hexagram.cells = hexagram_cells end)
 
 -- Cells standing off the ground's panel again: the field no longer holds
--- a cell to the panel, nor a turn to the field's side.
+-- a cell to the panel, nor a turn to the field's side, and the panel keeps
+-- 10 pt further from the text than the cells do, so some stand off it at
+-- any cell size (whether a cell happens to straddle the panel's own edge
+-- depends on the size).
 do
-  local on_panel = Pattern.on_panel
-  caught("onpanel", "sikku_kolam", function() Pattern.on_panel = function() return true end end,
-    function() Pattern.on_panel = on_panel end)
+  local on_panel, panel_path = Pattern.on_panel, Pattern.panel_path
+  caught("onpanel", "sikku_kolam", function()
+    Pattern.on_panel = function() return true end
+    Pattern.panel_path = function(f)
+      local g = {}
+      for k, v in pairs(f) do g[k] = v end
+      g.gap = f.gap + 10
+      return panel_path(g)
+    end
+  end, function() Pattern.on_panel, Pattern.panel_path = on_panel, panel_path end)
 end
 
 -- The cell of `list` nearest a point well inside the field's strip on the
