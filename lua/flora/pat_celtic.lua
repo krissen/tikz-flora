@@ -280,11 +280,14 @@ function M.field_inner(env, mode)
       end
       local bleed = mode == "bleed" and room.outer ~= "margin"
       local m = bleed and -a or (room.outer == "margin" and 4 or 0) + room.reach + 0.6 * a
-      if x0 < m or x1 > room.W - m or y0 < m then return false end
+      -- The paper's lower left corner, (0, 0) unless the room is given in
+      -- coordinates moved from the page's (px, py).
+      local px, py = room.px or 0, room.py or 0
+      if x0 < px + m or x1 > px + room.W - m or y0 < py + m then return false end
       -- The page's painted top is a content edge (a header) unless it is
       -- the paper's own.
       local mt = (bleed and room.top >= room.H) and -a or room.reach + 0.6 * a + (room.top < room.H and room.gap or 0)
-      if y1 > room.top - mt then return false end
+      if y1 > py + room.top - mt then return false end
       for _, r in ipairs(room.avoid or {}) do
         if x1 > r[1] - clear and x0 < r[3] + clear and y1 > r[2] - clear and y0 < r[4] + clear then return false end
       end

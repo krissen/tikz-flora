@@ -772,9 +772,9 @@ local function end_header_clip(pt)
   pt:frame(fn)
 end
 
--- Whether spec's page is a pattern laid as a frame band (layout=frame).
+-- Whether spec's page is a pattern laid as a frame band (band.lua).
 local function banded(spec)
-  return spec.layout == "frame" and spec.pattern ~= nil and require("flora.pattern").applies(spec)
+  return spec.layout == require("flora.band").LAYOUT and spec.pattern ~= nil and require("flora.pattern").applies(spec)
 end
 
 -- The page's frames (frames.lua), after its top inset is applied to its
