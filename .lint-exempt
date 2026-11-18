@@ -34,8 +34,3 @@ tests/test_ornaments.lua
 tests/test_pattern_matrix.lua
 tests/test_pattern.lua
 tests/test_raster.lua
-
-# Files the pattern-scale work adds or rewrites.
-tools/pattern_scale*.lua
-tools/scale_formats.lua
-tools/pattern-scale*.sh
