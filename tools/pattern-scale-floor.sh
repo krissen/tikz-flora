@@ -7,11 +7,16 @@
 #
 # OUT is as for tools/pattern-scale.sh (OUT/bake must hold the baked
 # formats). VARIANT names the run, KEYS are key=value pairs for the sweep
-# (see pattern_scale.lua; "" for the engine as it is). FACTORS are the
-# scale factors (default 0.3 to 2.5). Writes OUT/floor/<VARIANT>.tsv:
+# (see pattern_scale.lua; "" for the engine as it is, enabled=false for
+# the absolute size, as_field=true to make k the field factor). FACTORS
+# are the scale factors (default 0.3 to 2.5). Writes
+# OUT/floor/<VARIANT>.tsv:
 #
-#   variant format layout pattern k darkness coverage
+#   variant format layout pattern k drawn darkness coverage
 #
+# k is the factor asked for, drawn the one the page was drawn at (the
+# cells' size over the pattern's own): with the engine's field scale on and
+# no as_field, k times the page's field factor.
 # darkness is the field's mean ink, 1 - its lightness over the paper's,
 # at 150 dpi (a page seen at about its size on a screen or in print);
 # coverage the share of its pixels painted at all. The field is the strip
@@ -37,7 +42,7 @@ done
 texlua tools/pattern_scale.lua sweep "$OUT/bake" "$OUT/floor/render" "$JOB"
 
 TSV="$OUT/floor/$V.tsv"
-printf 'variant\tformat\tlayout\tpattern\tk\tdarkness\tcoverage\n' > "$TSV"
+printf 'variant\tformat\tlayout\tpattern\tk\tdrawn\tdarkness\tcoverage\n' > "$TSV"
 while read -r v f l p k _; do
   base="$OUT/floor/render/$v/${f}__${l}__${p}__$k"
   [ -f "$base.pdf" ] || continue
@@ -63,6 +68,6 @@ while read -r v f l p k _; do
   mm=$(magick "$T/mask.png" -format '%[fx:mean]' info:)
   mc=$(magick "$T/ink.png" -threshold 4% "$T/mask.png" -compose multiply -composite -format '%[fx:mean]' info:)
   stats=$(LC_ALL=C awk -v a="$md" -v b="$mm" -v c="$mc" 'BEGIN { printf "%.4f\t%.4f", a / b, c / b }')
-  printf '%s\t%s\t%s\t%s\t%s\t%s\n' "$v" "$f" "$l" "$p" "$k" "$stats" >> "$TSV"
+  printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\n' "$v" "$f" "$l" "$p" "$k" "$(cat "$base.drawn")" "$stats" >> "$TSV"
 done < "$JOB"
 echo "floor: $TSV"

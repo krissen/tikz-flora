@@ -1,9 +1,12 @@
 -- The pattern scale study (tools/pattern-scale.sh): what a pattern's cell
--- size is in each field today, and mock pages with the cell size set from
--- the field or the page by one of the proposals below. The engine's own
--- path is not touched: a mock sets the page's scale key (spec.pattern_scale)
--- to the factor the proposal gives, which scales the cells and the bands
--- together as the scale key does.
+-- size is in each field at its absolute size (the pattern's own, as before
+-- the engine sized cells to their field), and mock pages with the cell
+-- size set from the field or the page by one of the proposals below. The
+-- measure and render modes draw with the engine's field scale off
+-- (pattern.lua's FIELD_SCALE.enabled): `absolute` is the pattern's own
+-- size, and each proposal's page sets the scale key to the whole factor it
+-- gives, which scales the cells and the bands together as the key does.
+-- The jobs and sweep modes draw with the field scale as the engine has it.
 --
 --   texlua tools/pattern_scale.lua formats
 --   texlua tools/pattern_scale.lua tex FORMAT
@@ -258,7 +261,7 @@ local function counts(s, r, k)
 end
 
 -- The proposals, each the scale factor k for pattern p on (format f, layout,
--- spec), with today's k = 1. REF is the reference field: the 160 x 90 mm
+-- spec), with the absolute size's k = 1. REF is the reference field: the 160 x 90 mm
 -- slide's left strip, where the patterns were drawn to their scale.
 local ref_spec = page_spec("slide169", "left", "pattern=khatam")
 local REF_ACROSS = strips(ref_spec, "left")[1][2]
@@ -274,8 +277,9 @@ local proposals = {
       return s[2] / (N_TARGET * across_period(s, period(p)))
     end },
   -- B: the pattern's own size on the reference field, scaled by the
-  -- field's width against it (each pattern keeps its count of today's
-  -- slide).
+  -- field's width against it (each pattern keeps its count on the
+  -- reference slide). The engine's field scale is this proposal, with a
+  -- floor and a ceiling.
   { name = "refwidth", label = "B: own size x field / reference field (160 x 90 left)",
     k = function(_, spec, layout)
       local s = governing(strips(spec, layout), layout)
@@ -304,7 +308,7 @@ if mode == "measure" then
     "period_x_pt", "period_y_pt",
     "periods_across", "periods_along", "periods_per_page_short", "strips", "note" }, "\t") .. "\n")
   local kout = assert(io.open(arg[3]:gsub("%.tsv$", "") .. "-proposals.tsv", "w"))
-  kout:write("format\tlayout\tpattern\tgoverning_strip\ttoday_across")
+  kout:write("format\tlayout\tpattern\tgoverning_strip\tabsolute_across")
   for _, q in ipairs(proposals) do kout:write("\t" .. q.name .. "_k\t" .. q.name .. "_across") end
   kout:write("\n")
   for _, f in ipairs(Formats) do if not f.study then
@@ -348,7 +352,7 @@ local function render(spec, file)
     return false
   end
   Pdf.write(file, pt, spec.width, spec.height)
-  return true
+  return pt
 end
 
 -- The text's boxes (its lines, else the block) beside the page, for the
@@ -362,12 +366,15 @@ local function write_text(spec, file)
 end
 
 if mode == "render" then
+  -- Each page carries its whole factor in its scale key: the engine's own
+  -- field scale would multiply it again (and size the absolute pages too).
+  require("flora.pattern").FIELD_SCALE.enabled = false
   local outdir = arg[3]
   local SETUP = "colourway=tsuki-mi"
   local MOCK = { khatam = true, asanoha = true, sikku_kolam = true, celtic_knot = true }
   local MOCK_FORMATS = { slide169 = true, a4 = true, a5 = true }
   local log = assert(io.open(outdir .. "/factors.tsv", "w"))
-  log:write("variant\tformat\tlayout\tpattern\tk\n")
+  log:write("variant\tformat\tlayout\tpattern\tk\tdrawn\n")
   local function one(variant, fname, layout, p, k)
     local dir = outdir .. "/" .. variant
     os.execute("mkdir -p '" .. dir .. "'")
@@ -375,13 +382,16 @@ if mode == "render" then
     if k then spec[Settings.SPEC.scale] = k * (spec[Settings.SPEC.scale] or 1) end
     local base = dir .. "/" .. fname .. "__" .. layout .. "__" .. p.name
     write_text(spec, base .. ".text")
-    render(spec, base .. ".pdf")
-    log:write(string.format("%s\t%s\t%s\t%s\t%.3f\n", variant, fname, layout, p.name, k or 1))
+    local pt = render(spec, base .. ".pdf")
+    -- The factor drawn (the cells' size over the pattern's own), which the
+    -- field scale off makes k itself.
+    local drawn = pt and pt.pattern and pt.pattern.size / p.scale or 0 / 0
+    log:write(string.format("%s\t%s\t%s\t%s\t%.3f\t%.3f\n", variant, fname, layout, p.name, k or 1, drawn))
   end
-  -- Today: every pattern, every format, left and surround.
+  -- The absolute size: every pattern, every format, left and surround.
   for _, f in ipairs(Formats) do if not f.study then
     for _, layout in ipairs({ "left", "surround" }) do
-      for _, p in ipairs(Patterns.list) do one("today", f.name, layout, p, nil) end
+      for _, p in ipairs(Patterns.list) do one("absolute", f.name, layout, p, nil) end
     end
   end end
   for _, q in ipairs(proposals) do
@@ -410,7 +420,7 @@ end
 -- Job files for the sweep (below) and the labels the sheets print, under
 -- the field scale as the engine has it:
 --   OUTDIR/own.job     greek_crosses, sikku_kolam and penrose_rhombs at
---                      their own size today and three candidates
+--                      their current own size and three candidates
 --   OUTDIR/whole.job   khatam, asanoha, sikku_kolam and celtic_knot under
 --                      outer=margin and edge=cell, at the field's size and
 --                      rounded so the strip (less the margin) holds a whole
@@ -437,14 +447,14 @@ if mode == "jobs" then
         local sizes = { p.scale, table.unpack(OWN[name]) }
         for i, sz in ipairs(sizes) do
           local k = sz / p.scale
-          local v = i == 1 and "own-today" or ("own-" .. i - 1)
+          local v = i == 1 and "own-current" or ("own-" .. i - 1)
           -- sikku_kolam's band would pass the width at which its core
           -- shows (pat_kit.lua's CORE_MIN) and turn pale: its width is
           -- held, so only the cells grow.
           local hold = (name == "sikku_kolam" and k > 1) and string.format(" spec.pattern_bandwidth=%.4f", 1 / k) or ""
           job:write(string.format("%s %s %s %s %.4f%s\n", v, fname, layout, name, k, hold))
           lab:write(string.format("%s %s %s %s %.4f %s\n", v, fname, layout, name, k,
-            string.format("%s %g: %.1f across, field x%.2f%s", i == 1 and "today" or "cand.", sz, s[2] / (a * k * f), f,
+            string.format("%s %g: %.1f across, field x%.3f%s", i == 1 and "current" or "cand.", sz, s[2] / (a * k * f), f,
               hold ~= "" and ", band held" or "")))
         end
       end
@@ -484,8 +494,11 @@ end
 -- draws it without the field factor, as before there was one; min_line=0,
 -- ceil=none, ...), or, prefixed with spec., keys of the page's spec
 -- (spec.pattern_outer=margin). as_field=true makes k the page's field
--- factor instead of a factor on its key. Writes
--- OUTDIR/<variant>/<format>__<layout>__<pattern>__<k>.pdf and .text.
+-- factor instead of a factor on its key. Without it the engine's field
+-- scale applies on top of k, so the factor drawn is k times the page's
+-- field factor. Writes OUTDIR/<variant>/<format>__<layout>__<pattern>__<k>
+-- .pdf, .text and .drawn (the factor drawn, the cells' size over the
+-- pattern's own).
 if mode == "sweep" then
   local outdir, job = arg[3], arg[4]
   local Pattern = require("flora.pattern")
@@ -510,9 +523,10 @@ if mode == "sweep" then
       end
       if FS.as_field then
         -- k as the field factor rather than the key: the reference set so
-        -- that this page's strip gives k, with no ceiling or floor.
+        -- that this page's strip gives k, with no ceiling, floor or kept
+        -- core to move it.
         FS.as_field = nil
-        FS.ref, FS.ceil, FS.floor, FS.min_factor = Pattern.field_strip(spec) / k, nil, 0, {}
+        FS.ref, FS.ceil, FS.floor, FS.min_factor, FS.keep_core = Pattern.field_strip(spec) / k, nil, 0, {}, false
       else
         spec[Settings.SPEC.scale] = k * (spec[Settings.SPEC.scale] or 1)
       end
@@ -520,7 +534,13 @@ if mode == "sweep" then
       os.execute("mkdir -p '" .. dir .. "'")
       local base = string.format("%s/%s__%s__%s__%s", dir, fname, layout, pname, w[5])
       write_text(spec, base .. ".text")
-      render(spec, base .. ".pdf")
+      local pt = render(spec, base .. ".pdf")
+      -- The factor the page was drawn at, the cells' size over the
+      -- pattern's own: k times the field factor the engine applied.
+      local d = assert(io.open(base .. ".drawn", "w"))
+      local P = pt and pt.pattern
+      d:write(P and string.format("%.4f\n", P.size / Patterns.by_name[pname].scale) or "nan\n")
+      d:close()
     end
   end
   os.exit(0)
