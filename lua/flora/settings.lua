@@ -58,7 +58,7 @@ M.about = {
   { "lighten", "0 to 1", "Lightens a pattern's fields toward the paper: 0 (the default) keeps their inks' lightness, 1 makes them nearly the paper." },
   { "bandwidth", "0.25 to 4", "The width of a pattern's bands and lines, as a factor of its own." },
   { "framewidth", "4 to 40", "A prototype, for layout=frame: the width in mm of the pattern's band round the paper's edge, the same on all four sides (12 by default)." },
-  { "frameinner", "cells, rule, dissolve", "A prototype, for layout=frame: how the band ends toward the text: whole cells (the default), cells cut along a straight ruled edge, or cells falling away." },
+  { "frameinner", "cells, rule, rows, dissolve, dissolve_band, dissolve_margin, fade, guilloche", "A prototype, for layout=frame: how the band ends toward the text: whole cells (the default), cells cut along a straight ruled edge, whole rows sized to fill the band, cells falling away near the inner edge, over the whole band or into the margin past it, cells paling into the paper, or a guilloche band along the inner edge." },
   { "cache", "true, false",
     "true (the default) keeps each page's flora in a folder <jobname>-flora beside the PDF, so a later compile reuses it; false grows every page afresh." },
 }
@@ -192,7 +192,7 @@ end)
 
 M.define("frameinner", function(v)
   if require("flora.pattern").frame_inners[v] then return v end
-  return nil, "frameinner must be cells, rule or dissolve"
+  return nil, "frameinner must be cells, rule, rows, dissolve, dissolve_band, dissolve_margin, fade or guilloche"
 end)
 
 M.define("scale", function(v)

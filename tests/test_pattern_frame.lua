@@ -94,10 +94,46 @@ do
   H.check(math.abs(B - (Hh - T)) < 1e-6, string.format("frame: foot %.3f and top %.3f differ", B, Hh - T))
 end
 
+-- The repeats the whole rows are sized by: kikko's honeycomb repeats
+-- every three sides along x and every sqrt(3) sides along y.
+do
+  local kikko
+  for _, p in ipairs(Patterns.list) do if p.name == "kikko" then kikko = p end end
+  local px, py = Pattern.periods(kikko)
+  H.check(px and math.abs(px - 3 * kikko.scale) < 1e-3, "kikko's repeat along x: " .. tostring(px))
+  H.check(py and math.abs(py - math.sqrt(3) * kikko.scale) < 1e-3, "kikko's repeat along y: " .. tostring(py))
+end
+
+-- frameinner=rows: a whole number of rows fills the band, each side's
+-- cells lie wholly inside the band (asanoha's rows end in a straight
+-- edge), and nothing comes nearer the text block than the gap.
+do
+  local spec = slide("frame", { frame_width = 12, frame_inner = "rows", pattern = "asanoha" })
+  local t = { spec.text.x0, spec.text.y0, spec.text.x1, spec.text.y1 }
+  local W, Hh = spec.width, spec.height
+  local w = 12 * MM
+  local pt = Compose.page(spec)
+  local q = pt.pattern
+  H.check(q.rows and q.rows >= 1, "rows: no row count")
+  H.check(q.cover and q.cover > 0.999, "rows: asanoha's whole rows leave the inner repeat uncovered: " .. tostring(q.cover))
+  local deepest = 0
+  for _, k in ipairs(q.kept) do
+    local c = k.cell
+    H.check(Pattern.clearance(c, t) >= 6, string.format("rows: a cell at %.1f, %.1f lies nearer the text block than the gap", c.x, c.y))
+    -- How far in from the nearest paper edge the cell reaches.
+    for _, v in ipairs(c.verts) do
+      local e = math.min(v[1], v[2], W - v[1], Hh - v[2])
+      deepest = math.max(deepest, e)
+    end
+  end
+  H.check(deepest <= w + 1e-3, string.format("rows: a cell reaches %.2f pt in, past the band's %.2f", deepest, w))
+  H.check(deepest >= w - 1e-3, string.format("rows: the rows end %.2f pt in, short of the band's %.2f", deepest, w))
+end
+
 -- The frame keys change nothing on a page of another layout.
 do
   local a = Compose.page(slide("surround")):body()
-  local b = Compose.page(slide("surround", { frame_width = 8, frame_inner = "rule" })):body()
+  local b = Compose.page(slide("surround", { frame_width = 8, frame_inner = "rows" })):body()
   H.check(a == b, "surround: the frame keys changed the page")
 end
 
