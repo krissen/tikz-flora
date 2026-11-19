@@ -76,7 +76,7 @@ end
 local verbose = os.getenv("FLORA_MATRIX_VERBOSE")
 local cells, failures = B.run()
 if verbose then print(string.format("band: %d cells, %d failures", #failures == 0 and cells or cells, #failures)) end
-H.check(cells == #Patterns.list * #B.WIDTHS * #B.PAPERS * #B.EDGES * #B.BACKDROPS, "band cells: " .. cells)
+H.check(cells == #Patterns.list * (#B.WIDTHS * #B.PAPERS + #B.NARROW) * #B.EDGES * #B.BACKDROPS, "band cells: " .. cells)
 for i, f in ipairs(failures) do
   if i > 40 then break end
   H.check(false, string.format("band %s: %s: %s", f[1], f[2], f[3]))
@@ -126,6 +126,11 @@ mutant("rows off the edge", "row_phase", function(orig) return function(p, size,
 end end, "rows")
 -- The band's field stopping 60 pt below the paper's top.
 mutant("top cut", "band_top", function() return function(_, Hh) return Hh - 60 end end, "top")
+-- The band's inner rectangle taken whole where the margin is narrower:
+-- edge=border's rule crosses the text.
+mutant("rule over the text", "band_inner", function() return function(spec, w)
+  return { w, w, spec.width - w, spec.height - w }
+end end, "text", { patterns = { kikko = true }, narrow_only = true, backdrops = { "light" }, edges = { "border" } })
 -- celtic_knot's closed panel kept a square (8 pt at 12 mm) further from
 -- the inner edge than it may come: the rectangle it keeps clear of grown
 -- by that much on every side.
@@ -143,12 +148,12 @@ end end, "warn", { patterns = { penrose_rhombs = true }, widths = { 12 }, papers
 -- And with the warnings: a hero, the patterns that do not carry a band.
 do
   local orig = B.expected
-  B.expected = function(p, wmm, edge)
-    local out = orig(p, wmm, edge)
-    for i = #out, 1, -1 do if out[i] == "does not carry a perimeter band" then table.remove(out, i) end end
+  B.expected = function(p, wmm, edge, widths)
+    local out = orig(p, wmm, edge, widths)
+    for i = #out, 1, -1 do if out[i][1] == "does not carry a perimeter band" then table.remove(out, i) end end
     return out
   end
-  local _, fails = B.run({ patterns = { khatam = true }, widths = { 8 }, papers = { B.PAPERS[1] }, backdrops = { "light" }, edges = { false } })
+  local _, fails = B.run({ patterns = { khatam = true }, widths = { 8 }, papers = { B.PAPERS[1] }, backdrops = { "light" }, edges = { false }, narrow = false })
   B.expected = orig
   local n = 0
   for _, f in ipairs(fails) do if f[1] == "warn" then n = n + 1 end end
