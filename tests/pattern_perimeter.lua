@@ -74,7 +74,6 @@ function M.expected(p, wmm, edge)
     if not (px and plan) then out[#out + 1] = "no repeat to lay in whole rows"
     elseif plan.below then out[#out + 1] = "smaller than its floor" end
   end
-  if e == Band.ROWS and p.field_panel and wmm < 12 then out[#out + 1] = "no closed panel fits" end
   return out
 end
 
@@ -125,21 +124,42 @@ function M.check(p, wmm, paper, edge, backdrop)
   -- width, gaps, rows, top
   local L, R, B, T = math.huge, -math.huge, math.huge, -math.huge
   local inmost = { l = -math.huge, r = -math.huge, b = -math.huge, t = -math.huge }
+  local outmost = { l = math.huge, r = math.huge, b = math.huge, t = math.huge }
   local count = { l = 0, r = 0, b = 0, t = 0 }
   local top = 0
   for _, k in ipairs(q.kept) do
     local c = k.cell
     local x0, y0, x1, y1 = bbox(c.verts)
     L, R, B, T = math.min(L, x0), math.max(R, x1), math.min(B, y0), math.max(T, y1)
-    if c.x < w and c.y > w and c.y < H - w then count.l = count.l + 1; inmost.l = math.max(inmost.l, x1) end
-    if c.x > W - w and c.y > w and c.y < H - w then count.r = count.r + 1; inmost.r = math.max(inmost.r, W - x0) end
-    if c.y < w and c.x > w and c.x < W - w then count.b = count.b + 1; inmost.b = math.max(inmost.b, y1) end
-    if c.y > H - w and c.x > w and c.x < W - w then count.t = count.t + 1; inmost.t = math.max(inmost.t, H - y0) end
+    if c.x < w and c.y > w and c.y < H - w then
+      count.l = count.l + 1; inmost.l = math.max(inmost.l, x1); outmost.l = math.min(outmost.l, x0)
+    end
+    if c.x > W - w and c.y > w and c.y < H - w then
+      count.r = count.r + 1; inmost.r = math.max(inmost.r, W - x0); outmost.r = math.min(outmost.r, W - x1)
+    end
+    if c.y < w and c.x > w and c.x < W - w then
+      count.b = count.b + 1; inmost.b = math.max(inmost.b, y1); outmost.b = math.min(outmost.b, y0)
+    end
+    if c.y > H - w and c.x > w and c.x < W - w then
+      count.t = count.t + 1; inmost.t = math.max(inmost.t, H - y0); outmost.t = math.min(outmost.t, H - y1)
+    end
     if c.y > t[4] and c.x > t[1] and c.x < t[3] then top = top + 1 end
   end
   if inner ~= "panel" then
     for side, n in pairs(count) do
       if n == 0 then fail("width", "no cells on side " .. side) end
+    end
+  end
+  -- A closed panel fills the band: it runs off the paper's edge on every
+  -- side, and its innermost square ends within a square of the inner edge.
+  if inner == "panel" then
+    for side, v in pairs(inmost) do
+      if v < w - (q.size or 0) - 1e-3 or v > w + 1e-3 then
+        fail("width", string.format("side %s's panel ends %.2f pt in, not within a square (%.2f) of the band's %.2f", side, v, q.size or 0, w))
+      end
+    end
+    for side, v in pairs(outmost) do
+      if v > 1e-3 then fail("width", string.format("side %s's panel stops %.2f pt short of the paper's edge", side, v)) end
     end
   end
   -- No cell reaches into the inner rectangle (whole rows touch it; under
@@ -181,6 +201,11 @@ function M.check(p, wmm, paper, edge, backdrop)
   -- warn
   local got = pt.pattern_warnings or {}
   local want = M.expected(p, wmm, edge)
+  -- A closed panel that does not fit is laid with a straight edge, and
+  -- the log says so.
+  if p.field_panel and (edge or Band.default_edge(p.name)) == Band.ROWS and inner == "rule" then
+    want[#want + 1] = "no closed panel fits"
+  end
   for _, pat in ipairs(want) do
     local n = 0
     for _, g in ipairs(got) do if g:find(pat, 1, true) then n = n + 1 end end

@@ -126,6 +126,14 @@ mutant("rows off the edge", "row_phase", function(orig) return function(p, size,
 end end, "rows")
 -- The band's field stopping 60 pt below the paper's top.
 mutant("top cut", "band_top", function() return function(_, Hh) return Hh - 60 end end, "top")
+-- celtic_knot's closed panel kept two squares further in from the inner
+-- edge than it may come.
+mutant("narrow panel", "panel_room", function(orig) return function(band, gap, keep)
+  local out = orig(band, gap, keep)
+  local r, d = out[1], 16
+  out[1] = { r[1] + d, r[2] + d, r[3] - d, r[4] - d }
+  return out
+end end, "width", { patterns = { celtic_knot = true }, widths = { 12 }, papers = { B.PAPERS[1] }, backdrops = { "light" }, edges = { false } })
 -- Every warning given twice.
 mutant("warn twice", "warn", function(orig) return function(pt, msg)
   orig(pt, msg)

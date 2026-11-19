@@ -1224,6 +1224,34 @@ function M.band_holes(band, keep_rects, gap)
   return out
 end
 
+-- What a perimeter band's closed panel (celtic_knot's, pat_celtic.lua) keeps
+-- clear of: the inner rectangle, set in so that the panel's squares may
+-- end where its turns reach the inner edge (the panel keeps the gap, its
+-- band's reach and 0.6 of a square, and half a point, from what it keeps
+-- clear of), and what the band keeps clear of.
+function M.panel_room(band, gap, keep_rects)
+  local I, o = band.I, gap + 0.5
+  local out = { { I[1] + o, I[2] + o, I[3] - o, I[4] - o } }
+  for _, r in ipairs(keep_rects) do out[#out + 1] = r end
+  return out
+end
+
+-- Where along an axis `len` long a closed panel's squares (`a` wide, their
+-- bands reaching `reach`) lie about the centre: 0 for a square's corner at
+-- the centre, 0.5 for its middle, whichever leaves the smaller strip
+-- between the last whole square and the band's inner edge, `w` in from the
+-- paper. The panel is symmetric about the centre either way.
+function M.panel_offset(len, w, reach, a)
+  local limit = w - reach - 0.6 * a
+  local best, short
+  for _, d in ipairs({ 0, 0.5 }) do
+    local t = (limit - len / 2) / a - d
+    local s = (t - math.floor(t)) * a
+    if not short or s < short - 1e-9 then best, short = d, s end
+  end
+  return best
+end
+
 -- Whole rows (edge=rows in a perimeter band): the band as whole rows. Across
 -- the band the cells are sized so that a whole number of the pattern's
 -- repeats (M.periods, its repeat along y) fills the band's width exactly: n rows, the fewest
@@ -1503,7 +1531,14 @@ function M.paint(spec, pt)
   end
   -- In a band celtic_knot's closed panel fills the band: it keeps clear of
   -- the inner rectangle as of the text.
-  if band and band.inner == "panel" then field_room.avoid = panel_avoid elseif band then field_panel = nil end
+  -- It runs off the paper as every band does, or closes inside the margin
+  -- under outer=margin.
+  if band and band.inner == "panel" then
+    field_room.avoid = M.panel_room(band, gap, keep_rects)
+    field_panel = outer == "margin" and "inset" or "bleed"
+  elseif band then
+    field_panel = nil
+  end
   local cells_stream = "cells" .. (band and band.strip and (" " .. band.strip.side) or "")
   local env = { x0 = 0, y0 = 0, x1 = W, y1 = H, size = size, rng = rng:fork(cells_stream), opts = opts, room = field_room, style = style,
     field_panel = field_panel }
@@ -1537,23 +1572,10 @@ function M.paint(spec, pt)
     if band.strip then return at(band.strip.ox, band.strip.oy) end
     if not env.field_panel then return at(W / 2, H / 2) end
     -- A closed panel's squares lie about the paper's centre with a corner
-    -- there or a middle, whichever of the four lets the band hold whole
-    -- squares on the most sides (the fewest a side takes, the most).
-    local best, score
-    for _, d in ipairs({ { 0, 0 }, { 0.5, 0 }, { 0, 0.5 }, { 0.5, 0.5 } }) do
-      local cs = at(W / 2 + d[1] * size, H / 2 + d[2] * size)
-      local n = { 0, 0, 0, 0 }
-      local w = band.w
-      for _, c in ipairs(cs) do
-        if c.x < w then n[1] = n[1] + 1 end
-        if c.x > W - w then n[2] = n[2] + 1 end
-        if c.y < w then n[3] = n[3] + 1 end
-        if c.y > H - w then n[4] = n[4] + 1 end
-      end
-      local sc = math.min(n[1], n[2], n[3], n[4]) * 1e6 + #cs
-      if not score or sc > score then best, score = cs, sc end
-    end
-    return best
+    -- there or a middle, along each axis whichever brings their edge
+    -- nearest the band's inner edge (M.panel_offset).
+    local reach = field_room.reach
+    return at(W / 2 + M.panel_offset(W, band.w, reach, size) * size, H / 2 + M.panel_offset(H, band.w, reach, size) * size)
   end
   local cells = draw_cells()
   if base.ground and opts.ground_edge == "discs" then base.ground_nd = M.field_edges(cells, {}, {}).nd end
@@ -2027,8 +2049,8 @@ function M.paint(spec, pt)
       { "l", text.x1 + o, text.y1 + o }, { "l", text.x0 - o, text.y1 + o }, { "z" } }
     Progression.part(pt, "pattern_border", { text.x0, text.y0 }, 0, 0.2, function()
       local fw = band_ink({}, p, spec, k_key).width
-      pt:stroke(rule, ink.band, fw * 1.2, 1)
-      pt:stroke(rule, ink.accent, fw * 0.45, 1)
+      pt:stroke(frame, ink.band, fw * 1.2, 1)
+      pt:stroke(frame, ink.accent, fw * 0.45, 1)
     end)
   end
   pt:end_group()

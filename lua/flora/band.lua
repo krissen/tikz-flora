@@ -30,7 +30,8 @@ M.EDGES = { border = "border", cell = "cell", fade = "fade", dissolve = "dissolv
 
 -- Each pattern's edge in a band when the page sets none: whole rows for
 -- the patterns whose rows end in a straight edge of whole cells (asanoha,
--- stars_8_4) and for celtic_knot, whose rows are its closed panel; a
+-- stars_8_4) and for celtic_knot, whose rows are its closed plait,
+-- filling the band and running off the paper's edge with it; a
 -- straight edge with a rule for every other (truchet's arcs close against
 -- the rule).
 M.DEFAULT_EDGE = { asanoha = M.ROWS, celtic_knot = M.ROWS, stars_8_4 = M.ROWS }
