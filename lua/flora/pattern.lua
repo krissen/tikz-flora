@@ -1459,11 +1459,7 @@ function M.paint(spec, pt)
   end
   local warning
   spec, warning = M.finish_spec(spec, p)
-  if warning then
-    pt.pattern_warnings = pt.pattern_warnings or {}
-    table.insert(pt.pattern_warnings, warning)
-    if texio and texio.write_nl then texio.write_nl("log", "flora: " .. warning) end
-  end
+  if warning then M.warn(pt, warning) end
   local W, H, text = spec.width, spec.height, spec.text
   local side = not band and sides(spec) or nil
   local edge = key(spec, "edge")
