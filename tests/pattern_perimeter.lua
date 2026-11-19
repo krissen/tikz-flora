@@ -18,6 +18,8 @@
 --             ends on its inner edge
 --   top       the band runs above the text under the frame title and the
 --             reservation
+--   dissolve  under edge=dissolve, cells fall away past the inner edge on
+--             every side that has two cells' room for it
 --   warn      each warning the page should give comes once, and no other
 --
 -- Sizes are as users get them: the papers in mm, the bands in mm.
@@ -72,45 +74,39 @@ function M.spec(pattern, wmm, paper, edge, backdrop, margins)
 end
 
 -- The band's inner rectangle the page should have: the paper shrunk by
--- the band, less on a side whose margin is narrower (the text block, the
--- gap and the band's reach), and each side's width (left, right, foot,
--- top).
+-- the band on all four sides alike, the whole band narrower where a margin
+-- is narrower (the text block, the gap and the band's reach); and the
+-- band's width.
 function M.inner(spec, w)
   local W, H, t = spec.width, spec.height, spec.text
   -- The gap and the band's own reach (pattern.lua's NARROW_REACH).
   local k = GAP + 3
-  local I = { math.max(0, math.min(w, t.x0 - k)), math.max(0, math.min(w, t.y0 - k)),
-    math.min(W, math.max(W - w, t.x1 + k)), math.min(H, math.max(H - w, t.y1 + k)) }
-  return I, { l = I[1], r = W - I[3], b = I[2], t = H - I[4] }
+  w = math.max(0, math.min(w, t.x0 - k, t.y0 - k, W - t.x1 - k, H - t.y1 - k))
+  return { w, w, W - w, H - w }, w
 end
 
+-- A page with no room for a band: the theme's margins with a 5 mm foot,
+-- which leaves under the narrowest band a pattern lays whole cells in.
+M.NONE = { "16:9, 12 mm band, margins 25/10/5/12", { "16:9", 160, 90 }, 12, { 25, 10, 5, 12 } }
+
+-- Pages with room for edge=dissolve's transition past the inner edge: a
+-- 12 mm band in 20 mm margins.
+M.ROOMY = { "16:9, 12 mm band, 20 mm margins", { "16:9", 160, 90 }, 12, { 20, 20, 20, 20 } }
+
 -- The warnings the page should give, as { pattern of their text, how many
--- times }: whole rows below the floor once for each side's width.
-function M.expected(p, wmm, edge, widths)
+-- times }, for a band asked `wmm` wide and laid `we` pt wide.
+function M.expected(p, wmm, edge, we)
   local out = {}
   local e = edge or Band.default_edge(p.name)
-  local narrowest = Band.NARROWEST[p.name]
-  if narrowest and wmm < narrowest then out[#out + 1] = { "does not carry a perimeter band", 1 } end
   local w = wmm * MM
-  local narrowed = false
-  for _, v in pairs(widths) do if v < w - 1e-6 then narrowed = true end end
-  if narrowed then out[#out + 1] = { "is wider than the margin beside the text", 1 } end
+  if we < w - 1e-6 then out[#out + 1] = { "margin allows; the band is", 1 } end
+  local narrowest = Band.NARROWEST[p.name]
+  if narrowest and we * 25.4 / 72 < narrowest - 1e-9 then out[#out + 1] = { "does not carry a perimeter band", 1 } end
   local px = Pattern.periods(p)
   if e == Band.ROWS and not p.field_panel then
-    if not px or not Pattern.row_plan({}, p, w) then
-      out[#out + 1] = { "no repeat to lay in whole rows", 1 }
-    else
-      local below = {}
-      for _, v in pairs(widths) do
-        if v > 1 then
-          local plan = Pattern.row_plan({}, p, v)
-          if plan and plan.below then below[string.format("%g", v * 25.4 / 72)] = true end
-        end
-      end
-      local n = 0
-      for _ in pairs(below) do n = n + 1 end
-      if n > 0 then out[#out + 1] = { "smaller than its floor", n } end
-    end
+    local plan = px and Pattern.row_plan({}, p, we)
+    if not plan then out[#out + 1] = { "no repeat to lay in whole rows", 1 }
+    elseif plan.below then out[#out + 1] = { "smaller than its floor", 1 } end
   end
   return out
 end
@@ -134,8 +130,7 @@ function M.check(p, wmm, paper, edge, backdrop, margins)
   local keep = { t }
   for _, r in ipairs(spec.reserve) do keep[#keep + 1] = r end
   local w = wmm * MM
-  local Iw, ws = M.inner(spec, w)
-  local narrowed = ws.l < w - 1e-6 or ws.r < w - 1e-6 or ws.b < w - 1e-6 or ws.t < w - 1e-6
+  local Iw, we = M.inner(spec, w)
   Paint.reset_resources()
   local pt = Compose.page(spec)
   local q = pt.pattern
@@ -203,15 +198,15 @@ function M.check(p, wmm, paper, edge, backdrop, margins)
   end
   if inner ~= "panel" then
     for side, n in pairs(count) do
-      if n == 0 and ws[side] >= w - 1e-6 then fail("width", "no cells on side " .. side) end
+      if n == 0 then fail("width", "no cells on side " .. side) end
     end
   end
   -- A closed panel fills the band: it runs off the paper's edge on every
   -- side, and its innermost square ends within a square of the inner edge.
   if inner == "panel" then
     for side, v in pairs(inmost) do
-      if v < ws[side] - (q.size or 0) - 1e-3 or v > ws[side] + 1e-3 then
-        fail("width", string.format("side %s's panel ends %.2f pt in, not within a square (%.2f) of the band's %.2f", side, v, q.size or 0, ws[side]))
+      if v < we - (q.size or 0) - 1e-3 or v > we + 1e-3 then
+        fail("width", string.format("side %s's panel ends %.2f pt in, not within a square (%.2f) of the band's %.2f", side, v, q.size or 0, we))
       end
     end
     for side, v in pairs(outmost) do
@@ -240,8 +235,7 @@ function M.check(p, wmm, paper, edge, backdrop, margins)
     end
   end
   -- penrose_rhombs has no repeat and no centre to be laid about alike.
-  -- A band narrowed on one side is not alike on opposite ones.
-  if p.name ~= "penrose_rhombs" and not narrowed then
+  if p.name ~= "penrose_rhombs" then
     if math.abs(L - (W - R)) > 1e-3 then fail("gaps", string.format("left %.3f and right %.3f differ", L, W - R)) end
     if math.abs(B - (H - T)) > 1e-3 then fail("gaps", string.format("foot %.3f and top %.3f differ", B, H - T)) end
   end
@@ -250,16 +244,38 @@ function M.check(p, wmm, paper, edge, backdrop, margins)
     if need and (q.cover or 0) < need then fail("straight", string.format("whole rows cover %.2f of the innermost repeat", q.cover or 0)) end
     if need then
       for side, v in pairs(inmost) do
-        if v > -math.huge and math.abs(v - ws[side]) > 1e-3 then
-          fail("rows", string.format("side %s's rows end %.3f pt in, not on the band's %.3f", side, v, ws[side]))
+        if math.abs(v - we) > 1e-3 then
+          fail("rows", string.format("side %s's rows end %.3f pt in, not on the band's %.3f", side, v, we))
         end
       end
     end
   end
   if top == 0 then fail("top", "no cells above the text under the frame title") end
+  -- dissolve: where a side has two cells' room past the band's inner edge
+  -- before the text and the gap, some cells fall away into it, on every
+  -- such side (whatever lies in the band elsewhere, a reservation
+  -- included).
+  if inner == "margin" then
+    local room = { l = t[1] - Iw[1] - GAP, r = Iw[3] - t[3] - GAP, b = t[2] - Iw[2] - GAP, t = Iw[4] - t[4] - GAP }
+    local past = { l = 0, r = 0, b = 0, t = 0 }
+    for _, k in ipairs(q.kept) do
+      local c = k.cell
+      if c.x > Iw[1] and c.x < Iw[3] and c.y > Iw[2] and c.y < Iw[4] then
+        local d = { l = c.x - Iw[1], r = Iw[3] - c.x, b = c.y - Iw[2], t = Iw[4] - c.y }
+        local s, best = "l", d.l
+        for k2, v in pairs(d) do if v < best then s, best = k2, v end end
+        past[s] = past[s] + 1
+      end
+    end
+    for side, v in pairs(room) do
+      if v >= 2 * (q.size or math.huge) and past[side] == 0 then
+        fail("dissolve", string.format("side %s has %.1f pt of room past the inner edge and no cell falls away into it", side, v))
+      end
+    end
+  end
   -- warn
   local got = pt.pattern_warnings or {}
-  local want = M.expected(p, wmm, edge, ws)
+  local want = M.expected(p, wmm, edge, we)
   -- A closed panel that does not fit is laid with a straight edge, and
   -- the log says so.
   if p.field_panel and (edge or Band.default_edge(p.name)) == Band.ROWS and inner == "rule" then
@@ -287,6 +303,16 @@ function M.run(opts)
   local cells, failures = 0, {}
   for _, p in ipairs(Patterns.list) do
     if not opts.patterns or opts.patterns[p.name] then
+      if opts.roomy ~= false and not opts.narrow_only then
+        for _, bd in ipairs(opts.backdrops or M.BACKDROPS) do
+          cells = cells + 1
+          local nc = M.ROOMY
+          local where = string.format("%s %s edge=dissolve %s", p.name, nc[1], bd)
+          for _, f in ipairs(M.check(p, nc[3], nc[2], "dissolve", bd, nc[4])) do
+            failures[#failures + 1] = { f[1], where, f[2] }
+          end
+        end
+      end
       if opts.narrow ~= false then
         for _, nc in ipairs(opts.narrow or M.NARROW) do
           for _, edge in ipairs(opts.edges or M.EDGES) do

@@ -76,7 +76,7 @@ end
 local verbose = os.getenv("FLORA_MATRIX_VERBOSE")
 local cells, failures = B.run()
 if verbose then print(string.format("band: %d cells, %d failures", #failures == 0 and cells or cells, #failures)) end
-H.check(cells == #Patterns.list * (#B.WIDTHS * #B.PAPERS + #B.NARROW) * #B.EDGES * #B.BACKDROPS, "band cells: " .. cells)
+H.check(cells == #Patterns.list * ((#B.WIDTHS * #B.PAPERS + #B.NARROW) * #B.EDGES + 1) * #B.BACKDROPS, "band cells: " .. cells)
 for i, f in ipairs(failures) do
   if i > 40 then break end
   H.check(false, string.format("band %s: %s: %s", f[1], f[2], f[3]))
@@ -131,6 +131,19 @@ mutant("top cut", "band_top", function() return function(_, Hh) return Hh - 60 e
 mutant("rule over the text", "band_inner", function() return function(spec, w)
   return { w, w, spec.width - w, spec.height - w }
 end end, "text", { patterns = { kikko = true }, narrow_only = true, backdrops = { "light" }, edges = { "border" } })
+-- Each side keeping its own width where its margin is narrower, as a band
+-- narrowed side by side would: the band is no longer as wide all round,
+-- and its wider sides reach past the inner rectangle it should have.
+mutant("own width per side", "band_inner", function() return function(spec, w)
+  local W, Hh, t = spec.width, spec.height, spec.text
+  local k = 9
+  return { math.min(w, t.x0 - k), math.min(w, t.y0 - k), math.max(W - w, t.x1 + k), math.max(Hh - w, t.y1 + k) }, ""
+end end, "width", { patterns = { kikko = true }, narrow_only = true, backdrops = { "light" }, edges = { "cell" } })
+-- edge=dissolve given the least room anything in the band leaves, as a
+-- reservation in the top band once gave every side: no cell falls away
+-- past the inner edge.
+mutant("no room to dissolve", "band_margins", function() return function() return { 1, 1, 1, 1 } end end, "dissolve",
+  { patterns = { kikko = true, stars_8_4 = true }, narrow = false, widths = {}, backdrops = { "light" }, edges = { "dissolve" } })
 -- celtic_knot's closed panel kept a square (8 pt at 12 mm) further from
 -- the inner edge than it may come: the rectangle it keeps clear of grown
 -- by that much on every side.
@@ -172,6 +185,21 @@ do
   for _, g in ipairs(pt.pattern_warnings or {}) do if g:find("has no form in a perimeter band", 1, true) then n = n + 1 end end
   H.check(n == 1, "edge=guilloche in a band: warned " .. n .. " times")
   H.check(pt.pattern.band and pt.pattern.band.inner == "rule", "edge=guilloche in a band: kikko is not laid with its own edge")
+end
+
+-- A page whose narrowest margin leaves no room for a band draws none, says
+-- so once, and paints nothing.
+do
+  local nc = B.NONE
+  for _, edge in ipairs(B.EDGES) do
+    local spec = B.spec("kikko", nc[3], nc[2], edge, "light", nc[4])
+    local pt = Compose.page(spec)
+    local n = 0
+    for _, g in ipairs(pt.pattern_warnings or {}) do if g:find("leaves room for no perimeter band", 1, true) then n = n + 1 end end
+    H.check(n == 1, "no room for a band: warned " .. n .. " times")
+    H.check(#pt.pattern.kept == 0 and pt.pattern.band and pt.pattern.band.none, "no room for a band: cells were laid")
+    H.check(not pt:body():find(" [fS]\n") and not pt:body():find(" re "), "no room for a band: something was painted")
+  end
 end
 
 -- The edge a page leaves out is the pattern's own in a band; edge=dissolve
