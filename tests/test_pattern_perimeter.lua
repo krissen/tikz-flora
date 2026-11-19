@@ -1,7 +1,7 @@
--- The frame band (band.lua, pattern.lua's M.frame_band): cells moved about
+-- The perimeter band (band.lua, pattern.lua's M.perimeter_band): cells moved about
 -- the paper's centre paint what they painted before, moved; the band's
 -- invariants hold over every pattern, width, paper, edge and backdrop
--- (tests/pattern_band.lua), and each of them fails when the engine is
+-- (tests/pattern_perimeter.lua), and each of them fails when the engine is
 -- broken the way it guards against; an edge the page leaves out is the
 -- pattern's own in a band, and edge=dissolve written out is not; and the
 -- band's keys leave every other layout as it was.
@@ -59,7 +59,7 @@ for _, p in ipairs(Patterns.list) do
 end
 
 local Band = require("flora.band")
-local B = dofile("tests/pattern_band.lua")
+local B = dofile("tests/pattern_perimeter.lua")
 
 -- The repeats the whole rows are sized by: kikko's honeycomb repeats
 -- every three sides along x and every sqrt(3) sides along y.
@@ -136,7 +136,7 @@ do
   local orig = B.expected
   B.expected = function(p, wmm, edge)
     local out = orig(p, wmm, edge)
-    for i = #out, 1, -1 do if out[i] == "does not carry a frame band" then table.remove(out, i) end end
+    for i = #out, 1, -1 do if out[i] == "does not carry a perimeter band" then table.remove(out, i) end end
     return out
   end
   local _, fails = B.run({ patterns = { khatam = true }, widths = { 8 }, papers = { B.PAPERS[1] }, backdrops = { "light" }, edges = { false } })
@@ -150,12 +150,12 @@ do
   spec.pattern_hero = "rosette"
   local pt = Compose.page(spec)
   local n = 0
-  for _, g in ipairs(pt.pattern_warnings or {}) do if g:find("is not drawn in a frame band", 1, true) then n = n + 1 end end
+  for _, g in ipairs(pt.pattern_warnings or {}) do if g:find("is not drawn in a perimeter band", 1, true) then n = n + 1 end end
   H.check(n == 1, "hero in a band: warned " .. n .. " times")
   spec = B.spec("kikko", 12, B.PAPERS[1], "guilloche", "light")
   pt = Compose.page(spec)
   n = 0
-  for _, g in ipairs(pt.pattern_warnings or {}) do if g:find("has no form in a frame band", 1, true) then n = n + 1 end end
+  for _, g in ipairs(pt.pattern_warnings or {}) do if g:find("has no form in a perimeter band", 1, true) then n = n + 1 end end
   H.check(n == 1, "edge=guilloche in a band: warned " .. n .. " times")
   H.check(pt.pattern.band and pt.pattern.band.inner == "rule", "edge=guilloche in a band: kikko is not laid with its own edge")
 end
@@ -195,11 +195,11 @@ end
 do
   local function page(extra)
     local spec = B.spec("kikko", 12, B.PAPERS[1], false, "light")
-    spec.layout, spec.frame_width = "surround", nil
+    spec.layout, spec.perimeter_width = "surround", nil
     for k, v in pairs(extra or {}) do spec[k] = v end
     return Compose.page(spec):body()
   end
-  H.check(page() == page({ frame_width = 8 }), "surround: the band's width changed the page")
+  H.check(page() == page({ perimeter_width = 8 }), "surround: the band's width changed the page")
 end
 
-H.done("test_pattern_frame")
+H.done("test_pattern_perimeter")

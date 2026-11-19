@@ -1,4 +1,4 @@
--- The frame band's invariant matrix (tests/test_pattern_frame.lua): every
+-- The perimeter band's invariant matrix (tests/test_pattern_perimeter.lua): every
 -- pattern x band width x paper x edge (each value and none) x backdrop, on
 -- a page with a frame title, the theme's top inset and header clip, and a
 -- reservation in the top band. M.run returns the cells swept and every
@@ -55,7 +55,7 @@ function M.spec(pattern, wmm, paper, edge, backdrop)
     header_y = t.y1, header = "margin", frametitle = true, frametitle_height = 16, top_inset = 20,
     tune = { gesture = { header_clip = 1, header_gap = 12 } },
     reserve = { { W - 40 * MM, H - wmm * MM / 2, W - 10 * MM, H } },
-    seed = 11, layout = Band.LAYOUT, pattern = pattern, frame_width = wmm, ornaments = {},
+    seed = 11, layout = Band.LAYOUT, pattern = pattern, perimeter_width = wmm, ornaments = {},
     backdrop = backdrop == "dark" and "dark" or nil,
   }
   if edge then spec.pattern_edge = edge end
@@ -67,7 +67,7 @@ function M.expected(p, wmm, edge)
   local out = {}
   local e = edge or Band.default_edge(p.name)
   local narrowest = Band.NARROWEST[p.name]
-  if narrowest and wmm < narrowest then out[#out + 1] = "does not carry a frame band" end
+  if narrowest and wmm < narrowest then out[#out + 1] = "does not carry a perimeter band" end
   local px = Pattern.periods(p)
   if e == Band.ROWS and not p.field_panel then
     local plan = Pattern.row_plan({}, p, wmm * MM)

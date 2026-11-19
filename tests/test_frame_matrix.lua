@@ -64,7 +64,7 @@ end
 -- Frames each layout asks for.
 local COUNT = { left = 1, right = 1, centered = 2, split = 1, title = 2, surround = 2,
   flank = 2, wreath = 2, bouquet = 2, scrollwork = 2 }
--- The frame band's flora is laid out as surround.
+-- The perimeter band's flora is laid out as surround.
 COUNT[require("flora.band").LAYOUT] = COUNT.surround
 
 local cells, dropped_cells, painted = 0, 0, 0

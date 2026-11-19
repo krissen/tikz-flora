@@ -75,7 +75,7 @@ compile with a message naming the key.
 
 | Key | Values | Effect |
 |---|---|---|
-| `layout` | `left`, `right`, `centered`, `split`, `title`, `surround`, `frame`, `flank`, `wreath`, `bouquet`, `scrollwork` | Where the flora grows (below) |
+| `layout` | `left`, `right`, `centered`, `split`, `title`, `surround`, `perimeter`, `flank`, `wreath`, `bouquet`, `scrollwork` | Where the flora grows (below) |
 | `header` | `body`, `margin` | For packages that supply a measured title (see Using flora from another package) |
 | `tune` | `{section={key=value, ...}, ...}` | Overrides values in `lua/flora/tune.lua` for following pages |
 | `seed` | a number, or `random` | Which garden; each page varies it |
@@ -92,8 +92,8 @@ compile with a message naming the key.
 | `giltlook` | `{key=value, ...}` | Changes keys of that look, e.g. `giltlook={horizon=0.1, grain=0}`: light, horizon, sky, ground, highlight, grain, sparkle, shadow and more (`lua/flora/gilt_look.lua` lists every key and its range) |
 | `backdrop` | `light` (default), `dark`, or a dark `#rrggbb` | What the flora is painted over. On `dark` every ink is painted light, as if lit, and gold stays gold; set the page to match, e.g. `\pagecolor[HTML]{0A1014}` |
 | `pattern` | a pattern or group name, `{name=weight, ...}`, or `none` | Fills the page with a geometric pattern instead of flora (see Patterns) |
-| `edge` | `dissolve` (default), `cell`, `fade`, `border`, `guilloche`; in a frame band also `rows` | How a pattern meets the text |
-| `framewidth` | 4 to 40 (mm) | The width of a pattern's frame band (`layout=frame`), 12 by default |
+| `edge` | `dissolve` (default), `cell`, `fade`, `border`, `guilloche`; in a perimeter band also `rows` | How a pattern meets the text |
+| `perimeterwidth` | 4 to 40 (mm) | The width of a pattern's perimeter band (`layout=perimeter`), 12 by default |
 | `hero` | `rosette`, `phyllotaxis`, `rose`, `guilloche`, `turned_circles`, `circle_disc`, `none` (default) | One large radial motif at a top corner of a pattern page |
 | `outer` | `bleed` (default), `margin` | How a pattern meets the paper's edge |
 | `scale` | 0.25 to 4 | The size of a pattern's cells, as a factor of their size for the field |
@@ -164,8 +164,8 @@ holds it to its box.
   `\begin{floratitle} ... \end{floratitle}`; without it the first block
   of lines is crowned.
 - `surround`: a wreath round the text block, for title pages and contents.
-- `frame`: for a pattern, a band round the paper's edge, the same width on
-  all four sides (see The frame band under Patterns). Flora under it is
+- `perimeter`: for a pattern, a band round the paper's edge, the same width on
+  all four sides (see The perimeter band under Patterns). Flora under it is
   laid out as `surround`.
 
 Four more layouts are for title pages, after engraved and hand-coloured
@@ -244,9 +244,9 @@ text) or `guilloche` (a guilloche band round it: two strands crossing over
 and under, a dot in each eye, between fine rules); `outer` whether it runs off the paper (`bleed`) or stops in whole
 cells, and a whole hero, inside it (`margin`); `scale` the cell size. A pattern's cells are sized to their field, so that it looks the same against its margin on a slide, an A4 page or an A5 one: the size is the pattern's own on a 53 mm wide margin, and smaller in a narrower one, in proportion, measured on the strip the pattern stands in (the margin beside the text, the narrower of the two under `centered`, and the widest strip round the text for layouts that take the whole page, such as `surround`); a wider margin keeps the pattern's own size. The cells never shrink below half their own size, nor so far that a strap loses its light core (`stars_8_4`, `truchet` and `celtic_knot` stop sooner), and the bands and fine lines thin with them, never below 0.25 pt. `scale` is a factor on that size. A pattern grows as flora does (see `docs/progression.md`): each cell from the page's outer edge inwards, its construction lines first and then its colour.
 
-#### The frame band
+#### The perimeter band
 
-`layout=frame` lays a pattern as a band round the paper's edge, the same width on all four sides: `framewidth` mm wide (12 by default, 4 to 40). The band keeps clear of the whole text block, not of its lines, of every `\florareserve` rectangle, and of a running head above the block under `header`; it runs to the paper's top past `gesture.top_inset` and the header clip that keep flora clear of a running head, so a frame title inside the text block keeps its band above it. The lattice is laid about the paper's centre, so the band meets the paper alike on opposite sides.
+`layout=perimeter` lays a pattern as a band round the paper's edge, the same width on all four sides: `perimeterwidth` mm wide (12 by default, 4 to 40). The band keeps clear of the whole text block, not of its lines, of every `\florareserve` rectangle, and of a running head above the block under `header`; it runs to the paper's top past `gesture.top_inset` and the header clip that keep flora clear of a running head, so a frame title inside the text block keeps its band above it. The lattice is laid about the paper's centre, so the band meets the paper alike on opposite sides.
 
 `edge` says how the band ends toward the text: `border`, a straight edge cut along the band's inner line, with a rule there; `cell`, whole cells; `fade`, whole cells paling into the paper toward the text; `dissolve`, the band whole, its cells falling away past its inner edge into the margin before the text (give it a margin of about 8 mm); `rows`, whole rows: the cells sized so that a whole number of the pattern's repeats fills the band, ending on its inner edge, each side the same strip turned onto it and mitred at the corners. With no `edge` a pattern takes its own: whole rows for `asanoha` and `stars_8_4`, whose rows end straight, and for `celtic_knot`, laid as one closed panel filling the band (a straight edge where no panel fits), and `border` for every other pattern. `edge=dissolve` written out is the dissolving band, not the pattern's own edge. On a dark backdrop the ground follows the cells under `edge=cell` and lies as one straight panel under `border` and `rows`. `edge=guilloche` has no form in a band: the pattern's own edge is used and the log says so. A band draws no `hero`; the log says so too.
 
@@ -384,7 +384,7 @@ without these settings every page is drawn as before.
 - `\florareserve{x0}{y0}{x1}{y1}` keeps the flora out of a rectangle on the
   following pages, and `\floraclearreserve` clears them. Coordinates start
   at the paper's lower-left corner and may be TeX dimension expressions.
-  A pattern's frame band (`layout=frame`) runs past the top inset and the
+  A pattern's perimeter band (`layout=perimeter`) runs past the top inset and the
   header clip to the paper's top, so a theme that draws in its top margin
   outside the text block reserves that rectangle, or the band paints over
   it.

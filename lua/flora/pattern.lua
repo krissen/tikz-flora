@@ -974,7 +974,7 @@ function M.lays(form, shapes, reach, f)
 end
 
 -- A warning for the page on `pt`, once however often it is given: a
--- frame band paints its sides one by one and asks the same questions on
+-- perimeter band paints its sides one by one and asks the same questions on
 -- each.
 function M.warn(pt, msg)
   pt.pattern_warned = pt.pattern_warned or {}
@@ -985,15 +985,15 @@ function M.warn(pt, msg)
   if texio and texio.write_nl then texio.write_nl("log", "flora: " .. msg) end
 end
 
--- The frame band's width on spec's page in pt (band.lua's key, in mm),
+-- The perimeter band's width on spec's page in pt (band.lua's key, in mm),
 -- at most half the paper's either way; nil on any other layout.
 function M.band_width(spec)
   if spec.layout ~= Band.LAYOUT or not (spec.width and spec.height) then return nil end
-  local w = (spec.frame_width or Band.WIDTH_DEFAULT) * 72 / 25.4
+  local w = (spec.perimeter_width or Band.WIDTH_DEFAULT) * 72 / 25.4
   return math.min(w, spec.width / 2, spec.height / 2)
 end
 
--- The frame band (band.lua): pattern p as a band round the paper's edge,
+-- The perimeter band (band.lua): pattern p as a band round the paper's edge,
 -- the same width on all four sides. The band is the paper less its inner
 -- rectangle `I`, the paper shrunk by that width; it keeps clear of the
 -- text block as a whole (not of its lines), of every reservation and of a
@@ -1017,10 +1017,10 @@ end
 -- Warnings go to the page (M.warn). Returns nil for any other layout, else
 -- { w, inner, I }.
 local INNER = { border = "rule", cell = "cells", fade = "fade", dissolve = "margin", rows = "rows" }
-function M.frame_band(spec, p, pt)
+function M.perimeter_band(spec, p, pt)
   -- One side of a whole-rows band, laid as its own strip (M.paint_rows):
   -- the band is the strip's foot, w high.
-  local fs = spec.frame_strip
+  local fs = spec.perimeter_strip
   if fs then
     local huge = 1e9
     return { w = fs.w, inner = "cells", I = { -huge, fs.w, huge, huge }, strip = fs }
@@ -1031,7 +1031,7 @@ function M.frame_band(spec, p, pt)
   local edge = given or Band.default_edge(p.name)
   if not Band.EDGES[edge] then
     edge = Band.default_edge(p.name)
-    M.warn(pt, string.format("edge=%s has no form in a frame band; %s is laid with its own edge, %s", given, p.name, edge))
+    M.warn(pt, string.format("edge=%s has no form in a perimeter band; %s is laid with its own edge, %s", given, p.name, edge))
   end
   local inner = INNER[Band.EDGES[edge]]
   if inner == "rows" and p.field_panel then
@@ -1043,13 +1043,13 @@ function M.frame_band(spec, p, pt)
   local narrowest = Band.NARROWEST[p.name]
   if narrowest and mm < narrowest - 1e-9 then
     if narrowest == math.huge then
-      M.warn(pt, p.name .. " does not carry a frame band; it is drawn all the same")
+      M.warn(pt, p.name .. " does not carry a perimeter band; it is drawn all the same")
     else
-      M.warn(pt, string.format("%s does not carry a frame band narrower than %g mm; it is drawn at %g mm all the same", p.name, narrowest, mm))
+      M.warn(pt, string.format("%s does not carry a perimeter band narrower than %g mm; it is drawn at %g mm all the same", p.name, narrowest, mm))
     end
   end
   if key(spec, "hero") ~= "none" then
-    M.warn(pt, "hero=" .. key(spec, "hero") .. " is not drawn in a frame band")
+    M.warn(pt, "hero=" .. key(spec, "hero") .. " is not drawn in a perimeter band")
   end
   return { w = w, inner = inner, I = { w, w, spec.width - w, spec.height - w } }
 end
@@ -1159,7 +1159,7 @@ end
 function M.field_strip(spec)
   local t, W, H = spec.text, spec.width, spec.height
   if not (t and W and H) then return nil end
-  -- A frame band's strip is the band itself.
+  -- A perimeter band's strip is the band itself.
   local bw = M.band_width(spec)
   if bw then return bw end
   local side = sides(spec)
@@ -1211,11 +1211,11 @@ function M.factor_floor(spec, p)
   return lo
 end
 
--- The top of a frame band's field: the paper's own, past any top inset
+-- The top of a perimeter band's field: the paper's own, past any top inset
 -- or header clip.
 function M.band_top(_, H) return H end
 
--- What edge=border cuts a frame band along: its inner rectangle, and each
+-- What edge=border cuts a perimeter band along: its inner rectangle, and each
 -- rectangle the band keeps clear of, grown by the gap. A clip each, as
 -- their holes may overlap.
 function M.band_holes(band, keep_rects, gap)
@@ -1224,7 +1224,7 @@ function M.band_holes(band, keep_rects, gap)
   return out
 end
 
--- Whole rows (edge=rows in a frame band): the band as whole rows. Across
+-- Whole rows (edge=rows in a perimeter band): the band as whole rows. Across
 -- the band the cells are sized so that a whole number of the pattern's
 -- repeats (M.periods, its repeat along y) fills the band's width exactly: n rows, the fewest
 -- that keep the cells at or above the pattern's floor (M.factor_floor),
@@ -1289,11 +1289,11 @@ function M.paint_rows(spec, pt, p)
   local w = M.band_width(spec)
   local plan = M.row_plan(spec, p, w)
   if not plan then
-    M.warn(pt, p.name .. " has no repeat to lay in whole rows; its frame band is laid with a straight edge")
+    M.warn(pt, p.name .. " has no repeat to lay in whole rows; its perimeter band is laid with a straight edge")
     return false
   end
   if plan.below then
-    M.warn(pt, string.format("%s: whole rows in a %g mm frame band make its cells smaller than its floor (factor %.3f, floor %.3f)",
+    M.warn(pt, string.format("%s: whole rows in a %g mm perimeter band make its cells smaller than its floor (factor %.3f, floor %.3f)",
       p.name, w * 25.4 / 72, plan.f, plan.floor))
   end
   local size = p.scale * key(spec, "scale") * plan.f
@@ -1325,7 +1325,7 @@ function M.paint_rows(spec, pt, p)
     sub.lines, sub.header, sub.header_y, sub.top_inset = nil, nil, nil, 0
     sub.reserve = {}
     for j = 2, #keep do sub.reserve[#sub.reserve + 1] = inv_rect(side, keep[j]) end
-    sub.frame_strip = { w = w, f = plan.f, ox = L / 2, oy = oy, side = i }
+    sub.perimeter_strip = { w = w, f = plan.f, ox = L / 2, oy = oy, side = i }
     pt:frame(side.map)
     -- The mitre: the strip's corners cut along the diagonals from the
     -- paper's corners through the inner rectangle's.
@@ -1346,7 +1346,7 @@ function M.paint_rows(spec, pt, p)
     end
   end
   if texio and texio.write_nl then
-    texio.write_nl("log", string.format("flora: frame band of whole rows: %s, %d rows, factor %.3f (floor %.3f), inner repeat covered %.0f%%",
+    texio.write_nl("log", string.format("flora: perimeter band of whole rows: %s, %d rows, factor %.3f (floor %.3f), inner repeat covered %.0f%%",
       p.name, plan.n, plan.f, plan.floor, 100 * share))
   end
   local q = pt.pattern
@@ -1359,7 +1359,7 @@ function M.paint(spec, pt)
   local rng = Rng.new(spec.seed or 1)
   local p = Patterns.pick(rng:fork("choose pattern"), weights(spec.pattern))
   if not p then return false end
-  local band = M.frame_band(spec, p, pt)
+  local band = M.perimeter_band(spec, p, pt)
   if band and band.inner == "rows" then
     if M.paint_rows(spec, pt, p) then return true end
     band.inner = "rule"
@@ -1377,7 +1377,7 @@ function M.paint(spec, pt)
   -- Whole rows belong to a band; elsewhere the edge is the default's.
   if not band and edge == Band.ROWS then
     edge = require("flora.settings").PATTERN.edge
-    M.warn(pt, "edge=" .. Band.ROWS .. " applies only in a frame band; " .. edge .. " is used")
+    M.warn(pt, "edge=" .. Band.ROWS .. " applies only in a perimeter band; " .. edge .. " is used")
   end
   -- A band's inner edge sets how its cells meet the text: whole, falling
   -- away (dissolve, past the inner edge) or paling (fade).
@@ -1389,7 +1389,7 @@ function M.paint(spec, pt)
   -- the frames round the text keep the key's alone: they belong to the
   -- page and its text, not to the field's cells.
   local k_key = key(spec, "scale")
-  local ff = (spec.frame_strip and spec.frame_strip.f) or M.field_factor(spec, p)
+  local ff = (spec.perimeter_strip and spec.perimeter_strip.f) or M.field_factor(spec, p)
   local k_scale = k_key * ff
   local size = p.scale * k_scale
   local width = band_ink({}, p, spec, k_scale, ff).width
@@ -1709,7 +1709,7 @@ function M.paint(spec, pt)
   choose(cells)
   -- No closed panel fits the band: it is laid with a straight edge.
   if band and band.inner == "panel" and #kept == 0 then
-    M.warn(pt, string.format("%s: no closed panel fits a %g mm frame band; it is laid with a straight edge", p.name, band.w * 25.4 / 72))
+    M.warn(pt, string.format("%s: no closed panel fits a %g mm perimeter band; it is laid with a straight edge", p.name, band.w * 25.4 / 72))
     local again = {}
     for k, v in pairs(spec) do again[k] = v end
     again[require("flora.settings").SPEC.edge] = "border"
@@ -2004,11 +2004,11 @@ function M.paint(spec, pt)
   -- edge=border's rule along the inner edge, as edge=border's frame.
   if band and cut and (not grow or grow >= 0.1) then
     local I, ink = band.I, M.cell_inks(base, 1, true)
-    local frame = { { "m", I[1], I[2] }, { "l", I[3], I[2] }, { "l", I[3], I[4] }, { "l", I[1], I[4] }, { "z" } }
+    local rule = { { "m", I[1], I[2] }, { "l", I[3], I[2] }, { "l", I[3], I[4] }, { "l", I[1], I[4] }, { "z" } }
     Progression.part(pt, "pattern_border", { I[1], I[2] }, 0, 0.2, function()
       local fw = band_ink({}, p, spec, k_scale, ff).width
-      pt:stroke(frame, ink.band, fw * 1.2, 1)
-      pt:stroke(frame, ink.accent, fw * 0.45, 1)
+      pt:stroke(rule, ink.band, fw * 1.2, 1)
+      pt:stroke(rule, ink.accent, fw * 0.45, 1)
     end)
   end
   if hero and fits("hero", { { circle = hero } }, 0) then
@@ -2027,14 +2027,14 @@ function M.paint(spec, pt)
       { "l", text.x1 + o, text.y1 + o }, { "l", text.x0 - o, text.y1 + o }, { "z" } }
     Progression.part(pt, "pattern_border", { text.x0, text.y0 }, 0, 0.2, function()
       local fw = band_ink({}, p, spec, k_key).width
-      pt:stroke(frame, ink.band, fw * 1.2, 1)
-      pt:stroke(frame, ink.accent, fw * 0.45, 1)
+      pt:stroke(rule, ink.band, fw * 1.2, 1)
+      pt:stroke(rule, ink.accent, fw * 0.45, 1)
     end)
   end
   pt:end_group()
   pt.coverage = offered > 0 and #kept / offered or 0
   pt.pattern = { name = p.name, size = size, factor = ff, cells = #kept,
-    -- The frame band, if any: its width, inner edge and rectangle, and the
+    -- The perimeter band, if any: its width, inner edge and rectangle, and the
     -- holes edge=border cuts it along.
     band = band and { w = band.w, inner = band.inner, I = band.I, cuts = cuts },
     -- How the ground ends where the pattern ends (M.edge_pieces' mode).

@@ -1,4 +1,4 @@
--- The frame band: a geometric pattern as a band round the paper's edge,
+-- The perimeter band: a geometric pattern as a band round the paper's edge,
 -- the same width on all four sides (pattern.lua draws it). This module
 -- holds what users write for it and what each pattern does in it, so that
 -- settings.lua, frames.lua, compose.lua and pattern.lua read them from one
@@ -8,8 +8,8 @@ local M = {}
 
 -- The names users write: the layout value, the key for the band's width
 -- in mm, and the edge value for whole rows. Renaming one changes it here.
-M.LAYOUT = "frame"
-M.WIDTH = "framewidth"
+M.LAYOUT = "perimeter"
+M.WIDTH = "perimeterwidth"
 M.ROWS = "rows"
 
 -- The band's width in mm: its default and the range the key takes.

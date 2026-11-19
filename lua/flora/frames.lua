@@ -276,7 +276,7 @@ local function layout_frames(spec)
   if layout == "split" then
     layout = (spec.page or 1) % 2 == 1 and "right" or "left"
   end
-  -- The frame band is a pattern's (pattern.lua); flora is laid out as surround.
+  -- The perimeter band is a pattern's (pattern.lua); flora is laid out as surround.
   if layout == Band.LAYOUT then layout = "surround" end
   if layout == "left" then
     return { { spec = spec } }
