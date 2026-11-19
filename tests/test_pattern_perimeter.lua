@@ -144,6 +144,26 @@ end end, "width", { patterns = { kikko = true }, narrow_only = true, backdrops =
 -- past the inner edge.
 mutant("no room to dissolve", "band_margins", function() return function() return { 1, 1, 1, 1 } end end, "dissolve",
   { patterns = { kikko = true, stars_8_4 = true }, narrow = false, widths = {}, backdrops = { "light" }, edges = { "dissolve" } })
+-- The band's cells sized for the width asked, not the width drawn: a
+-- narrowed band's cells grow with what was asked.
+mutant("cells for the width asked", "field_strip", function(orig) return function(spec)
+  if spec.layout == Band.LAYOUT then
+    return math.min((spec.perimeter_width or Band.WIDTH_DEFAULT) * 72 / 25.4, spec.width / 2, spec.height / 2)
+  end
+  return orig(spec)
+end end, "size", { patterns = { kikko = true }, narrow_only = true, narrow = { B.NARROW[1] }, backdrops = { "light" }, edges = { "cell" } })
+-- Whole rows taking the most rows that keep the floor, cells at the
+-- floor whatever the field factor.
+mutant("most rows", "row_plan", function(orig) return function(spec, p, w)
+  local plan = orig(spec, p, w)
+  if not plan then return nil end
+  local lo = Pattern.factor_floor(spec, p)
+  local P = plan.period / plan.f
+  local n = math.max(1, math.floor(w / (P * lo) + 1e-9))
+  local f = w / (n * P)
+  return { n = n, f = f, floor = lo, period = P * f, along = plan.along and plan.along / plan.f * f, below = f < lo - 1e-9 }
+end end, "size", { patterns = { kikko = true, asanoha = true }, widths = { 40 }, papers = { B.PAPERS[3] }, narrow = false, roomy = false,
+  backdrops = { "light" }, edges = { "rows" } })
 -- celtic_knot's closed panel kept a square (8 pt at 12 mm) further from
 -- the inner edge than it may come: the rectangle it keeps clear of grown
 -- by that much on every side.
@@ -200,6 +220,26 @@ do
     H.check(#pt.pattern.kept == 0 and pt.pattern.band and pt.pattern.band.none, "no room for a band: cells were laid")
     H.check(not pt:body():find(" [fS]\n") and not pt:body():find(" re "), "no room for a band: something was painted")
   end
+end
+
+-- A finish the pattern does not take, in a band of whole rows: the log
+-- says so once, though the band paints its sides one by one; and given
+-- twice, the check sees it.
+do
+  local function notes(name, edge)
+    local spec = B.spec(name, 12, B.PAPERS[1], edge, "light")
+    spec.pattern_finish = "lacquer"
+    local pt = Compose.page(spec)
+    local n = 0
+    for _, g in ipairs(pt.pattern_warnings or {}) do if g:find("does not take it", 1, true) then n = n + 1 end end
+    return n
+  end
+  H.check(notes("kikko", Band.ROWS) == 1, "finish=lacquer on kikko in whole rows: noted " .. notes("kikko", Band.ROWS) .. " times")
+  H.check(notes("stars_8_4", false) == 1, "finish=lacquer on stars_8_4's own rows: noted " .. notes("stars_8_4", false) .. " times")
+  local orig = Pattern.warn
+  Pattern.warn = function(pt, msg) orig(pt, msg); table.insert(pt.pattern_warnings, msg) end
+  H.check(notes("kikko", Band.ROWS) ~= 1, "mutation warn twice: the finish note still comes once")
+  Pattern.warn = orig
 end
 
 -- The edge a page leaves out is the pattern's own in a band; edge=dissolve

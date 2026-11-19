@@ -18,6 +18,9 @@
 --             ends on its inner edge
 --   top       the band runs above the text under the frame title and the
 --             reservation
+--   size      a band narrowed to what its margins hold has the cells it has
+--             when that width is asked; whole rows are the whole number
+--             nearest the field factor at or above the floor
 --   dissolve  under edge=dissolve, cells fall away past the inner edge on
 --             every side that has two cells' room for it
 --   warn      each warning the page should give comes once, and no other
@@ -95,7 +98,7 @@ M.ROOMY = { "16:9, 12 mm band, 20 mm margins", { "16:9", 160, 90 }, 12, { 20, 20
 
 -- The warnings the page should give, as { pattern of their text, how many
 -- times }, for a band asked `wmm` wide and laid `we` pt wide.
-function M.expected(p, wmm, edge, we)
+function M.expected(p, wmm, edge, we, spec)
   local out = {}
   local e = edge or Band.default_edge(p.name)
   local w = wmm * MM
@@ -104,7 +107,7 @@ function M.expected(p, wmm, edge, we)
   if narrowest and we * 25.4 / 72 < narrowest - 1e-9 then out[#out + 1] = { "does not carry a perimeter band", 1 } end
   local px = Pattern.periods(p)
   if e == Band.ROWS and not p.field_panel then
-    local plan = px and Pattern.row_plan({}, p, we)
+    local plan = px and Pattern.row_plan(spec, p, we)
     if not plan then out[#out + 1] = { "no repeat to lay in whole rows", 1 }
     elseif plan.below then out[#out + 1] = { "smaller than its floor", 1 } end
   end
@@ -239,6 +242,43 @@ function M.check(p, wmm, paper, edge, backdrop, margins)
     if math.abs(L - (W - R)) > 1e-3 then fail("gaps", string.format("left %.3f and right %.3f differ", L, W - R)) end
     if math.abs(B - (H - T)) > 1e-3 then fail("gaps", string.format("foot %.3f and top %.3f differ", B, H - T)) end
   end
+  -- size (whole rows): the rows are the whole number of the pattern's
+  -- repeats across the band that brings the cells nearest the field
+  -- factor, of those at or above its floor (one row below it when none
+  -- is), and the cells lie within the floor and the ceiling unless no
+  -- whole number of rows does.
+  if inner == "rows" then
+    local _, py = Pattern.periods(p)
+    local P = py * (spec.pattern_scale or 1)
+    local ff, lo, ceil = Pattern.field_factor(spec, p), Pattern.factor_floor(spec, p), Pattern.FIELD_SCALE.ceil or math.huge
+    local best
+    for n = 1, math.ceil(we / (P * lo)) + 1 do
+      local f = we / (n * P)
+      if f >= lo - 1e-9 and (not best or math.abs(f - ff) < math.abs(we / (best * P) - ff) - 1e-12) then best = n end
+    end
+    best = best or 1
+    if q.rows ~= best then fail("size", string.format("%s rows, not the %d nearest the field factor %.3f", tostring(q.rows), best, ff)) end
+    local f = q.factor or 0
+    local fits = false
+    for n = 1, math.ceil(we / (P * lo)) + 1 do
+      local g = we / (n * P)
+      if g >= lo - 1e-9 and g <= ceil + 1e-9 then fits = true end
+    end
+    if fits and (f < lo - 1e-9 or f > ceil + 1e-9) then
+      fail("size", string.format("whole rows at factor %.3f, outside the floor %.3f and the ceiling %.3f", f, lo, ceil))
+    end
+  end
+  -- size (narrowed): a band narrowed to what the margins hold has the cells
+  -- it has when that width is asked.
+  if we < w - 1e-6 and we > 0 then
+    local again = M.spec(p.name, we / MM, paper, edge, backdrop, margins)
+    Paint.reset_resources()
+    local q2 = Compose.page(again).pattern
+    if math.abs((q2.size or 0) - (q.size or 0)) > 1e-6 or q2.rows ~= q.rows then
+      fail("size", string.format("cells of %.3f pt (%s rows) asked %g mm, %.3f pt (%s rows) asked the %.2f mm drawn",
+        q.size or 0, tostring(q.rows), wmm, q2.size or 0, tostring(q2.rows), we / MM))
+    end
+  end
   if inner == "rows" then
     local need = M.STRAIGHT_ROWS[p.name]
     if need and (q.cover or 0) < need then fail("straight", string.format("whole rows cover %.2f of the innermost repeat", q.cover or 0)) end
@@ -275,7 +315,7 @@ function M.check(p, wmm, paper, edge, backdrop, margins)
   end
   -- warn
   local got = pt.pattern_warnings or {}
-  local want = M.expected(p, wmm, edge, we)
+  local want = M.expected(p, wmm, edge, we, spec)
   -- A closed panel that does not fit is laid with a straight edge, and
   -- the log says so.
   if p.field_panel and (edge or Band.default_edge(p.name)) == Band.ROWS and inner == "rule" then
