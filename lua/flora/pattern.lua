@@ -1039,6 +1039,21 @@ function M.perimeter_band(spec, p, pt)
     if ends == "auto" then ends = p.ends or "cut" end
     if ends == "closed" or ends == "bleed" then inner = "panel" end
   end
+  -- Where a margin is narrower than the band, the whole band is: as wide
+  -- on all four sides as the narrowest side holds (M.band_inner). Too
+  -- narrow for a band at all, none is drawn.
+  local asked = w
+  local I, side = M.band_inner(spec, w)
+  w = I[1]
+  if w < asked - 1e-6 then
+    if w < Band.WIDTH_MIN * 72 / 25.4 - 1e-6 then
+      M.warn(pt, string.format("%s=%g: the %s margin leaves room for no perimeter band (%.1f mm); none is drawn",
+        Band.WIDTH, asked * 25.4 / 72, side, w * 25.4 / 72))
+      return { none = true }
+    end
+    M.warn(pt, string.format("%s=%g is wider than the %s margin allows; the band is %.1f mm on all four sides",
+      Band.WIDTH, asked * 25.4 / 72, side, w * 25.4 / 72))
+  end
   local mm = w * 25.4 / 72
   local narrowest = Band.NARROWEST[p.name]
   if narrowest and mm < narrowest - 1e-9 then
@@ -1051,36 +1066,30 @@ function M.perimeter_band(spec, p, pt)
   if key(spec, "hero") ~= "none" then
     M.warn(pt, "hero=" .. key(spec, "hero") .. " is not drawn in a perimeter band")
   end
-  local I = M.band_inner(spec, w)
-  -- Where the margin is narrower than the band, the band is narrower too.
-  local W, H = spec.width, spec.height
-  local narrow = {}
-  for _, s in ipairs({ { "left", I[1] }, { "foot", I[2] }, { "right", W - I[3] }, { "top", H - I[4] } }) do
-    if s[2] < w - 1e-6 then narrow[#narrow + 1] = string.format("%s %.1f mm", s[1], s[2] * 25.4 / 72) end
-  end
-  if #narrow > 0 then
-    M.warn(pt, string.format("%s=%g is wider than the margin beside the text; the band is narrowed to keep clear of it (%s)",
-      Band.WIDTH, mm, table.concat(narrow, ", ")))
-  end
   -- The text block's own margins, per side, for edge=dissolve's room past
   -- the inner edge (M.band_margins).
   return { w = w, inner = inner, I = I, margins = M.band_margins(spec, I) }
 end
 
 -- A perimeter band's inner rectangle: the paper shrunk by the band's width
--- `w`, but on a side where the text block (or a running head above it)
--- comes nearer the paper's edge than w, the gap and the band's own
+-- `w`, all four sides alike. Where the text block (or a running head above
+-- it) comes nearer the paper's edge than w, the gap and the band's own
 -- reach (NARROW_REACH: half a strap, and a cell's pad, past an edge whole
--- rows end on), only as far as keeps them from it, so the band and its
--- rule never reach the text.
+-- rows end on), the whole band is narrowed to what that side holds, so the
+-- band and its rule never reach the text and stay as wide all round.
+-- Returns the rectangle and the side that set its width ("" when the band
+-- is as wide as asked).
 local NARROW_REACH = 3
 function M.band_inner(spec, w)
   local W, H, t = spec.width, spec.height, spec.text
   local top = t.y1
   if spec.header and spec.header_y and spec.header_y > t.y1 + 1 then top = spec.header_y end
   local k = GAP + NARROW_REACH
-  return { math.max(0, math.min(w, t.x0 - k)), math.max(0, math.min(w, t.y0 - k)),
-    math.min(W, math.max(W - w, t.x1 + k)), math.min(H, math.max(H - w, top + k)) }
+  local side = ""
+  for _, s in ipairs({ { "left", t.x0 - k }, { "foot", t.y0 - k }, { "right", W - t.x1 - k }, { "top", H - top - k } }) do
+    if s[2] < w then w, side = math.max(0, s[2]), s[1] end
+  end
+  return { w, w, W - w, H - w }, side
 end
 
 -- The room edge=dissolve has past the band's inner edge, side by side
@@ -1278,18 +1287,20 @@ function M.panel_room(band, gap, keep_rects)
   return out
 end
 
--- Where along an axis a closed panel's squares (`a` wide, their bands
--- reaching `reach`) lie: the origin of their grid, between the band's
--- inner edges `lo` and `hi` on that axis (the inner rectangle's sides),
--- such that the last whole square on either side stops as near the inner
--- edge as the other, the strip each leaves under half a square. With the
--- band as wide on both sides the grid is symmetric about the paper's
--- centre, a square's corner or middle there.
-function M.panel_offset(lo, hi, reach, a)
-  local l1, r1 = lo - reach - 0.6 * a, hi + reach + 0.6 * a
-  local D = (l1 - r1) / a
-  local s = (D - math.floor(D)) * a / 2
-  return l1 - s
+-- Where along an axis `len` long a closed panel's squares (`a` wide, their
+-- bands reaching `reach`) lie about the centre: 0 for a square's corner at
+-- the centre, 0.5 for its middle, whichever leaves the smaller strip
+-- between the last whole square and the band's inner edge, `w` in from the
+-- paper. The panel is symmetric about the centre either way.
+function M.panel_offset(len, w, reach, a)
+  local limit = w - reach - 0.6 * a
+  local best, short
+  for _, d in ipairs({ 0, 0.5 }) do
+    local t = (limit - len / 2) / a - d
+    local s = (t - math.floor(t)) * a
+    if not short or s < short - 1e-9 then best, short = d, s end
+  end
+  return best
 end
 
 -- Whole rows (edge=rows in a perimeter band): the band as whole rows. Across
@@ -1354,33 +1365,18 @@ end
 
 function M.paint_rows(spec, pt, p, band)
   local W, H = spec.width, spec.height
-  local I = band.I
-  -- Each side's width (foot, right, top, left), narrower where the margin
-  -- is (M.band_inner), and the sides each strip meets at its start and
-  -- end (its mitres).
-  local widths = { I[2], W - I[3], H - I[4], I[1] }
-  -- A side as wide as the band is the band's width exactly, not its
-  -- difference from the paper's, so that alike sides are laid alike.
-  for i, v in ipairs(widths) do if math.abs(v - band.w) < 1e-6 then widths[i] = band.w end end
-  local ends = { { 4, 2 }, { 1, 3 }, { 2, 4 }, { 3, 1 } }
-  local plans, phases, share = {}, {}, 1
-  for i, w in ipairs(widths) do
-    if w > 1 then
-      local plan = M.row_plan(spec, p, w)
-      if not plan then
-        M.warn(pt, p.name .. " has no repeat to lay in whole rows; its perimeter band is laid with a straight edge")
-        return false
-      end
-      if plan.below then
-        M.warn(pt, string.format("%s: whole rows in a %g mm perimeter band make its cells smaller than its floor (factor %.3f, floor %.3f)",
-          p.name, w * 25.4 / 72, plan.f, plan.floor))
-      end
-      local size = p.scale * key(spec, "scale") * plan.f
-      local oy, sh = M.row_phase(p, size, w, plan.period, plan.along)
-      plans[i], phases[i] = plan, oy
-      share = math.min(share, sh)
-    end
+  local w = band.w
+  local plan = M.row_plan(spec, p, w)
+  if not plan then
+    M.warn(pt, p.name .. " has no repeat to lay in whole rows; its perimeter band is laid with a straight edge")
+    return false
   end
+  if plan.below then
+    M.warn(pt, string.format("%s: whole rows in a %g mm perimeter band make its cells smaller than its floor (factor %.3f, floor %.3f)",
+      p.name, w * 25.4 / 72, plan.f, plan.floor))
+  end
+  local size = p.scale * key(spec, "scale") * plan.f
+  local oy, share = M.row_phase(p, size, w, plan.period, plan.along)
   -- The sides: the strip's length, its map onto the page and its inverse.
   local strips = {
     { L = W, map = function(u, v) return u, v end, inv = function(x, y) return x, y end },
@@ -1397,50 +1393,44 @@ function M.paint_rows(spec, pt, p, band)
     local bx, by = side.inv(r[3], r[4])
     return { math.min(ax, bx), math.min(ay, by), math.max(ax, bx), math.max(ay, by) }
   end
-  local kept, cells, unfit, q, first = {}, 0, 0, nil, nil
+  local kept, cells, unfit, q = {}, 0, 0, nil
   for i, side in ipairs(strips) do
-    local plan, w = plans[i], widths[i]
-    if plan then
-      first = first or plan
-      local L = side.L
-      local sub = {}
-      for k, v in pairs(spec) do sub[k] = v end
-      local tr = inv_rect(side, keep[1])
-      sub.width, sub.height = L, 2 * w + 4 * plan.period
-      sub.text = { x0 = tr[1], y0 = tr[2], x1 = tr[3], y1 = tr[4] }
-      sub.lines, sub.header, sub.header_y, sub.top_inset = nil, nil, nil, 0
-      sub.reserve = {}
-      for j = 2, #keep do sub.reserve[#sub.reserve + 1] = inv_rect(side, keep[j]) end
-      sub.perimeter_strip = { w = w, f = plan.f, ox = L / 2, oy = phases[i], side = i }
-      pt:frame(side.map)
-      -- The mitres: the strip's ends cut along the lines from the paper's
-      -- corners through the inner rectangle's, at 45 degrees where the
-      -- sides meeting there are as wide.
-      local a, b, K = widths[ends[i][1]], widths[ends[i][2]], 1 + (4 * plan.period + 50) / w
-      pt:clip_begin({ { "m", -K * a, -K * w }, { "l", L + K * b, -K * w }, { "l", L - K * b, K * w }, { "l", K * a, K * w }, { "z" } })
-      M.paint(sub, pt)
-      pt:clip_end()
-      pt:frame(nil)
-      q = pt.pattern
-      cells = cells + q.cells
-      unfit = unfit + q.unfit
-      for _, k in ipairs(q.kept) do
-        local c = k.cell
-        local verts = {}
-        for j, v in ipairs(c.verts) do local x, y = side.map(v[1], v[2]); verts[j] = { x, y } end
-        local x, y = side.map(c.x, c.y)
-        kept[#kept + 1] = { cell = { x = x, y = y, verts = verts }, a = k.a }
-      end
+    local L = side.L
+    local sub = {}
+    for k, v in pairs(spec) do sub[k] = v end
+    local tr = inv_rect(side, keep[1])
+    sub.width, sub.height = L, 2 * w + 4 * plan.period
+    sub.text = { x0 = tr[1], y0 = tr[2], x1 = tr[3], y1 = tr[4] }
+    sub.lines, sub.header, sub.header_y, sub.top_inset = nil, nil, nil, 0
+    sub.reserve = {}
+    for j = 2, #keep do sub.reserve[#sub.reserve + 1] = inv_rect(side, keep[j]) end
+    sub.perimeter_strip = { w = w, f = plan.f, ox = L / 2, oy = oy, side = i }
+    pt:frame(side.map)
+    -- The mitre: the strip's corners cut along the diagonals from the
+    -- paper's corners through the inner rectangle's.
+    local far = w + 4 * plan.period + 50
+    pt:clip_begin({ { "m", -far, -far }, { "l", L + far, -far }, { "l", L - far, far }, { "l", far, far }, { "z" } })
+    M.paint(sub, pt)
+    pt:clip_end()
+    pt:frame(nil)
+    q = pt.pattern
+    cells = cells + q.cells
+    unfit = unfit + q.unfit
+    for _, k in ipairs(q.kept) do
+      local c = k.cell
+      local verts = {}
+      for j, v in ipairs(c.verts) do local x, y = side.map(v[1], v[2]); verts[j] = { x, y } end
+      local x, y = side.map(c.x, c.y)
+      kept[#kept + 1] = { cell = { x = x, y = y, verts = verts }, a = k.a }
     end
   end
-  if not first then return false end
   if texio and texio.write_nl then
     texio.write_nl("log", string.format("flora: perimeter band of whole rows: %s, %d rows, factor %.3f (floor %.3f), inner repeat covered %.0f%%",
-      p.name, first.n, first.f, first.floor, 100 * share))
+      p.name, plan.n, plan.f, plan.floor, 100 * share))
   end
-  pt.pattern = { name = p.name, size = p.scale * key(spec, "scale") * first.f, factor = first.f, rows = first.n, cover = share,
-    cells = cells, kept = kept, reach = q.reach, gap = q.gap, warnings = pt.pattern_warnings, unfit = unfit, inks = q.inks,
-    inner = "rows", w = band.w, band = { w = band.w, inner = "rows", I = I }, sides = plans }
+  pt.pattern = { name = p.name, size = size, factor = plan.f, rows = plan.n, cover = share, cells = cells, kept = kept,
+    reach = q.reach, gap = q.gap, warnings = pt.pattern_warnings, unfit = unfit, inks = q.inks,
+    inner = "rows", w = w, band = { w = w, inner = "rows", I = band.I } }
   return true
 end
 
@@ -1449,6 +1439,11 @@ function M.paint(spec, pt)
   local p = Patterns.pick(rng:fork("choose pattern"), weights(spec.pattern))
   if not p then return false end
   local band = M.perimeter_band(spec, p, pt)
+  -- No room for a band: the page is left bare (the log says why).
+  if band and band.none then
+    pt.pattern = { name = p.name, cells = 0, kept = {}, offered = 0, warnings = pt.pattern_warnings, unfit = 0, band = { none = true } }
+    return true
+  end
   if band and band.inner == "rows" then
     if M.paint_rows(spec, pt, p, band) then return true end
     band.inner = "rule"
@@ -1631,8 +1626,7 @@ function M.paint(spec, pt)
     -- there or a middle, along each axis whichever brings their edge
     -- nearest the band's inner edge (M.panel_offset).
     local reach = field_room.reach
-    local I = band.I
-    return at(M.panel_offset(I[1], I[3], reach, size), M.panel_offset(I[2], I[4], reach, size))
+    return at(W / 2 + M.panel_offset(W, band.w, reach, size) * size, H / 2 + M.panel_offset(H, band.w, reach, size) * size)
   end
   local cells = draw_cells()
   if base.ground and opts.ground_edge == "discs" then base.ground_nd = M.field_edges(cells, {}, {}).nd end

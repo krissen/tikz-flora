@@ -58,7 +58,7 @@ M.about = {
   { "alternate", "auto, off, rows, three", "Whether a star pattern's stars take turns in the fields (hexagram_lattice): auto (the default) and off lay every star in the first field; rows alternate the first and second field row by row; three deal the first field, the second and the accent so that no two touching stars share one." },
   { "lighten", "0 to 1", "Lightens a pattern's fields toward the paper: 0 (the default) keeps their inks' lightness, 1 makes them nearly the paper." },
   { "bandwidth", "0.25 to 4", "The width of a pattern's bands and lines, as a factor of its own." },
-  { Band.WIDTH, Band.WIDTH_MIN .. " to " .. Band.WIDTH_MAX, "The width in mm of a perimeter band (layout=" .. Band.LAYOUT .. "), the same on all four sides: " .. Band.WIDTH_DEFAULT .. " by default. Where a margin is narrower, the band is narrower on that side, clear of the text block, and the log says so." },
+  { Band.WIDTH, Band.WIDTH_MIN .. " to " .. Band.WIDTH_MAX, "The width in mm of a perimeter band (layout=" .. Band.LAYOUT .. "), the same on all four sides: " .. Band.WIDTH_DEFAULT .. " by default. Where a margin is narrower, the whole band narrows to what the narrowest side holds, the same all round and clear of the text block (none under 4 mm), and the log says so." },
   { "cache", "true, false",
     "true (the default) keeps each page's flora in a folder <jobname>-flora beside the PDF, so a later compile reuses it; false grows every page afresh." },
 }
