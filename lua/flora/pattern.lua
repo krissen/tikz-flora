@@ -1062,7 +1062,9 @@ function M.perimeter_band(spec, p, pt)
     M.warn(pt, string.format("%s=%g is wider than the margin beside the text; the band is narrowed to keep clear of it (%s)",
       Band.WIDTH, mm, table.concat(narrow, ", ")))
   end
-  return { w = w, inner = inner, I = I }
+  -- The text block's own margins, per side, for edge=dissolve's room past
+  -- the inner edge (M.band_margins).
+  return { w = w, inner = inner, I = I, margins = M.band_margins(spec, I) }
 end
 
 -- A perimeter band's inner rectangle: the paper shrunk by the band's width
@@ -1079,6 +1081,19 @@ function M.band_inner(spec, w)
   local k = GAP + NARROW_REACH
   return { math.max(0, math.min(w, t.x0 - k)), math.max(0, math.min(w, t.y0 - k)),
     math.min(W, math.max(W - w, t.x1 + k)), math.min(H, math.max(H - w, top + k)) }
+end
+
+-- The room edge=dissolve has past the band's inner edge, side by side
+-- (left, foot, right, top): from the inner rectangle to the text block (or
+-- a running head above it), less the gap; at least 1 pt. Only the text
+-- sets it, so a reservation in the band changes no side's transition; the
+-- cells keep clear of it as of everything else.
+function M.band_margins(spec, I)
+  local t = spec.text
+  local top = t.y1
+  if spec.header and spec.header_y and spec.header_y > t.y1 + 1 then top = spec.header_y end
+  local function room(d) return math.max(1, d - GAP) end
+  return { room(t.x0 - I[1]), room(t.y0 - I[2]), room(I[3] - t.x1), room(I[4] - top) }
 end
 
 -- The shortest repeats of pattern p's cell centres along x and along y
@@ -1489,13 +1504,6 @@ function M.paint(spec, pt)
     for _, r in ipairs(spec.reserve or {}) do keep_rects[#keep_rects + 1] = { r[1], r[2], r[3], r[4] } end
     top = M.band_top(spec, H)
     ramp = 0.5 * band.w / math.max(dens, 1e-6)
-    -- The margin between the band and what it keeps clear of, less the gap.
-    local m = math.huge
-    local I = band.I
-    for _, r in ipairs(keep_rects) do
-      m = math.min(m, r[1] - I[1], I[3] - r[3], r[2] - I[2], I[4] - r[4])
-    end
-    band.margin = math.max(1, m - gap)
   end
   local base = M.role_inks(rng:fork("pattern inks"), p, spec)
   local hero = not band and M.hero(spec, side, top, keep_rects, gap) or nil
@@ -1551,8 +1559,10 @@ function M.paint(spec, pt)
     local I = band.I
     -- A strip's whole rows end on the inner edge itself; its panel runs
     -- under their bands' outer half as well.
+    -- Under edge=dissolve it runs on past the inner edge to the text, as
+    -- the cells falling away over it do.
     local o = gap + (band.strip and width / 2 or 0)
-    panel_avoid = { { I[1] + o, I[2] + o, I[3] - o, I[4] - o } }
+    panel_avoid = band.inner == "margin" and {} or { { I[1] + o, I[2] + o, I[3] - o, I[4] - o } }
     for _, r in ipairs(keep_rects) do panel_avoid[#panel_avoid + 1] = r end
   end
   -- (A strip's whole rows end on its inner edge, their bands past it: the
@@ -1703,10 +1713,13 @@ function M.paint(spec, pt)
       local inner = band.inner
       if inner == "margin" then
         -- The band whole, thinning past its inner edge into the margin:
-        -- by how far the cell's centre lies inside the inner rectangle.
-        local I = band.I
-        local inside = math.min(c.x - I[1], I[3] - c.x, c.y - I[2], I[4] - c.y)
-        a = (inside <= 0 or r < smooth(1 - inside / band.margin)) and 1 or 0
+        -- by how far the cell's centre lies inside the inner rectangle, over
+        -- the room on the side it lies nearest.
+        local I, mg = band.I, band.margins
+        local into = { c.x - I[1], c.y - I[2], I[3] - c.x, I[4] - c.y }
+        local s = 1
+        for i = 2, 4 do if into[i] < into[s] then s = i end end
+        a = (into[s] <= 0 or r < smooth(1 - into[s] / mg[s])) and 1 or 0
       elseif inner == "fade" then
         a = smooth(dI / ramp)
         if a < 0.04 then a = 0 end
@@ -2126,7 +2139,7 @@ function M.paint(spec, pt)
   pt.pattern = { name = p.name, size = size, factor = ff, cells = #kept,
     -- The perimeter band, if any: its width, inner edge and rectangle, and the
     -- holes edge=border cuts it along.
-    band = band and { w = band.w, inner = band.inner, I = band.I, cuts = cuts },
+    band = band and { w = band.w, inner = band.inner, I = band.I, cuts = cuts, margins = band.margins },
     -- The ground's panel as laid, by its rectangles (M.path_rects).
     panel = pieces.panel and M.path_rects(pieces.panel),
     -- How the ground ends where the pattern ends (M.edge_pieces' mode).
