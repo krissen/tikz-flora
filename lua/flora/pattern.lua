@@ -1308,9 +1308,12 @@ end
 
 -- Whole rows (edge=rows in a perimeter band): the band as whole rows. Across
 -- the band the cells are sized so that a whole number of the pattern's
--- repeats (M.periods, its repeat along y) fills the band's width exactly: n rows, the fewest
--- that keep the cells at or above the pattern's floor (M.factor_floor),
--- and the lattice is set so that a row ends on the inner edge. Each side
+-- repeats (M.periods, its repeat along y) fills the band's width exactly:
+-- n rows, the whole number that brings the cells nearest the size every
+-- other edge gives them (the field factor, M.field_factor, measured on the
+-- band as drawn), of those that keep them at or above the pattern's floor
+-- (M.factor_floor); one row, below the floor, when the band holds no more.
+-- The lattice is set so that a row ends on the inner edge. Each side
 -- is the same strip, its foot on the paper's edge, turned onto the side
 -- (so the pattern turns with it) and cut at the corners along the
 -- diagonal, as a mitred frame is. M.row_plan is the rows and the cells'
@@ -1321,12 +1324,15 @@ function M.row_plan(spec, p, w)
   local k = key(spec, "scale")
   local lo = M.factor_floor(spec, p)
   local P = py * k
-  -- The fewest rows at or above the floor; one more when the cells would
-  -- be larger than their own size (the ceiling) and one more still keeps
-  -- the floor. One row below the floor when the band holds no more.
-  local n = math.max(1, math.floor(w / (P * lo) + 1e-9))
-  local ceil = M.FIELD_SCALE.ceil
-  if ceil and w / (n * P) > ceil and w / ((n + 1) * P) >= lo - 1e-9 then n = n + 1 end
+  -- The whole numbers either side of the field factor's rows; of those at
+  -- or above the floor, the one whose cells come nearest the factor.
+  local ff = M.field_factor(spec, p)
+  local x = w / (P * ff)
+  local n
+  for _, c in ipairs({ math.floor(x), math.ceil(x) }) do
+    if c >= 1 and w / (c * P) >= lo - 1e-9 and (not n or math.abs(w / (c * P) - ff) < math.abs(w / (n * P) - ff) - 1e-12) then n = c end
+  end
+  n = n or 1
   local f = w / (n * P)
   return { n = n, f = f, floor = lo, period = P * f, along = px and px * k * f, below = f < lo - 1e-9 }
 end
