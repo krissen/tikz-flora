@@ -25,11 +25,25 @@ bench:
     grep real build/bench.txt
     pdfinfo build/manuscript.pdf | grep -E 'Pages|File size'
 
-# Run the Lua unit tests under texlua, and the tune.lua writer's test.
-test:
-    for f in tests/test_*.lua; do texlua "$f" || exit 1; done
-    {{PYTHON}} -I tests/test_bake.py
-    {{PYTHON}} -I tests/test_lint.py
+# The Lua unit tests under texlua, the tune.lua writer's and the linter's
+# tests: tools/test.sh, the list CI and the pre-push hook use.
+# Every test, JOBS at a time, e.g. `just test 6`.
+test jobs="1":
+    FLORA_PYTHON={{PYTHON}} tools/test.sh -j {{jobs}}
+
+# `python3 -I tools/test_times.py compare OLD NEW` compares two runs
+# (docs/testing.md). Every test (or NAMES) timed, JOBS at a time, to
+# build/test-times.tsv, shown with the least wall time jobs could take.
+test-times jobs="4" *names:
+    mkdir -p build
+    FLORA_PYTHON={{PYTHON}} tools/test.sh -j {{jobs}} --times build/test-times.tsv {{names}} > build/test-times.out 2>&1 || (tail -30 build/test-times.out; exit 1)
+    python3 -I tools/test_times.py show build/test-times.tsv --jobs {{jobs}}
+
+# E.g. `just profile tests/test_pattern_perimeter.lua`, or `just profile
+# --time flora.pattern.clearance tests/test_pattern.lua` (docs/testing.md):
+# where a Lua run spends its time, sampled by function and line.
+profile *args:
+    texlua tools/profile.lua {{args}}
 
 # Lint the Lua (lua-language-server, .luarc.json), the Python (ruff, and
 # pyright when installed) and tools/*.sh (shellcheck). .lint-exempt lists the
