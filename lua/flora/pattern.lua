@@ -985,12 +985,18 @@ function M.warn(pt, msg)
   if texio and texio.write_nl then texio.write_nl("log", "flora: " .. msg) end
 end
 
--- The perimeter band's width on spec's page in pt (band.lua's key, in mm),
--- at most half the paper's either way; nil on any other layout.
+-- The perimeter band's width on spec's page in pt, as it is drawn: the
+-- width asked (band.lua's key, in mm, at most half the paper's either way),
+-- narrowed where a margin is narrower (M.band_inner). The one definition
+-- of the band's width, for everything sized by it, its cells included
+-- (M.field_strip). Returns that width, the width asked, the side that
+-- narrowed it ("" for none) and the inner rectangle; nil on any other
+-- layout.
 function M.band_width(spec)
   if spec.layout ~= Band.LAYOUT or not (spec.width and spec.height) then return nil end
-  local w = (spec.perimeter_width or Band.WIDTH_DEFAULT) * 72 / 25.4
-  return math.min(w, spec.width / 2, spec.height / 2)
+  local asked = math.min((spec.perimeter_width or Band.WIDTH_DEFAULT) * 72 / 25.4, spec.width / 2, spec.height / 2)
+  local I, side = M.band_inner(spec, asked)
+  return I[1], asked, side, I
 end
 
 -- The perimeter band (band.lua): pattern p as a band round the paper's edge,
@@ -1025,8 +1031,8 @@ function M.perimeter_band(spec, p, pt)
     local huge = 1e9
     return { w = fs.w, inner = "cells", I = { -huge, fs.w, huge, huge }, strip = fs }
   end
-  local w = M.band_width(spec)
-  if not w then return nil end
+  local w, asked, side, I = M.band_width(spec)
+  if not (w and I) then return nil end
   local given = spec[require("flora.settings").SPEC.edge]
   local edge = given or Band.default_edge(p.name)
   if not Band.EDGES[edge] then
@@ -1040,11 +1046,8 @@ function M.perimeter_band(spec, p, pt)
     if ends == "closed" or ends == "bleed" then inner = "panel" end
   end
   -- Where a margin is narrower than the band, the whole band is: as wide
-  -- on all four sides as the narrowest side holds (M.band_inner). Too
+  -- on all four sides as the narrowest side holds (M.band_width). Too
   -- narrow for a band at all, none is drawn.
-  local asked = w
-  local I, side = M.band_inner(spec, w)
-  w = I[1]
   if w < asked - 1e-6 then
     if w < Band.WIDTH_MIN * 72 / 25.4 - 1e-6 then
       M.warn(pt, string.format("%s=%g: the %s margin leaves room for no perimeter band (%.1f mm); none is drawn",
