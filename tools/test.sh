@@ -89,6 +89,7 @@ if [ "$jobs" = 1 ] && [ -z "$times" ]; then
   exit 0
 fi
 
+[ -x /usr/bin/time ] || usage "-j and --times need /usr/bin/time (the time package)"
 # The times file is written next to FILE and moved over it at the end:
 # found unwritable now, not after the run.
 if [ -n "$times" ]; then
