@@ -22,7 +22,7 @@
 # TERM, HUP), the run stops every test it started and writes no times.
 set -e
 cd "$(dirname "$0")/.."
-FAST="core grow leaf letters plant settings reserve prepare_spec render_page inline headpiece lint"
+FAST="core grow leaf letters plant settings reserve prepare_spec render_page inline headpiece lint tools"
 
 # One test, by name.
 run() {
@@ -30,6 +30,8 @@ run() {
     "${FLORA_PYTHON:-python3}" -I tests/test_bake.py
   elif [ "$1" = lint ]; then
     "${FLORA_PYTHON:-python3}" -I tests/test_lint.py
+  elif [ "$1" = tools ]; then
+    "${FLORA_PYTHON:-python3}" -I tests/test_tools.py
   else
     texlua "tests/test_$1.lua"
   fi
@@ -73,7 +75,7 @@ case "$jobs" in ''|*[!0-9]*|0) usage "-j takes a positive whole number or auto, 
 # shellcheck disable=SC2086,SC2046,SC2012
 case "${1:-}" in
   fast) set -- $FAST bake ;;
-  "") set -- $(ls tests/test_*.lua | sed 's|tests/test_||; s|\.lua$||') bake lint ;;
+  "") set -- $(ls tests/test_*.lua | sed 's|tests/test_||; s|\.lua$||') bake lint tools ;;
 esac
 
 # Each test once: two runs of one test would share its output files.
