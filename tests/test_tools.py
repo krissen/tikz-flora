@@ -10,7 +10,9 @@ their status in the times file; an interrupted run stops its tests and
 writes no times; a --times file that cannot be written, a bad -j and a
 test named twice stop the run before it starts. tools/test_times.py:
 empty, headless, half-written and garbled files are refused, and compare
-totals only the tests both runs timed and passed.
+totals only the tests both runs timed and passed. tools/test-linux.sh:
+every file the tests and tools/test.sh name is among those it sends the
+container.
 
 TOOLS_UNDER_TEST, a directory, takes the three tools from there instead
 of tools/ (to show this test fails on an earlier version). TEST_SH_SHELL
@@ -20,7 +22,9 @@ instead of by its #!/bin/sh line.
     python3 -I tests/test_tools.py
 """
 
+import glob
 import os
+import re
 import shutil
 import signal
 import subprocess
@@ -308,11 +312,53 @@ def test_times_files(d):
     check(p.returncode == 0 and total and total[0].split()[1] == "14.0", f"show totals a failed or untimed test: {total}")
 
 
+# A path in quotes, as the tests and the runner write the files they read.
+PATH_RE = re.compile(r"""["']((?:\./)?[A-Za-z0-9_.-]+(?:/[A-Za-z0-9_.-]+)+)["']""")
+
+
+def read_paths():
+    """The repository's files named in the tests and tools/test.sh."""
+    found = set()
+    sources = glob.glob(os.path.join(ROOT, "tests", "*.lua")) + glob.glob(os.path.join(ROOT, "tests", "*.py"))
+    for src in [*sources, os.path.join(ROOT, "tools", "test.sh")]:
+        with open(src) as f:
+            text = f.read()
+        for m in PATH_RE.finditer(text):
+            rel = os.path.normpath(m.group(1))
+            if os.path.isfile(os.path.join(ROOT, rel)):
+                found.add(rel)
+    return found
+
+
+def test_linux_input():
+    """Every file the tests name is among those tools/test-linux.sh sends
+    the container (LINUX_SENT_LIST, a file of paths one a line, checks
+    another list instead)."""
+    given = os.environ.get("LINUX_SENT_LIST")
+    if not given and os.environ.get("FLORA_IN_LINUX_CONTAINER"):
+        # The container's tree is the list sent, without git to list it.
+        print("tools: the container's input is checked where it is sent, not inside it")
+        return
+    if given:
+        with open(given) as f:
+            sent_text = f.read()
+    else:
+        p = subprocess.run([os.path.join(TOOLS, "test-linux.sh"), "--list"], cwd=ROOT, capture_output=True, text=True, check=False)
+        check(p.returncode == 0, f"test-linux.sh --list: rc {p.returncode}: {p.stderr.strip()}")
+        sent_text = p.stdout
+    sent = {os.path.normpath(x) for x in sent_text.splitlines() if x}
+    names = read_paths()
+    check(len(names) > 10, f"found only {len(names)} files named in the tests (the scan is broken?)")
+    missing = sorted(names - sent)
+    check(not missing, f"files the tests read that the Linux container does not get: {missing}")
+
+
 def main():
     with tempfile.TemporaryDirectory() as d:
         test_profile(os.path.join(d, "profile"))
         test_runner(os.path.join(d, "runner"))
         test_times_files(os.path.join(d, "times"))
+    test_linux_input()
     if failures:
         print(f"tools: {len(failures)} failure(s)", file=sys.stderr)
         return 1
