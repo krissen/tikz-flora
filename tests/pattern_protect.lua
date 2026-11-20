@@ -44,31 +44,51 @@ local function rect_dist(x, y, r)
   local dy = math.max(r[2] - y, 0, y - r[4])
   return math.sqrt(dx * dx + dy * dy)
 end
+-- One of Liang-Barsky's clips: the range t0..t1 the edge with p and q
+-- leaves, or nil when the segment misses it.
+local function clip(p, q, t0, t1)
+  if p == 0 then
+    if q < 0 then return nil end
+  else
+    local t = q / p
+    if p < 0 then t0 = math.max(t0, t) else t1 = math.min(t1, t) end
+    if t0 > t1 then return nil end
+  end
+  return t0, t1
+end
 local function seg_rect_dist(a, b, r)
   -- 0 when the segment meets the rectangle, else the least distance of
   -- the segment's ends and the rectangle's corners to the other.
-  local t0, t1 = 0, 1
-  local dx, dy = b[1] - a[1], b[2] - a[2]
-  local hit = true
-  for _, e in ipairs({ { -dx, a[1] - r[1] }, { dx, r[3] - a[1] }, { -dy, a[2] - r[2] }, { dy, r[4] - a[2] } }) do
-    local p, q = e[1], e[2]
-    if p == 0 then
-      if q < 0 then hit = false end
-    else
-      local t = q / p
-      if p < 0 then t0 = math.max(t0, t) else t1 = math.min(t1, t) end
-      if t0 > t1 then hit = false end
-    end
-  end
-  if hit then return 0 end
+  local ax, ay = a[1], a[2]
+  local dx, dy = b[1] - ax, b[2] - ay
+  local t0, t1 = clip(-dx, ax - r[1], 0, 1)
+  if t0 then t0, t1 = clip(dx, r[3] - ax, t0, t1) end
+  if t0 then t0, t1 = clip(-dy, ay - r[2], t0, t1) end
+  if t0 then t0 = clip(dy, r[4] - ay, t0, t1) end
+  if t0 then return 0 end
+  local L2 = dx * dx + dy * dy
   local function sp(x, y)
-    local L2 = dx * dx + dy * dy
-    local t = L2 > 0 and math.max(0, math.min(1, ((x - a[1]) * dx + (y - a[2]) * dy) / L2)) or 0
-    local px, py = a[1] + t * dx, a[2] + t * dy
+    local t = L2 > 0 and math.max(0, math.min(1, ((x - ax) * dx + (y - ay) * dy) / L2)) or 0
+    local px, py = ax + t * dx, ay + t * dy
     return math.sqrt((x - px) ^ 2 + (y - py) ^ 2)
   end
-  return math.min(rect_dist(a[1], a[2], r), rect_dist(b[1], b[2], r),
+  return math.min(rect_dist(ax, ay, r), rect_dist(b[1], b[2], r),
     sp(r[1], r[2]), sp(r[3], r[2]), sp(r[3], r[4]), sp(r[1], r[4]))
+end
+-- How far a polygon's box lies from rect r: no point of it lies nearer.
+local function box_dist(P, r)
+  local b = P.box
+  if not b then
+    local x0, y0, x1, y1 = math.huge, math.huge, -math.huge, -math.huge
+    for _, q in ipairs(P) do
+      x0, y0, x1, y1 = math.min(x0, q[1]), math.min(y0, q[2]), math.max(x1, q[1]), math.max(y1, q[2])
+    end
+    b = { x0, y0, x1, y1 }
+    P.box = b
+  end
+  local dx = math.max(r[1] - b[3], 0, b[1] - r[3])
+  local dy = math.max(r[2] - b[4], 0, b[2] - r[4])
+  return math.sqrt(dx * dx + dy * dy)
 end
 local function in_poly(x, y, P)
   local inside, j = false, #P
@@ -102,12 +122,16 @@ local function overlaps(sh, fill, w, r, g)
   end
   for _, P in ipairs(sh.polys) do
     local n = #P
+    -- A polygon whose box lies farther than lim from r comes nowhere
+    -- near it, nor holds its middle.
+    if n > 0 and box_dist(P, r) > lim + 1e-9 then goto next end
     if fill and n >= 3 and in_poly(mx, my, P) then return true end
     for i = 1, n - 1 do
       if seg_rect_dist(P[i], P[i + 1], r) < lim then return true end
     end
     if fill and n >= 3 and seg_rect_dist(P[n], P[1], r) < lim then return true end
     if n == 1 and rect_dist(P[1][1], P[1][2], r) < lim then return true end
+    ::next::
   end
   return false
 end
