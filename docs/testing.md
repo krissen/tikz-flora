@@ -6,7 +6,8 @@
 
 - `tools/test.sh` runs every `tests/test_*.lua` under texlua, then `tests/test_bake.py` and `tests/test_lint.py`. One at a time it stops at the first failure.
 - `tools/test.sh fast` runs the tests meant to finish in seconds; `tools/test.sh mix layout` runs the ones named (a name is the file's, without `test_` and `.lua`).
-- `-j N` runs N tests at a time. Each test's output is printed whole when it ends, every test runs, and the failures are named at the end. `just test 6` is `tools/test.sh -j 6`. A test file runs in one process however many jobs there are, so the wall time is never less than the slowest file's.
+- `-j N` runs N tests at a time. Each test's output is printed whole when it ends, every test runs, and the failures are named at the end. `-j auto` is half the processors the system has online, as `getconf _NPROCESSORS_ONLN` counts them on macOS and Linux alike: logical processors, so on a Linux machine with hyperthreading each core counts twice, and on Apple silicon (no hyperthreading) logical and physical are the same. At least one. A test file runs in one process however many jobs there are, so the wall time is never less than the slowest file's.
+- `just test` is `tools/test.sh -j auto`; `just test 6` runs six at a time, and `just test 1` one at a time, stopping at the first failure. The pre-push hook and CI call `tools/test.sh` without `-j`, one test at a time.
 
 ## Timing
 

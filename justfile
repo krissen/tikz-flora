@@ -26,9 +26,10 @@ bench:
     pdfinfo build/manuscript.pdf | grep -E 'Pages|File size'
 
 # The Lua unit tests under texlua, the tune.lua writer's and the linter's
-# tests: tools/test.sh, the list CI and the pre-push hook use.
-# Every test, JOBS at a time, e.g. `just test 6`.
-test jobs="1":
+# tests: tools/test.sh, the list CI and the pre-push hook use (-j auto
+# when JOBS is left out). `just test 1` stops at the first failure.
+# Every test, JOBS at a time (default half the processors), e.g. `just test 6`.
+test jobs="auto":
     FLORA_PYTHON={{PYTHON}} tools/test.sh -j {{jobs}}
 
 # `python3 -I tools/test_times.py compare OLD NEW` compares two runs

@@ -7,7 +7,10 @@
 # Options, before the names:
 #   -j N          run N tests at a time (default 1). Each test's output is
 #                 printed whole when it ends; every test runs and the
-#                 failures are named at the end.
+#                 failures are named at the end. -j auto is half the
+#                 processors the system has online (getconf
+#                 _NPROCESSORS_ONLN, on macOS and Linux alike; logical
+#                 processors, so hyperthreads count), at least one.
 #   --times FILE  write each test's exit status and seconds (wall, user,
 #                 sys) to FILE, tab-separated, most CPU first, with the
 #                 machine's load; tools/test_times.py shows and compares
@@ -50,6 +53,11 @@ while [ $# -gt 0 ]; do
     *) break ;;
   esac
 done
+if [ "$jobs" = auto ]; then
+  n=$(getconf _NPROCESSORS_ONLN 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 2)
+  jobs=$((n / 2))
+  [ "$jobs" -ge 1 ] || jobs=1
+fi
 case "$jobs" in ''|*[!0-9]*|0) echo "test.sh: -j takes a positive whole number, not '$jobs'" >&2; exit 2 ;; esac
 
 # The test names are plain words; the lists are split on purpose.
