@@ -9,6 +9,13 @@
 - `-j N` runs N tests at a time. Each test's output is printed whole when it ends, every test runs, and the failures are named at the end. `-j auto` is half the processors the system has online, as `getconf _NPROCESSORS_ONLN` counts them on macOS and Linux alike: logical processors, so on a Linux machine with hyperthreading each core counts twice, and on Apple silicon (no hyperthreading) logical and physical are the same. At least one. A test file runs in one process however many jobs there are, so the wall time is never less than the slowest file's.
 - `just test` is `tools/test.sh -j auto`; `just test 6` runs six at a time, and `just test 1` one at a time, stopping at the first failure. The pre-push hook and CI call `tools/test.sh` without `-j`, one test at a time.
 
+## What runs where
+
+- `just test`: every `tests/test_*.lua`, then `test_bake.py` and `test_lint.py`.
+- Pre-push (`tools/test.sh fast`): core, grow, leaf, letters, plant, settings, reserve, prepare_spec, render_page, inline, headpiece, lint and bake, each a second or less. header_mark and support take minutes and run in CI instead.
+- CI (`.github/workflows/test.yml`): four groups that name 30 of the 44 test files, header_mark in the first and support in the last.
+- Not in CI yet, a known gap: floret_passes, frame_matrix, pattern, pattern_colourways, pattern_ground, pattern_matrix, pattern_perimeter, pattern_protect, pattern_reach, pattern_values, pdf_form_cache, preview, progression_frame_resources and stem_taper. They run under `just test` only, so a green CI says nothing about the pattern engine.
+
 ## Timing
 
 `tools/test.sh --times FILE` writes one tab-separated line per test: its name, exit status, and wall, user, sys and CPU (user + sys) seconds, most CPU first; the last line records the jobs, the time (UTC) and the machine's load average when the run ended. `just test-times [JOBS] [NAMES]` runs it to `build/test-times.tsv` (default 4 jobs, every test) and shows it:

@@ -17,7 +17,7 @@
 #                 such files.
 set -e
 cd "$(dirname "$0")/.."
-FAST="core grow leaf letters plant settings reserve prepare_spec render_page support inline headpiece header_mark lint"
+FAST="core grow leaf letters plant settings reserve prepare_spec render_page inline headpiece lint"
 
 # One test, by name.
 run() {
