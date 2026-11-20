@@ -100,21 +100,27 @@ local function seg_point(px, py, a, b)
   return math.sqrt(x * x + y * y)
 end
 
+-- One of Liang-Barsky's four clips: the range t0..t1 left by the edge
+-- whose p and q are given, or nil when the segment misses it.
+local function clip(p, q, t0, t1)
+  if p == 0 then
+    if q < 0 then return nil end
+  else
+    local t = q / p
+    if p < 0 then t0 = math.max(t0, t) else t1 = math.min(t1, t) end
+    if t0 > t1 then return nil end
+  end
+  return t0, t1
+end
+
 -- Whether segment a-b meets rectangle r (Liang-Barsky).
 local function seg_hits_rect(a, b, r)
-  local t0, t1 = 0, 1
   local dx, dy = b[1] - a[1], b[2] - a[2]
-  for _, e in ipairs({ { -dx, a[1] - r[1] }, { dx, r[3] - a[1] }, { -dy, a[2] - r[2] }, { dy, r[4] - a[2] } }) do
-    local p, q = e[1], e[2]
-    if p == 0 then
-      if q < 0 then return false end
-    else
-      local t = q / p
-      if p < 0 then t0 = math.max(t0, t) else t1 = math.min(t1, t) end
-      if t0 > t1 then return false end
-    end
-  end
-  return true
+  local t0, t1 = clip(-dx, a[1] - r[1], 0, 1)
+  if t0 then t0, t1 = clip(dx, r[3] - a[1], t0, t1) end
+  if t0 then t0, t1 = clip(-dy, a[2] - r[2], t0, t1) end
+  if t0 then t0 = clip(dy, r[4] - a[2], t0, t1) end
+  return t0 ~= nil
 end
 
 local function in_poly(x, y, P)
@@ -138,16 +144,40 @@ function M.clearance(c, r)
     return math.max(0, rect_dist(c.circle[1], c.circle[2], r) - c.circle[3])
   end
   local P = c.verts
-  for _, q in ipairs({ { r[1], r[2] }, { r[3], r[2] }, { r[3], r[4] }, { r[1], r[4] } }) do
-    if in_poly(q[1], q[2], P) then return 0 end
+  -- The outline's first vertex well inside r: the outline meets r, as the
+  -- edge test below would find (both edges from that vertex reach into r).
+  local v1 = P[1]
+  if v1 and v1[1] > r[1] + 1e-9 and v1[1] < r[3] - 1e-9 and v1[2] > r[2] + 1e-9 and v1[2] < r[4] - 1e-9 then return 0 end
+  -- An outline whose box lies apart from r can neither hold a corner of r
+  -- nor cross it: only the distances below are left to measure.
+  local x0, y0, x1, y1 = math.huge, math.huge, -math.huge, -math.huge
+  for i = 1, #P do
+    local v = P[i]
+    local x, y = v[1], v[2]
+    if x < x0 then x0 = x end
+    if x > x1 then x1 = x end
+    if y < y0 then y0 = y end
+    if y > y1 then y1 = y end
+  end
+  local apart = x1 < r[1] or x0 > r[3] or y1 < r[2] or y0 > r[4]
+  if not apart then
+    if in_poly(r[1], r[2], P) or in_poly(r[3], r[2], P) or in_poly(r[3], r[4], P) or in_poly(r[1], r[4], P) then return 0 end
   end
   local d, j = math.huge, #P
   for i = 1, #P do
     local a, b = P[j], P[i]
-    if seg_hits_rect(a, b, r) then return 0 end
-    d = math.min(d, rect_dist(a[1], a[2], r), rect_dist(b[1], b[2], r),
-      seg_point(r[1], r[2], a, b), seg_point(r[3], r[2], a, b),
-      seg_point(r[3], r[4], a, b), seg_point(r[1], r[4], a, b))
+    if not apart and seg_hits_rect(a, b, r) then return 0 end
+    -- No point of the edge lies nearer r than the edge's own box does: an
+    -- edge whose box lies farther than the nearest edge so far is passed.
+    local ax, ay, bx, by = a[1], a[2], b[1], b[2]
+    local gx = math.max(r[1] - math.max(ax, bx), 0, math.min(ax, bx) - r[3])
+    local gy = math.max(r[2] - math.max(ay, by), 0, math.min(ay, by) - r[4])
+    local lim = d + 1e-9
+    if gx * gx + gy * gy <= lim * lim then
+      d = math.min(d, rect_dist(ax, ay, r), rect_dist(bx, by, r),
+        seg_point(r[1], r[2], a, b), seg_point(r[3], r[2], a, b),
+        seg_point(r[3], r[4], a, b), seg_point(r[1], r[4], a, b))
+    end
     j = i
   end
   return d
