@@ -40,6 +40,12 @@ test-times jobs="4" *names:
     FLORA_PYTHON={{PYTHON}} tools/test.sh -j {{jobs}} --times build/test-times.tsv {{names}} > build/test-times.out 2>&1 || (tail -30 build/test-times.out; exit 1)
     python3 -I tools/test_times.py show build/test-times.tsv --jobs {{jobs}}
 
+# E.g. `just test-linux` (the fast set), `just test-linux tools` or
+# `just test-linux -j 4 mix` (tools/test-linux.sh, docs/testing.md): the
+# tests in a container of CI's Ubuntu, where /bin/sh is dash; needs docker.
+test-linux *args:
+    tools/test-linux.sh {{args}}
+
 # E.g. `just profile tests/test_pattern_perimeter.lua`, or `just profile
 # --time flora.pattern.clearance tests/test_pattern.lua` (docs/testing.md):
 # where a Lua run spends its time, sampled by function and line.

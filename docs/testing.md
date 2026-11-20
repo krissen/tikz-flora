@@ -18,6 +18,12 @@
 - CI (`.github/workflows/test.yml`): four groups that name 30 of the 44 test files, header_mark in the first and support in the last.
 - Not in CI yet, a known gap: floret_passes, frame_matrix, pattern, pattern_colourways, pattern_ground, pattern_matrix, pattern_perimeter, pattern_protect, pattern_reach, pattern_values, pdf_form_cache, preview, progression_frame_resources and stem_taper. They run under `just test` only, so a green CI says nothing about the pattern engine.
 
+## In Linux
+
+CI runs Ubuntu, where `/bin/sh` is dash and the userland is GNU's (`time`, `xargs`; `awk` is mawk); a Mac runs bash as `sh` and BSD tools. `tools/test-linux.sh [ARGS]` (`just test-linux [ARGS]`) runs `tools/test.sh ARGS` (default: `fast`) in a container of CI's Ubuntu (24.04, amd64) with the packages CI installs (texlive-binaries, time) and those the runner brings that the tests use (python3, procps), from `tools/test-linux.Dockerfile`. The working tree, uncommitted changes included, is copied in; build/, site/ and tuner/ stay out, and nothing written inside comes back.
+
+It needs docker. The first run builds the image (about seven minutes here, most of it apt under emulation); later runs start in seconds: `just test-linux tools` takes about 10 s and the fast set about two and a half minutes. `FLORA_LINUX_REBUILD=1` builds the image again. On a machine that is not amd64 the container is emulated, so its times are several times a native run's: use it to see whether the tools and tests work in Linux, not to time them.
+
 ## Timing
 
 `tools/test.sh --times FILE` writes one tab-separated line per test: its name, exit status, and wall, user, sys and CPU (user + sys) seconds, most CPU first; the last line records the jobs, the time (UTC) and the machine's load average when the run ended. `just test-times [JOBS] [NAMES]` runs it to `build/test-times.tsv` (default 4 jobs, every test) and shows it:
