@@ -46,6 +46,12 @@ test-times jobs="4" *names:
 test-linux *args:
     tools/test-linux.sh {{args}}
 
+# E.g. `just bodies-compare main` or `just bodies-compare HEAD~1 bands`
+# (tools/bodies-compare.sh, docs/testing.md): whether the working tree
+# paints byte for byte what REF painted, page by page.
+bodies-compare ref *suites:
+    tools/bodies-compare.sh {{ref}} {{suites}}
+
 # E.g. `just profile tests/test_pattern_perimeter.lua`, or `just profile
 # --time flora.pattern.clearance tests/test_pattern.lua` (docs/testing.md):
 # where a Lua run spends its time, sampled by function and line.
