@@ -64,6 +64,8 @@ end
 -- Frames each layout asks for.
 local COUNT = { left = 1, right = 1, centered = 2, split = 1, title = 2, surround = 2,
   flank = 2, wreath = 2, bouquet = 2, scrollwork = 2 }
+-- The perimeter band's flora is laid out as surround.
+COUNT[require("flora.band").LAYOUT] = COUNT.surround
 
 local cells, dropped_cells, painted = 0, 0, 0
 for _, lay in ipairs(Frames.order) do
@@ -103,7 +105,8 @@ for _, lay in ipairs(Frames.order) do
     end
   end
 end
-H.check(cells == 720, "the matrix has " .. cells .. " cells, not 720")
+-- 72 cells a layout: formats x text blocks x insets x kinds.
+H.check(cells == 72 * #Frames.order, "the matrix has " .. cells .. " cells, not " .. 72 * #Frames.order)
 -- The cells the crash came from must still be in the matrix.
 H.check(dropped_cells > 0, "no cell drops a frame: the matrix no longer reaches the off-centre title")
 print(string.format("frame matrix: %d cells, %d with a dropped frame, %d painted", cells, dropped_cells, painted))

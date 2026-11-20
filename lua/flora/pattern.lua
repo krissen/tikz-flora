@@ -33,11 +33,13 @@ local Color = require("flora.color")
 local Mix = require("flora.mix")
 local Patterns = require("flora.patterns")
 local Progression = require("flora.progression")
+local Band = require("flora.band")
 
 local M = {}
 
-M.edges = { dissolve = true, cell = true, fade = true, border = true, guilloche = true }
+M.edges = { dissolve = true, cell = true, fade = true, border = true, guilloche = true, [Band.ROWS] = true }
 M.outers = { bleed = true, margin = true }
+
 
 -- Distances in pt.
 local GAP, BORDER_GAP, OUTER_MARGIN = 6, 12, 4
@@ -971,6 +973,234 @@ function M.lays(form, shapes, reach, f)
   return ok and d >= f.gap
 end
 
+-- A warning for the page on `pt`, once however often it is given: a
+-- perimeter band paints its sides one by one and asks the same questions on
+-- each.
+function M.warn(pt, msg)
+  pt.pattern_warned = pt.pattern_warned or {}
+  if pt.pattern_warned[msg] then return end
+  pt.pattern_warned[msg] = true
+  pt.pattern_warnings = pt.pattern_warnings or {}
+  table.insert(pt.pattern_warnings, msg)
+  if texio and texio.write_nl then texio.write_nl("log", "flora: " .. msg) end
+end
+
+-- The perimeter band's width on spec's page in pt, as it is drawn: the
+-- width asked (band.lua's key, in mm, at most half the paper's either way),
+-- narrowed where a margin is narrower (M.band_inner). The one definition
+-- of the band's width, for everything sized by it, its cells included
+-- (M.field_strip). Returns that width, the width asked, the side that
+-- narrowed it ("" for none) and the inner rectangle; nil on any other
+-- layout.
+function M.band_width(spec)
+  if spec.layout ~= Band.LAYOUT or not (spec.width and spec.height) then return nil end
+  local asked = math.min((spec.perimeter_width or Band.WIDTH_DEFAULT) * 72 / 25.4, spec.width / 2, spec.height / 2)
+  local I, side = M.band_inner(spec, asked)
+  return I[1], asked, side, I
+end
+
+-- The perimeter band (band.lua): pattern p as a band round the paper's edge,
+-- the same width on all four sides. The band is the paper less its inner
+-- rectangle `I`, the paper shrunk by that width; it keeps clear of the
+-- text block as a whole (not of its lines), of every reservation and of a
+-- running head above the block, and it runs to the paper's top whatever
+-- the top inset or the header clip keeps clear for flora (compose.lua does
+-- not clip such a page). The lattice is laid about the paper's centre
+-- (M.shift_cells), so the band meets the paper alike on opposite sides.
+-- How it ends toward the text is the edge key's, as band.lua lists the
+-- values, and when the page sets none the pattern's own in a band; as
+-- `inner`:
+--   rule    (border) every cell that reaches into the band, cut along
+--           I's edge and round what the band keeps clear of, with a rule
+--           along I
+--   cells   (cell) whole cells, wholly outside I
+--   fade    whole cells outside I, paling into the paper toward it
+--   margin  (dissolve) whole cells; past I they reach into the margin
+--           before the text and fall away the deeper in they lie
+--   rows    whole rows (M.paint_rows), or for a pattern laid as one closed
+--           panel over its field (celtic_knot) that panel, filling the band
+--           (`panel`)
+-- Warnings go to the page (M.warn). Returns nil for any other layout, else
+-- { w, inner, I }.
+local INNER = { border = "rule", cell = "cells", fade = "fade", dissolve = "margin", rows = "rows" }
+function M.perimeter_band(spec, p, pt)
+  -- One side of a whole-rows band, laid as its own strip (M.paint_rows):
+  -- the band is the strip's foot, w high.
+  local fs = spec.perimeter_strip
+  if fs then
+    local huge = 1e9
+    return { w = fs.w, inner = "cells", I = { -huge, fs.w, huge, huge }, strip = fs }
+  end
+  local w, asked, side, I = M.band_width(spec)
+  if not (w and I) then return nil end
+  local given = spec[require("flora.settings").SPEC.edge]
+  local edge = given or Band.default_edge(p.name)
+  if not Band.EDGES[edge] then
+    edge = Band.default_edge(p.name)
+    M.warn(pt, string.format("edge=%s has no form in a perimeter band; %s is laid with its own edge, %s", given, p.name, edge))
+  end
+  local inner = INNER[Band.EDGES[edge]]
+  if inner == "rows" and p.field_panel then
+    local ends = key(spec, "ends")
+    if ends == "auto" then ends = p.ends or "cut" end
+    if ends == "closed" or ends == "bleed" then inner = "panel" end
+  end
+  -- Where a margin is narrower than the band, the whole band is: as wide
+  -- on all four sides as the narrowest side holds (M.band_width). Too
+  -- narrow for a band at all, none is drawn.
+  if w < asked - 1e-6 then
+    if w < Band.WIDTH_MIN * 72 / 25.4 - 1e-6 then
+      M.warn(pt, string.format("%s=%g: the %s margin leaves room for no perimeter band (%.1f mm); none is drawn",
+        Band.WIDTH, asked * 25.4 / 72, side, w * 25.4 / 72))
+      return { none = true }
+    end
+    M.warn(pt, string.format("%s=%g is wider than the %s margin allows; the band is %.1f mm on all four sides",
+      Band.WIDTH, asked * 25.4 / 72, side, w * 25.4 / 72))
+  end
+  local mm = w * 25.4 / 72
+  local narrowest = Band.NARROWEST[p.name]
+  if narrowest and mm < narrowest - 1e-9 then
+    if narrowest == math.huge then
+      M.warn(pt, p.name .. " does not carry a perimeter band; it is drawn all the same")
+    else
+      M.warn(pt, string.format("%s does not carry a perimeter band narrower than %g mm; it is drawn at %g mm all the same", p.name, narrowest, mm))
+    end
+  end
+  if key(spec, "hero") ~= "none" then
+    M.warn(pt, "hero=" .. key(spec, "hero") .. " is not drawn in a perimeter band")
+  end
+  -- The text block's own margins, per side, for edge=dissolve's room past
+  -- the inner edge (M.band_margins).
+  return { w = w, inner = inner, I = I, margins = M.band_margins(spec, I) }
+end
+
+-- A perimeter band's inner rectangle: the paper shrunk by the band's width
+-- `w`, all four sides alike. Where the text block (or a running head above
+-- it) comes nearer the paper's edge than w, the gap and the band's own
+-- reach (NARROW_REACH: half a strap, and a cell's pad, past an edge whole
+-- rows end on), the whole band is narrowed to what that side holds, so the
+-- band and its rule never reach the text and stay as wide all round.
+-- Returns the rectangle and the side that set its width ("" when the band
+-- is as wide as asked).
+local NARROW_REACH = 3
+function M.band_inner(spec, w)
+  local W, H, t = spec.width, spec.height, spec.text
+  local top = t.y1
+  if spec.header and spec.header_y and spec.header_y > t.y1 + 1 then top = spec.header_y end
+  local k = GAP + NARROW_REACH
+  local side = ""
+  for _, s in ipairs({ { "left", t.x0 - k }, { "foot", t.y0 - k }, { "right", W - t.x1 - k }, { "top", H - top - k } }) do
+    if s[2] < w then w, side = math.max(0, s[2]), s[1] end
+  end
+  return { w, w, W - w, H - w }, side
+end
+
+-- The room edge=dissolve has past the band's inner edge, side by side
+-- (left, foot, right, top): from the inner rectangle to the text block (or
+-- a running head above it), less the gap; at least 1 pt. Only the text
+-- sets it, so a reservation in the band changes no side's transition; the
+-- cells keep clear of it as of everything else.
+function M.band_margins(spec, I)
+  local t = spec.text
+  local top = t.y1
+  if spec.header and spec.header_y and spec.header_y > t.y1 + 1 then top = spec.header_y end
+  local function room(d) return math.max(1, d - GAP) end
+  return { room(t.x0 - I[1]), room(t.y0 - I[2]), room(I[3] - t.x1), room(I[4] - top) }
+end
+
+-- The shortest repeats of pattern p's cell centres along x and along y
+-- (a centre maps onto a centre of the same kind: its outline's vertex
+-- count and size), measured on the cells it lays at its own size; nil for
+-- a direction with none within eight cells (penrose_rhombs). Truchet's
+-- tiles turn at random; its repeat is the tile's.
+local periods = {}
+function M.periods(p)
+  if periods[p.name] then return periods[p.name].x, periods[p.name].y end
+  local s = p.scale
+  local cells = p.cells({ x0 = -12 * s, y0 = -12 * s, x1 = 12 * s, y1 = 12 * s, size = s,
+    rng = Rng.new(1), opts = {}, style = {} })
+  local function kind(c)
+    local r = 0
+    for _, v in ipairs(c.verts) do r = math.max(r, (v[1] - c.x) ^ 2 + (v[2] - c.y) ^ 2) end
+    return #c.verts .. ":" .. string.format("%.2f", math.sqrt(r))
+  end
+  local at = {}
+  local function k(x, y) return string.format("%.1f,%.1f", x, y) end
+  for _, c in ipairs(cells) do at[k(c.x, c.y)] = kind(c) end
+  local near = {}
+  for _, c in ipairs(cells) do
+    if math.abs(c.x) < 3 * s and math.abs(c.y) < 3 * s then near[#near + 1] = c end
+  end
+  local function period(dx, dy)
+    local cand = {}
+    for _, a in ipairs(near) do
+      for _, b in ipairs(cells) do
+        local d = dx * (b.x - a.x) + dy * (b.y - a.y)
+        local o = dx * (b.y - a.y) + dy * (b.x - a.x)
+        if d > 0.05 and d < 8 * s and math.abs(o) < 0.05 then cand[#cand + 1] = d end
+      end
+    end
+    table.sort(cand)
+    for _, d in ipairs(cand) do
+      local ok = true
+      for _, a in ipairs(near) do
+        if at[k(a.x + dx * d, a.y + dy * d)] ~= kind(a) then ok = false; break end
+      end
+      if ok then return d end
+    end
+    return nil
+  end
+  local px, py = period(1, 0), period(0, 1)
+  periods[p.name] = { x = px, y = py }
+  return px, py
+end
+
+-- Move every coordinate of `cells` (a pattern module's) by (ox, oy), in
+-- place: each cell's centre and every point, path and circle it holds. A
+-- table that holds numbers and is none of those stops with an error rather
+-- than being left where it was. A table two cells share moves once.
+function M.shift_cells(cells, ox, oy)
+  local seen = {}
+  local function move(v, field)
+    if seen[v] then return end
+    seen[v] = true
+    local op = v[1]
+    if type(op) == "string" then
+      if op == "m" or op == "l" or op == "c" then
+        for i = 2, #v, 2 do v[i], v[i + 1] = v[i] + ox, v[i + 1] + oy end
+      elseif op == "o" then
+        v[2], v[3] = v[2] + ox, v[3] + oy
+      elseif op ~= "z" then
+        error("shift_cells: unknown path command " .. op)
+      end
+      return
+    end
+    if field == "circle" or field == "sweep" then
+      v[1], v[2] = v[1] + ox, v[2] + oy
+      return
+    end
+    if field == "box" then
+      v[1], v[2], v[3], v[4] = v[1] + ox, v[2] + oy, v[3] + ox, v[4] + oy
+      return
+    end
+    if type(op) == "number" then
+      if #v ~= 2 then error("shift_cells: a table of " .. #v .. " numbers under " .. tostring(field)) end
+      v[1], v[2] = v[1] + ox, v[2] + oy
+      return
+    end
+    for k, x in pairs(v) do
+      if type(x) == "table" then move(x, type(k) == "string" and k or field) end
+    end
+  end
+  for _, c in ipairs(cells) do
+    c.x, c.y = c.x + ox, c.y + oy
+    for k, x in pairs(c) do
+      if type(x) == "table" then move(x, k) end
+    end
+  end
+  return cells
+end
+
 -- The field's governing strip, in pt: the width of the strip beside the
 -- text for a layout with one side (left, right, split's side), the
 -- narrower of the two for centered, and the widest of the four round the
@@ -983,6 +1213,9 @@ end
 function M.field_strip(spec)
   local t, W, H = spec.text, spec.width, spec.height
   if not (t and W and H) then return nil end
+  -- A perimeter band's strip is the band itself.
+  local bw = M.band_width(spec)
+  if bw then return bw end
   local side = sides(spec)
   local L, R = t.x0 - GAP, W - t.x1 - GAP
   local w
@@ -1032,26 +1265,220 @@ function M.factor_floor(spec, p)
   return lo
 end
 
+-- The top of a perimeter band's field: the paper's own, past any top inset
+-- or header clip.
+function M.band_top(_, H) return H end
+
+-- What edge=border cuts a perimeter band along: its inner rectangle, and each
+-- rectangle the band keeps clear of, grown by the gap. A clip each, as
+-- their holes may overlap.
+function M.band_holes(band, keep_rects, gap)
+  local out = { band.I }
+  for _, r in ipairs(keep_rects) do out[#out + 1] = { r[1] - gap, r[2] - gap, r[3] + gap, r[4] + gap } end
+  return out
+end
+
+-- What a perimeter band's closed panel (celtic_knot's, pat_celtic.lua) keeps
+-- clear of: the inner rectangle, set in so that the panel's squares may
+-- end where its turns reach the inner edge (the panel keeps the gap, its
+-- band's reach and 0.6 of a square, and half a point, from what it keeps
+-- clear of), and what the band keeps clear of.
+function M.panel_room(band, gap, keep_rects)
+  local I, o = band.I, gap + 0.5
+  local out = { { I[1] + o, I[2] + o, I[3] - o, I[4] - o } }
+  for _, r in ipairs(keep_rects) do out[#out + 1] = r end
+  return out
+end
+
+-- Where along an axis `len` long a closed panel's squares (`a` wide, their
+-- bands reaching `reach`) lie about the centre: 0 for a square's corner at
+-- the centre, 0.5 for its middle, whichever leaves the smaller strip
+-- between the last whole square and the band's inner edge, `w` in from the
+-- paper. The panel is symmetric about the centre either way.
+function M.panel_offset(len, w, reach, a)
+  local limit = w - reach - 0.6 * a
+  local best, short
+  for _, d in ipairs({ 0, 0.5 }) do
+    local t = (limit - len / 2) / a - d
+    local s = (t - math.floor(t)) * a
+    if not short or s < short - 1e-9 then best, short = d, s end
+  end
+  return best
+end
+
+-- Whole rows (edge=rows in a perimeter band): the band as whole rows. Across
+-- the band the cells are sized so that a whole number of the pattern's
+-- repeats (M.periods, its repeat along y) fills the band's width exactly:
+-- n rows, the whole number that brings the cells nearest the size every
+-- other edge gives them (the field factor, M.field_factor, measured on the
+-- band as drawn), of those that keep them at or above the pattern's floor
+-- (M.factor_floor); one row, below the floor, when the band holds no more.
+-- The lattice is set so that a row ends on the inner edge. Each side
+-- is the same strip, its foot on the paper's edge, turned onto the side
+-- (so the pattern turns with it) and cut at the corners along the
+-- diagonal, as a mitred frame is. M.row_plan is the rows and the cells'
+-- factor, nil for a pattern with no repeat (penrose_rhombs, sikku_kolam).
+function M.row_plan(spec, p, w)
+  local px, py = M.periods(p)
+  if not py then return nil end
+  local k = key(spec, "scale")
+  local lo = M.factor_floor(spec, p)
+  local P = py * k
+  -- The whole numbers either side of the field factor's rows; of those at
+  -- or above the floor, the one whose cells come nearest the factor.
+  local ff = M.field_factor(spec, p)
+  local x = w / (P * ff)
+  local n
+  for _, c in ipairs({ math.floor(x), math.ceil(x) }) do
+    if c >= 1 and w / (c * P) >= lo - 1e-9 and (not n or math.abs(w / (c * P) - ff) < math.abs(w / (n * P) - ff) - 1e-12) then n = c end
+  end
+  n = n or 1
+  local f = w / (n * P)
+  return { n = n, f = f, floor = lo, period = P * f, along = px and px * k * f, below = f < lo - 1e-9 }
+end
+
+-- The lattice's offset across a strip whose band is w wide: the one, of
+-- 48 tried over a repeat, at which whole cells (lying wholly below the
+-- inner edge) cover most of the band's innermost repeat, each by its tile
+-- where it has one (the piece of the plane it stands for), else by its
+-- outline. Returns that offset and the share covered: all of it when the
+-- whole cells end in a straight edge.
+function M.row_phase(p, size, w, period, along)
+  local win = along or period
+  local best, share = 0, -1
+  for t = 0, 47 do
+    local oy = w - period * t / 48
+    local cells = p.cells({ x0 = -2 * win, y0 = -period - oy, x1 = 2 * win, y1 = w + period - oy, size = size,
+      rng = Rng.new(1), opts = {}, style = {} })
+    M.shift_cells(cells, 0, oy)
+    local whole = {}
+    for _, c in ipairs(cells) do
+      local ok = true
+      for _, v in ipairs(c.verts) do if v[2] > w + 1e-6 then ok = false; break end end
+      if ok then whole[#whole + 1] = c.tile or c.verts end
+    end
+    local n, hit = 0, 0
+    for i = 0, 23 do
+      for j = 0, 11 do
+        local x, y = -win / 2 + win * (i + 0.5) / 24, w - period * (j + 0.5) / 12
+        n = n + 1
+        for _, P in ipairs(whole) do
+          if in_poly(x, y, P) then hit = hit + 1; break end
+        end
+      end
+    end
+    if hit / n > share + 1e-6 then best, share = oy, hit / n end
+  end
+  return best, share
+end
+
+function M.paint_rows(spec, pt, p, band)
+  local W, H = spec.width, spec.height
+  local w = band.w
+  local plan = M.row_plan(spec, p, w)
+  if not plan then
+    M.warn(pt, p.name .. " has no repeat to lay in whole rows; its perimeter band is laid with a straight edge")
+    return false
+  end
+  if plan.below then
+    M.warn(pt, string.format("%s: whole rows in a %g mm perimeter band make its cells smaller than its floor (factor %.3f, floor %.3f)",
+      p.name, w * 25.4 / 72, plan.f, plan.floor))
+  end
+  local size = p.scale * key(spec, "scale") * plan.f
+  local oy, share = M.row_phase(p, size, w, plan.period, plan.along)
+  -- The sides: the strip's length, its map onto the page and its inverse.
+  local strips = {
+    { L = W, map = function(u, v) return u, v end, inv = function(x, y) return x, y end },
+    { L = H, map = function(u, v) return W - v, u end, inv = function(x, y) return y, W - x end },
+    { L = W, map = function(u, v) return W - u, H - v end, inv = function(x, y) return W - x, H - y end },
+    { L = H, map = function(u, v) return v, H - u end, inv = function(x, y) return H - y, x end },
+  }
+  local t = spec.text
+  local keep = { { t.x0, t.y0, t.x1, t.y1 } }
+  if spec.header and spec.header_y and spec.header_y > t.y1 + 1 then keep[#keep + 1] = { t.x0, t.y1, t.x1, spec.header_y } end
+  for _, r in ipairs(spec.reserve or {}) do keep[#keep + 1] = { r[1], r[2], r[3], r[4] } end
+  local function inv_rect(side, r)
+    local ax, ay = side.inv(r[1], r[2])
+    local bx, by = side.inv(r[3], r[4])
+    return { math.min(ax, bx), math.min(ay, by), math.max(ax, bx), math.max(ay, by) }
+  end
+  local kept, cells, unfit, q = {}, 0, 0, nil
+  for i, side in ipairs(strips) do
+    local L = side.L
+    local sub = {}
+    for k, v in pairs(spec) do sub[k] = v end
+    local tr = inv_rect(side, keep[1])
+    sub.width, sub.height = L, 2 * w + 4 * plan.period
+    sub.text = { x0 = tr[1], y0 = tr[2], x1 = tr[3], y1 = tr[4] }
+    sub.lines, sub.header, sub.header_y, sub.top_inset = nil, nil, nil, 0
+    sub.reserve = {}
+    for j = 2, #keep do sub.reserve[#sub.reserve + 1] = inv_rect(side, keep[j]) end
+    sub.perimeter_strip = { w = w, f = plan.f, ox = L / 2, oy = oy, side = i }
+    pt:frame(side.map)
+    -- The mitre: the strip's corners cut along the diagonals from the
+    -- paper's corners through the inner rectangle's.
+    local far = w + 4 * plan.period + 50
+    pt:clip_begin({ { "m", -far, -far }, { "l", L + far, -far }, { "l", L - far, far }, { "l", far, far }, { "z" } })
+    M.paint(sub, pt)
+    pt:clip_end()
+    pt:frame(nil)
+    q = pt.pattern
+    cells = cells + q.cells
+    unfit = unfit + q.unfit
+    for _, k in ipairs(q.kept) do
+      local c = k.cell
+      local verts = {}
+      for j, v in ipairs(c.verts) do local x, y = side.map(v[1], v[2]); verts[j] = { x, y } end
+      local x, y = side.map(c.x, c.y)
+      kept[#kept + 1] = { cell = { x = x, y = y, verts = verts }, a = k.a }
+    end
+  end
+  if texio and texio.write_nl then
+    texio.write_nl("log", string.format("flora: perimeter band of whole rows: %s, %d rows, factor %.3f (floor %.3f), inner repeat covered %.0f%%",
+      p.name, plan.n, plan.f, plan.floor, 100 * share))
+  end
+  pt.pattern = { name = p.name, size = size, factor = plan.f, rows = plan.n, cover = share, cells = cells, kept = kept,
+    reach = q.reach, gap = q.gap, warnings = pt.pattern_warnings, unfit = unfit, inks = q.inks,
+    inner = "rows", w = w, band = { w = w, inner = "rows", I = band.I } }
+  return true
+end
+
 function M.paint(spec, pt)
   local rng = Rng.new(spec.seed or 1)
   local p = Patterns.pick(rng:fork("choose pattern"), weights(spec.pattern))
   if not p then return false end
+  local band = M.perimeter_band(spec, p, pt)
+  -- No room for a band: the page is left bare (the log says why).
+  if band and band.none then
+    pt.pattern = { name = p.name, cells = 0, kept = {}, offered = 0, warnings = pt.pattern_warnings, unfit = 0, band = { none = true } }
+    return true
+  end
+  if band and band.inner == "rows" then
+    if M.paint_rows(spec, pt, p, band) then return true end
+    band.inner = "rule"
+  end
   local warning
   spec, warning = M.finish_spec(spec, p)
-  if warning then
-    pt.pattern_warnings = pt.pattern_warnings or {}
-    table.insert(pt.pattern_warnings, warning)
-    if texio and texio.write_nl then texio.write_nl("log", "flora: " .. warning) end
-  end
+  if warning then M.warn(pt, warning) end
   local W, H, text = spec.width, spec.height, spec.text
-  local side = sides(spec)
+  local side = not band and sides(spec) or nil
   local edge = key(spec, "edge")
+  -- Whole rows belong to a band; elsewhere the edge is the default's.
+  if not band and edge == Band.ROWS then
+    edge = require("flora.settings").PATTERN.edge
+    M.warn(pt, "edge=" .. Band.ROWS .. " applies only in a perimeter band; " .. edge .. " is used")
+  end
+  -- A band's inner edge sets how its cells meet the text: whole, falling
+  -- away (dissolve, past the inner edge) or paling (fade).
+  if band then
+    edge = band.inner == "margin" and "dissolve" or band.inner == "fade" and "fade" or "cell"
+  end
   local outer = key(spec, "outer")
   -- The cells' scale: the scale key times the field factor. The hero and
   -- the frames round the text keep the key's alone: they belong to the
   -- page and its text, not to the field's cells.
   local k_key = key(spec, "scale")
-  local ff = M.field_factor(spec, p)
+  local ff = (spec.perimeter_strip and spec.perimeter_strip.f) or M.field_factor(spec, p)
   local k_scale = k_key * ff
   local size = p.scale * k_scale
   local width = band_ink({}, p, spec, k_scale, ff).width
@@ -1065,8 +1492,25 @@ function M.paint(spec, pt)
   -- clip compose.lua set (header=body), so margin cells stay whole.
   local inset = spec.top_inset or require("flora.tune").gesture.top_inset or 0
   local top = math.min(H, inset > 0 and H - inset or H, pt.header_clip or H)
+  if band then
+    -- A band keeps clear of the text block whole, every reservation and a
+    -- running head above the block, and runs to the paper's top. Under
+    -- edge=fade it pales toward its inner edge over half its own width.
+    gap = GAP
+    keep_rects = { { text.x0, text.y0, text.x1, text.y1 } }
+    if spec.header and spec.header_y and spec.header_y > text.y1 + 1 then
+      keep_rects[#keep_rects + 1] = { text.x0, text.y1, text.x1, spec.header_y }
+    end
+    for _, r in ipairs(spec.reserve or {}) do keep_rects[#keep_rects + 1] = { r[1], r[2], r[3], r[4] } end
+    top = M.band_top(spec, H)
+    ramp = 0.5 * band.w / math.max(dens, 1e-6)
+  end
   local base = M.role_inks(rng:fork("pattern inks"), p, spec)
-  local hero = M.hero(spec, side, top, keep_rects, gap)
+  local hero = not band and M.hero(spec, side, top, keep_rects, gap) or nil
+  -- Under edge=border the band is cut along its inner edge and round what
+  -- it keeps clear of (a clip each, below), so the gaps are kept by the
+  -- clip and no cell is measured against them.
+  local cut = band and band.inner == "rule"
 
   -- Prototype options (spec.pattern_opts, ORDER #9 of the geometry work;
   -- not settings): how the ground and the fields end where the pattern
@@ -1098,6 +1542,9 @@ function M.paint(spec, pt)
   if opts.symmetric == nil then opts.symmetric = panels == "on" end
   local ground_edges = { auto = "panel", panel = "panel", motif = "shape", round = "discs", cells = "cells" }
   if opts.ground_edge == nil then opts.ground_edge = ground_edges[M.ground_mode(spec)] or "cells" end
+  -- In a band of whole cells the ground follows the cells under
+  -- ground=auto, rather than run as a straight panel past their teeth.
+  if band and band.inner == "cells" and not band.strip and M.ground_mode(spec) == "auto" then opts.ground_edge = "cells" end
   -- How the ground's pieces are laid, for M.footprint: the edge mode and
   -- the distance M.edge_pieces sizes a rounded piece by.
   base.ground_edge = opts.ground_edge
@@ -1106,9 +1553,23 @@ function M.paint(spec, pt)
   -- reach past it does not stand (the panel keeps its straight edge).
   base.ground_panel = opts.ground_edge == "panel" or nil
   local panel_rects
-  if base.ground and base.ground_panel and not base.lines then
+  -- A band's panel leaves out its inner rectangle as well.
+  local panel_avoid = keep_rects
+  if band then
+    local I = band.I
+    -- A strip's whole rows end on the inner edge itself; its panel runs
+    -- under their bands' outer half as well.
+    -- Under edge=dissolve it runs on past the inner edge to the text, as
+    -- the cells falling away over it do.
+    local o = gap + (band.strip and width / 2 or 0)
+    panel_avoid = band.inner == "margin" and {} or { { I[1] + o, I[2] + o, I[3] - o, I[4] - o } }
+    for _, r in ipairs(keep_rects) do panel_avoid[#panel_avoid + 1] = r end
+  end
+  -- (A strip's whole rows end on its inner edge, their bands past it: the
+  -- panel runs under them, and they are not held to it.)
+  if base.ground and base.ground_panel and not base.lines and not cut and not (band and band.strip) then
     panel_rects = M.path_rects(M.panel_path({ text = text, gap = gap, side = side, W = W, top = top,
-      avoid = keep_rects, hero = hero, outer = outer }))
+      avoid = panel_avoid, hero = hero, outer = outer }))
   end
   -- The room the field has (for a layout that places its own panels in
   -- it, pat_celtic.lua's knot study): the text block, the gap kept from
@@ -1124,16 +1585,62 @@ function M.paint(spec, pt)
     if v == "auto" then v = p[k] end
     style[k] = v
   end
-  local env = { x0 = 0, y0 = 0, x1 = W, y1 = H, size = size, rng = rng:fork("cells"), opts = opts, room = field_room, style = style,
+  -- In a band celtic_knot's closed panel fills the band: it keeps clear of
+  -- the inner rectangle as of the text.
+  -- It runs off the paper as every band does, or closes inside the margin
+  -- under outer=margin.
+  if band and band.inner == "panel" then
+    field_room.avoid = M.panel_room(band, gap, keep_rects)
+    field_panel = outer == "margin" and "inset" or "bleed"
+  elseif band then
+    field_panel = nil
+  end
+  local cells_stream = "cells" .. (band and band.strip and (" " .. band.strip.side) or "")
+  local env = { x0 = 0, y0 = 0, x1 = W, y1 = H, size = size, rng = rng:fork(cells_stream), opts = opts, room = field_room, style = style,
     field_panel = field_panel }
-  local cells = p.cells(env)
+  -- The cells, the lattice's origin at the paper's lower left corner, or
+  -- for a band at its centre: drawn about the origin and moved there.
+  local function draw_cells()
+    if not band then return p.cells(env) end
+    local function at(ox, oy)
+      local e = {}
+      for k, v in pairs(env) do e[k] = v end
+      e.x0, e.y0, e.x1, e.y1 = env.x0 - ox, env.y0 - oy, env.x1 - ox, env.y1 - oy
+      -- The room as the moved lattice sees it (a panel's, pat_celtic.lua).
+      e.room = nil
+      if env.field_panel then
+        local r = {}
+        for k, v in pairs(env.room) do r[k] = v end
+        local t = env.room.text
+        r.text = { x0 = t.x0 - ox, y0 = t.y0 - oy, x1 = t.x1 - ox, y1 = t.y1 - oy }
+        r.avoid = {}
+        for i, q in ipairs(env.room.avoid or {}) do r.avoid[i] = { q[1] - ox, q[2] - oy, q[3] - ox, q[4] - oy } end
+        r.px, r.py = -ox, -oy
+        e.room = r
+        e.rng = rng:fork(cells_stream)
+      end
+      if env.blocked then
+        local blocked = env.blocked
+        e.blocked = function(x, y) return blocked(x + ox, y + oy) end
+      end
+      return M.shift_cells(p.cells(e), ox, oy)
+    end
+    if band.strip then return at(band.strip.ox, band.strip.oy) end
+    if not env.field_panel then return at(W / 2, H / 2) end
+    -- A closed panel's squares lie about the paper's centre with a corner
+    -- there or a middle, along each axis whichever brings their edge
+    -- nearest the band's inner edge (M.panel_offset).
+    local reach = field_room.reach
+    return at(W / 2 + M.panel_offset(W, band.w, reach, size) * size, H / 2 + M.panel_offset(H, band.w, reach, size) * size)
+  end
+  local cells = draw_cells()
   if base.ground and opts.ground_edge == "discs" then base.ground_nd = M.field_edges(cells, {}, {}).nd end
   local fall = rng:fork("dissolve")
   local stagger = rng:fork("growth")
   local kept, offered, bare = {}, 0, {}
   local onpage = {}
   local page = { 0, 0, W, top }
-  local field = { keep = keep_rects, hero = hero, gap = gap, outer = outer, page = page }
+  local field = { keep = cut and {} or keep_rects, hero = hero, gap = gap, outer = outer, page = page }
   local function measure(shapes, reach) return M.measure(shapes, reach, field) end
   local function fits(form, shapes, reach) return M.lays(form, shapes, reach, field) end
   -- Whether each cell is placed, and the share it keeps (0 drops it).
@@ -1145,6 +1652,30 @@ function M.paint(spec, pt)
     -- The gaps hold for everything the cell paints, not its outline alone.
     local shapes = M.footprint(c, base)
     local d, ok = measure(shapes, reach)
+    -- A band's cell lies wholly outside its inner rectangle (how far
+    -- outside: dI), or under edge=border reaches out of it anywhere.
+    local dI = math.huge
+    if band then
+      if cut then
+        in_side = not within(c, band.I, 0)
+      else
+        if band.strip then
+          -- A strip's whole rows end on the inner edge (their bands' outer
+          -- half past it): every point of the cell at or below it.
+          local high = -math.huge
+          for _, sh in ipairs(shapes) do
+            if sh.circle then high = math.max(high, sh.circle[2] + sh.circle[3]) end
+            for _, v in ipairs(sh.verts or {}) do high = math.max(high, v[2]) end
+          end
+          dI = band.w - high + 1e-6
+        else
+          for _, sh in ipairs(shapes) do dI = math.min(dI, M.clearance(sh, band.I) - reach) end
+        end
+        -- edge=dissolve lets the cells reach past the inner edge into the
+        -- margin, so long as they keep clear of the text.
+        in_side = dI >= 0 or band.inner == "margin"
+      end
+    end
     local on_panel = true
     if panel_rects then
       for _, s in ipairs(shapes) do
@@ -1174,6 +1705,27 @@ function M.paint(spec, pt)
     if c.fixed then
       local ok = dens > 0 and d >= gap
       return true, ok and 1 or 0, false, ok, 1
+    end
+    -- A band's cell is kept whole, falls away past the inner edge under
+    -- dissolve, or pales toward it under fade.
+    if band and dens > 0 and d >= gap then
+      local inner = band.inner
+      if inner == "margin" then
+        -- The band whole, thinning past its inner edge into the margin:
+        -- by how far the cell's centre lies inside the inner rectangle, over
+        -- the room on the side it lies nearest.
+        local I, mg = band.I, band.margins
+        local into = { c.x - I[1], c.y - I[2], I[3] - c.x, I[4] - c.y }
+        local s = 1
+        for i = 2, 4 do if into[i] < into[s] then s = i end end
+        a = (into[s] <= 0 or r < smooth(1 - into[s] / mg[s])) and 1 or 0
+      elseif inner == "fade" then
+        a = smooth(dI / ramp)
+        if a < 0.04 then a = 0 end
+      else
+        a = 1
+      end
+      return true, a, edge == "dissolve", true, share
     end
     if dens > 0 and d >= gap then
       local t = (d - gap) / ramp
@@ -1236,6 +1788,29 @@ function M.paint(spec, pt)
     end
   end
   choose(cells)
+  -- No closed panel fits the band, or not on every side (a side whose
+  -- margin is too narrow for it): it is laid with a straight edge.
+  local bare_side = false
+  if band and band.inner == "panel" then
+    local I, n = band.I, { 0, 0, 0, 0 }
+    for _, k in ipairs(kept) do
+      local c = k.cell
+      -- By side, beside the inner rectangle (the corners are both sides').
+      local across, along = c.y > I[2] and c.y < I[4], c.x > I[1] and c.x < I[3]
+      if c.x < I[1] and across then n[1] = n[1] + 1 end
+      if c.x > I[3] and across then n[2] = n[2] + 1 end
+      if c.y < I[2] and along then n[3] = n[3] + 1 end
+      if c.y > I[4] and along then n[4] = n[4] + 1 end
+    end
+    bare_side = math.min(n[1], n[2], n[3], n[4]) == 0
+  end
+  if band and band.inner == "panel" and bare_side then
+    M.warn(pt, string.format("%s: no closed panel fits a %g mm perimeter band; it is laid with a straight edge", p.name, band.w * 25.4 / 72))
+    local again = {}
+    for k, v in pairs(spec) do again[k] = v end
+    again[require("flora.settings").SPEC.edge] = "border"
+    return M.paint(again, pt)
+  end
   -- No kept cell stands alone at a hard or fading edge: one whose every
   -- neighbour on the page the field left out (a crumb the edge leaves where
   -- the text's outline cuts the lattice, more often the smaller the cells)
@@ -1292,8 +1867,8 @@ function M.paint(spec, pt)
     for _ = 1, 6 do
       weaves = weaves + 1
       -- The same draws as the first drawing, so only the edge changes.
-      env.rng = rng:fork("cells")
-      cells = p.cells(env)
+      env.rng = rng:fork(cells_stream)
+      cells = draw_cells()
       list = {}
       local failed = {}
       for _, c in ipairs(cells) do
@@ -1360,6 +1935,19 @@ function M.paint(spec, pt)
     k.painted = k.birth + (c.sweep and LINES or 0.05)
   end
   pt:begin_group("pattern")
+  -- edge=border: the band cut along its inner rectangle, and round each
+  -- rectangle it keeps clear of, by the gap (a clip each: their holes may
+  -- overlap).
+  local clips = 0
+  -- The inner rectangle's clip is the innermost, so that the rule along it
+  -- (below) lies under the others alone.
+  local cuts = band and cut and M.band_holes(band, keep_rects, gap) or {}
+  for i = #cuts, 1, -1 do
+    local r = cuts[i]
+    pt:clip_begin({ { "m", -1, -1 }, { "l", W + 1, -1 }, { "l", W + 1, H + 1 }, { "l", -1, H + 1 }, { "z" },
+      { "m", r[1], r[2] }, { "l", r[1], r[4] }, { "l", r[3], r[4] }, { "l", r[3], r[2] }, { "z" } })
+    clips = clips + 1
+  end
   -- The ground, every piece of it before any cell's lines in the stream,
   -- each laid no later than the earliest cell on it (below).
   -- Pieces that meet edge to edge (the ground, a cell's plates) are
@@ -1391,7 +1979,7 @@ function M.paint(spec, pt)
     for _, k in ipairs(kept) do if k.cell.plates then need = true break end end
   end
   local edgeinfo = need and M.field_edges(cells, grounded, onpage) or { share = {}, depth = {}, isolated = 0, edge = 0, nd = size }
-  local fr = { text = text, gap = gap, side = side, W = W, top = top, ramp = ramp, avoid = keep_rects, hero = hero, outer = outer }
+  local fr = { text = text, gap = gap, side = side, W = W, top = top, ramp = ramp, avoid = panel_avoid, hero = hero, outer = outer }
   local pieces = M.edge_pieces(ge, fr, edgeinfo)
   -- The ground as laid, in order: { shapes, colour }.
   local below = {}
@@ -1511,16 +2099,30 @@ function M.paint(spec, pt)
         function() lit(function() c.paint(pt, c, ink) end) end, nil, c.sweep and { sweep = c.sweep } or nil)
     end
   end
+  -- edge=border's rule along the inner edge, as edge=border's frame,
+  -- under the clips round what the band keeps clear of (the text block
+  -- and every reservation), not under the inner rectangle's own.
+  if clips > 0 then pt:clip_end(); clips = clips - 1 end
+  if band and cut and (not grow or grow >= 0.1) then
+    local I, ink = band.I, M.cell_inks(base, 1, true)
+    local rule = { { "m", I[1], I[2] }, { "l", I[3], I[2] }, { "l", I[3], I[4] }, { "l", I[1], I[4] }, { "z" } }
+    Progression.part(pt, "pattern_border", { I[1], I[2] }, 0, 0.2, function()
+      local fw = band_ink({}, p, spec, k_scale, ff).width
+      pt:stroke(rule, ink.band, fw * 1.2, 1)
+      pt:stroke(rule, ink.accent, fw * 0.45, 1)
+    end)
+  end
+  for _ = 1, clips do pt:clip_end() end
   if hero and fits("hero", { { circle = hero } }, 0) then
     M.paint_hero(pt, hero, band_ink(M.cell_inks(base, 1, true), p, spec, k_key), grow)
   end
-  if edge == "guilloche" and (not grow or grow >= 0.1) then
+  if edge == "guilloche" and not band and (not grow or grow >= 0.1) then
     local ink = band_ink(M.cell_inks(base, 1, true), p, spec, k_key)
     Progression.part(pt, "pattern_border", { text.x0, text.y0 }, 0, 0.2, function()
       require("flora.pattern_hero").paint_band(pt, text, gap / 2, 4, ink)
     end)
   end
-  if edge == "border" and (not grow or grow >= 0.1) then
+  if edge == "border" and not band and (not grow or grow >= 0.1) then
     local ink = M.cell_inks(base, 1, true)
     local o = gap / 2
     local frame = { { "m", text.x0 - o, text.y0 - o }, { "l", text.x1 + o, text.y0 - o },
@@ -1533,7 +2135,14 @@ function M.paint(spec, pt)
   end
   pt:end_group()
   pt.coverage = offered > 0 and #kept / offered or 0
-  pt.pattern = { name = p.name, size = size, factor = ff, cells = #kept, offered = offered, kept = kept, avoid = keep_rects, reach = width / 2, gap = gap, hero = hero, inks = base,
+  pt.pattern = { name = p.name, size = size, factor = ff, cells = #kept,
+    -- The perimeter band, if any: its width, inner edge and rectangle, and the
+    -- holes edge=border cuts it along.
+    band = band and { w = band.w, inner = band.inner, I = band.I, cuts = cuts, margins = band.margins },
+    -- The ground's panel as laid, by its rectangles (M.path_rects).
+    panel = pieces.panel and M.path_rects(pieces.panel),
+    -- How the ground ends where the pattern ends (M.edge_pieces' mode).
+    ground_edge = opts.ground_edge, offered = offered, kept = kept, avoid = keep_rects, reach = width / 2, gap = gap, hero = hero, inks = base,
     -- Every cell of the drawing, kept or not, and which lie on the page
     -- (for tests/pattern_matrix.lua's holes).
     all = cells, onpage = onpage, warnings = pt.pattern_warnings,

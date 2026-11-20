@@ -772,10 +772,19 @@ local function end_header_clip(pt)
   pt:frame(fn)
 end
 
+-- Whether spec's page is a pattern laid as a perimeter band (band.lua).
+local function banded(spec)
+  return spec.layout == require("flora.band").LAYOUT and spec.pattern ~= nil and require("flora.pattern").applies(spec)
+end
+
 -- The page's frames (frames.lua), after its top inset is applied to its
 -- text block, each told the page's foot runs; and that inset. C.frames and
 -- C.header_marks lay a page out alike.
 local function page_frames(spec)
+  -- A pattern's perimeter band (pattern.lua's M.perimeter_band) keeps clear of the
+  -- whole text block, the frame title in it included, and runs to the
+  -- paper's top: the block is not cut down to the inset.
+  if banded(spec) then return Frames.of(spec), 0 end
   -- The wreath frames the text below the running head, not the head itself.
   if spec.header == "body" and spec.body_top then
     spec.top_inset = math.max(spec.height - spec.body_top, Tune.gesture.top_inset or 0)
@@ -970,7 +979,8 @@ function C.frames(spec)
       { "m", r[1], r[2] }, { "l", r[1], r[4] }, { "l", r[3], r[4] }, { "l", r[3], r[2] }, { "z" },
     })
   end
-  local clip = header_clip(pt, spec)
+  -- A perimeter band runs to the paper's top, past the header clip.
+  local clip = not banded(spec) and header_clip(pt, spec) or nil
   if spec.marks_only then
     paint_marks(pt, spec, frames, clip)
     for _ in ipairs(spec.reserve or {}) do pt:clip_end() end

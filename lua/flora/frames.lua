@@ -32,9 +32,11 @@ local Oval = require("flora.oval")
 local Ribbon = require("flora.orn_ribbon")
 local Scrollwork = require("flora.orn_scrollwork")
 
+local Band = require("flora.band")
+
 local M = {}
 
-M.order = { "left", "right", "centered", "split", "title", "surround", "flank", "wreath", "bouquet", "scrollwork" }
+M.order = { "left", "right", "centered", "split", "title", "surround", Band.LAYOUT, "flank", "wreath", "bouquet", "scrollwork" }
 M.layouts = {}
 for _, k in ipairs(M.order) do M.layouts[k] = true end
 
@@ -46,6 +48,7 @@ M.about = {
   split = "The outer margin of a two-sided document: on the right of odd pages and the left of even ones.",
   title = "A crown over a title. Wrap the title in the floratitle environment; without it the first block of lines on the page is crowned.",
   surround = "A wreath round the text block, for title pages and contents.",
+  [Band.LAYOUT] = "A band of a pattern round the paper's edge, the same width on all four sides (" .. Band.WIDTH .. "), clear of the whole text block. Flora under it is laid out as surround.",
   flank = "A title page: a plant up each side of its contents, their roots meeting at the foot round a crest.",
   wreath = "A title page: an open oval garland round the title, tied at its foot.",
   bouquet = "A title page: one upright bouquet tied with a bow, behind the title, each title line on a ribbon.",
@@ -273,6 +276,8 @@ local function layout_frames(spec)
   if layout == "split" then
     layout = (spec.page or 1) % 2 == 1 and "right" or "left"
   end
+  -- The perimeter band is a pattern's (pattern.lua); flora is laid out as surround.
+  if layout == Band.LAYOUT then layout = "surround" end
   if layout == "left" then
     return { { spec = spec } }
   elseif layout == "right" then
