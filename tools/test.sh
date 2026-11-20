@@ -48,7 +48,9 @@ case "${1:-}" in
     # The run may have been stopped and its directory removed meanwhile.
     [ -d "$2" ] || exit 0
     cat "$2/$3.out"
-    grep -Ev '^(real|user|sys) ' "$2/$3.err" >&2
+    # The timer's own lines: -p's three, and GNU time's note on a test that
+    # failed or was killed (BSD time writes none).
+    grep -Ev '^(real|user|sys) |^Command (exited with non-zero status|terminated by signal) ' "$2/$3.err" >&2
     exit 0 ;;
 esac
 
