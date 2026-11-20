@@ -13,7 +13,9 @@ empty, headless, half-written and garbled files are refused, and compare
 totals only the tests both runs timed and passed.
 
 TOOLS_UNDER_TEST, a directory, takes the three tools from there instead
-of tools/ (to show this test fails on an earlier version).
+of tools/ (to show this test fails on an earlier version). TEST_SH_SHELL
+runs tools/test.sh with that shell (e.g. dash, as /bin/sh is on Ubuntu)
+instead of by its #!/bin/sh line.
 
     python3 -I tests/test_tools.py
 """
@@ -221,8 +223,10 @@ def test_runner(d):
     for name, text in FAKE_TESTS.items():
         write(os.path.join(d, "tests", f"test_{name}.lua"), text)
     sh = os.path.join(d, "tools", "test.sh")
+    shell = os.environ.get("TEST_SH_SHELL")
+    run_sh = [shell, sh] if shell else [sh]
 
-    p = subprocess.run([sh, "-j", "3", "--times", "t.tsv", "ok", "fail", "killed"], cwd=d, capture_output=True, text=True, check=False)
+    p = subprocess.run([*run_sh, "-j", "3", "--times", "t.tsv", "ok", "fail", "killed"], cwd=d, capture_output=True, text=True, check=False)
     check(p.returncode == 1 and "failed: fail killed" in p.stderr, f"failing tests: rc {p.returncode}, {p.stderr[-200:]!r}")
     rows = {}
     if os.path.exists(os.path.join(d, "t.tsv")):
@@ -242,7 +246,7 @@ def test_runner(d):
                        (["-j", "2", "marker", "marker"], "a test named twice")):
         if os.path.exists(os.path.join(d, "marker-ran")):
             os.remove(os.path.join(d, "marker-ran"))
-        p = subprocess.run([sh, *args], cwd=d, capture_output=True, text=True, check=False)
+        p = subprocess.run([*run_sh, *args], cwd=d, capture_output=True, text=True, check=False)
         check(p.returncode == 2 and not os.path.exists(os.path.join(d, "marker-ran")), f"{what}: rc {p.returncode}, a test ran: {os.path.exists(os.path.join(d, 'marker-ran'))}")
 
     # Interrupted: every test it started stops, and no times are written.
@@ -250,7 +254,7 @@ def test_runner(d):
         for f in ("i.tsv", "slow-started"):
             if os.path.exists(os.path.join(d, f)):
                 os.remove(os.path.join(d, f))
-        p = subprocess.Popen([sh, "-j", "2", "--times", "i.tsv", "ok", "slow"], cwd=d, start_new_session=True,
+        p = subprocess.Popen([*run_sh, "-j", "2", "--times", "i.tsv", "ok", "slow"], cwd=d, start_new_session=True,
                              stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, text=True)
         for _ in range(100):
             if os.path.exists(os.path.join(d, "slow-started")):

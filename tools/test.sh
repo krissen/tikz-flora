@@ -92,6 +92,8 @@ if [ "$jobs" = 1 ] && [ -z "$times" ]; then
 fi
 
 [ -x /usr/bin/time ] || usage "-j and --times need /usr/bin/time (the time package)"
+PY=${FLORA_PYTHON:-python3}
+command -v "$PY" > /dev/null || usage "-j and --times need $PY (FLORA_PYTHON) to stop the tests when interrupted"
 # The times file is written next to FILE and moved over it at the end:
 # found unwritable now, not after the run.
 if [ -n "$times" ]; then
@@ -101,16 +103,29 @@ fi
 d=$(mktemp -d "${TMPDIR:-/tmp}/flora-test.XXXXXX")
 trap 'rm -rf "$d"; [ -z "$times" ] || rm -f "$tmp_times"' EXIT
 printf '%s\n' "$@" > "$d/names"
-# The tests in a process group of their own (set -m), stopped as one when
-# the run is interrupted.
-set -m
-xargs -P "$jobs" -n 1 tools/test.sh --keep "$d" < "$d/names" &
+# The tests in a process group of their own, stopped as one when the run
+# is interrupted. The shell cannot make one without a terminal (set -m is
+# job control, which dash turns off without a tty) nor signal one alike
+# (dash's kill takes no "--" before a negative pid), so Python does both:
+# setpgid before exec'ing xargs, and killpg. Before the setpgid there is no
+# group yet, only that one process, and it is signalled alone.
+"$PY" -c 'import os, sys; os.setpgid(0, 0); os.execvp(sys.argv[1], sys.argv[1:])' \
+  xargs -P "$jobs" -n 1 tools/test.sh --keep "$d" < "$d/names" &
 xpid=$!
-set +m
 stop() {
   echo "test.sh: interrupted; stopping the tests, no times written" >&2
-  kill -TERM -- "-$xpid" 2>/dev/null || true
-  wait "$xpid" 2>/dev/null || true
+  "$PY" -c '
+import os, signal, sys
+pid = int(sys.argv[1])
+try:
+    os.killpg(pid, signal.SIGTERM)
+except ProcessLookupError:
+    try:
+        os.kill(pid, signal.SIGTERM)
+    except ProcessLookupError:
+        pass
+' "$xpid" || echo "test.sh: could not stop the tests (process group $xpid)" >&2
+  wait "$xpid" || true
   exit "$1"
 }
 trap 'stop 130' INT
