@@ -1,6 +1,6 @@
 # The engine tests that finish in seconds run before push (tools/test.sh
 # fast); CI runs them and named groups of the others
-# (.github/workflows/test.yml, 30 of the 44 test files; docs/testing.md
+# (.github/workflows/test.yml, 31 of the 45 test files; docs/testing.md
 # lists the rest). Runs via prek
 # (https://github.com/j178/prek); the format is also pre-commit's.
 #   plain clone:                     prek install --hook-type pre-push

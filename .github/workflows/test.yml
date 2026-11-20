@@ -1,7 +1,7 @@
 name: test
 
 # The engine's Lua tests, in groups of a few minutes each, only when the
-# engine or its tests change. The groups name 30 of the 44 test files; the
+# engine or its tests change. The groups name 31 of the 45 test files; the
 # other 14 (the pattern tests among them) are not run here yet, and
 # docs/testing.md lists them. The seconds-fast tests also run before push
 # (.pre-commit-config.yaml).

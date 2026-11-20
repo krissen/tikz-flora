@@ -1367,6 +1367,38 @@ function M.row_plan(spec, p, w)
   return { n = n, f = f, floor = lo, period = P * f, along = px and px * k * f, below = f < lo - 1e-9 }
 end
 
+-- What M.row_phase has found, so a band laid again (on the next slide, or
+-- the next page of the same pattern and width) does not lay its 48 trial
+-- lattices again. The offset depends on the arguments, on the pattern's
+-- cells function and on the pattern's own values (its scale, its roles and
+-- the like, which the cells function may read); the key holds all of
+-- them, so a changed setting that changes the cells' size or repeat, a
+-- pattern whose values are changed or a cells function swapped for another
+-- finds no stale answer. M.forget_row_phases() empties the store.
+local phases = setmetatable({}, { __mode = "k" })
+
+-- Pattern p's own values as text, functions left out, keys sorted.
+local function values_key(v, seen)
+  local t = type(v)
+  if t == "number" then return string.format("%.17g", v) end
+  if t ~= "table" then return t == "function" and "" or tostring(v) end
+  seen = seen or {}
+  if seen[v] then return "@" end
+  seen[v] = true
+  local keys = {}
+  for k in pairs(v) do keys[#keys + 1] = k end
+  table.sort(keys, function(x, y) return tostring(x) < tostring(y) end)
+  local out = {}
+  for _, k in ipairs(keys) do
+    if type(v[k]) ~= "function" then out[#out + 1] = tostring(k) .. "=" .. values_key(v[k], seen) end
+  end
+  return "{" .. table.concat(out, ",") .. "}"
+end
+
+function M.forget_row_phases()
+  phases = setmetatable({}, { __mode = "k" })
+end
+
 -- The lattice's offset across a strip whose band is w wide: the one, of
 -- 48 tried over a repeat, at which whole cells (lying wholly below the
 -- inner edge) cover most of the band's innermost repeat, each by its tile
@@ -1374,6 +1406,19 @@ end
 -- outline. Returns that offset and the share covered: all of it when the
 -- whole cells end in a straight edge.
 function M.row_phase(p, size, w, period, along)
+  local memo = phases[p.cells]
+  if not memo then memo = {}; phases[p.cells] = memo end
+  local k = string.format("%.17g %.17g %.17g %s %s", size, w, period, along and string.format("%.17g", along) or "-", values_key(p))
+  local found = memo[k]
+  if not found then
+    found = { M.measure_row_phase(p, size, w, period, along) }
+    memo[k] = found
+  end
+  return found[1], found[2]
+end
+
+-- M.row_phase's measure, without the store.
+function M.measure_row_phase(p, size, w, period, along)
   local win = along or period
   local best, share = 0, -1
   for t = 0, 47 do
@@ -1381,19 +1426,28 @@ function M.row_phase(p, size, w, period, along)
     local cells = p.cells({ x0 = -2 * win, y0 = -period - oy, x1 = 2 * win, y1 = w + period - oy, size = size,
       rng = Rng.new(1), opts = {}, style = {} })
     M.shift_cells(cells, 0, oy)
+    -- Each whole cell's polygon with its box: a point outside the box is
+    -- outside the polygon.
     local whole = {}
     for _, c in ipairs(cells) do
       local ok = true
       for _, v in ipairs(c.verts) do if v[2] > w + 1e-6 then ok = false; break end end
-      if ok then whole[#whole + 1] = c.tile or c.verts end
+      if ok then
+        local P = c.tile or c.verts
+        local x0, y0, x1, y1 = math.huge, math.huge, -math.huge, -math.huge
+        for _, v in ipairs(P) do
+          x0, y0, x1, y1 = math.min(x0, v[1]), math.min(y0, v[2]), math.max(x1, v[1]), math.max(y1, v[2])
+        end
+        whole[#whole + 1] = { P, x0, y0, x1, y1 }
+      end
     end
     local n, hit = 0, 0
     for i = 0, 23 do
       for j = 0, 11 do
         local x, y = -win / 2 + win * (i + 0.5) / 24, w - period * (j + 0.5) / 12
         n = n + 1
-        for _, P in ipairs(whole) do
-          if in_poly(x, y, P) then hit = hit + 1; break end
+        for _, q in ipairs(whole) do
+          if x >= q[2] and x <= q[4] and y >= q[3] and y <= q[5] and in_poly(x, y, q[1]) then hit = hit + 1; break end
         end
       end
     end

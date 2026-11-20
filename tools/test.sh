@@ -25,7 +25,7 @@
 # HUP), the run stops every test it started and writes no times.
 set -e
 cd "$(dirname "$0")/.."
-FAST="core grow leaf letters plant settings reserve prepare_spec render_page inline headpiece lint tools"
+FAST="core grow leaf letters plant settings reserve prepare_spec render_page inline headpiece row_phase lint tools"
 
 # One test, by name; "run NAME exec" replaces the shell that runs it with
 # the test, so that a signal sent to that process is the test's own.

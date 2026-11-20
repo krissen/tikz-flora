@@ -14,8 +14,8 @@
 ## What runs where
 
 - `just test`: every `tests/test_*.lua`, then `test_bake.py`, `test_lint.py`, `test_tools.py` and `test_tools_matrix.py` (the measuring tools' own tests; the second runs every call the tools document, and is not in `fast`).
-- Pre-push (`tools/test.sh fast`): core, grow, leaf, letters, plant, settings, reserve, prepare_spec, render_page, inline, headpiece, lint, tools and bake, each a second or two at most. header_mark and support take minutes and run in CI instead.
-- CI (`.github/workflows/test.yml`): four groups that name 30 of the 44 test files, header_mark in the first and support in the last.
+- Pre-push (`tools/test.sh fast`): core, grow, leaf, letters, plant, settings, reserve, prepare_spec, render_page, inline, headpiece, row_phase, lint, tools and bake, each a few seconds at most. header_mark and support take minutes and run in CI instead.
+- CI (`.github/workflows/test.yml`): four groups that name 31 of the 45 test files, header_mark in the first and support in the last.
 - Not in CI yet, a known gap: floret_passes, frame_matrix, pattern, pattern_colourways, pattern_ground, pattern_matrix, pattern_perimeter, pattern_protect, pattern_reach, pattern_values, pdf_form_cache, preview, progression_frame_resources and stem_taper. They run under `just test` only, so a green CI says nothing about the pattern engine.
 
 ## In Linux
