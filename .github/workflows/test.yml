@@ -1,8 +1,10 @@
 name: test
 
-# The engine's Lua tests take ~12 min in one process, so they run in three
-# groups of about four minutes, and only when the engine or its tests change.
-# The seconds-fast tests also run before push (.pre-commit-config.yaml).
+# The engine's Lua tests, in groups of a few minutes each, only when the
+# engine or its tests change. The groups name 30 of the 44 test files; the
+# other 14 (the pattern tests among them) are not run here yet, and
+# docs/testing.md lists them. The seconds-fast tests also run before push
+# (.pre-commit-config.yaml).
 on:
   pull_request:
     paths:
@@ -28,20 +30,21 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # Grouped by measured time on a laptop (seconds): mix 210,
-        # scene_ops 44 | compose 132, ornaments 97 | layout 130, clock 96,
-        # visitor 26 and the fast set.
+        # Grouped by CPU seconds on a laptop (just test-times, 2026-11):
+        # mix 123, scene_ops 83, header_mark 140 | compose 186, ornaments
+        # 92, progression 42 | layout 117, clock 56, visitor 22 and the fast
+        # set | support 87, titles 34, backdrop 22, raster 12 and the rest.
         tests:
-          - mix scene_ops
+          - mix scene_ops header_mark
           - compose ornaments progression
           - layout clock visitor fast page_cache cache_key
-          - raster relief gilt_look backdrop catalog garden titles
+          - support raster relief gilt_look backdrop catalog garden titles
     steps:
       - uses: actions/checkout@v4
       - name: texlua
         run: |
           sudo apt-get update -qq
-          sudo apt-get install -y -qq --no-install-recommends texlive-binaries >/dev/null
+          sudo apt-get install -y -qq --no-install-recommends texlive-binaries time >/dev/null
       - name: tests
         run: |
           set -e
