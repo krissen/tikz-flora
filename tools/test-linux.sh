@@ -1,14 +1,13 @@
 #!/bin/sh
-# Runs tools/test.sh in Ubuntu, as CI does: /bin/sh is dash there, the
-# userland GNU (time, xargs, awk is mawk), and the architecture CI's
-# (amd64, emulated on another machine). docs/testing.md.
+# Runs tools/test.sh in Ubuntu, as CI does: /bin/sh is dash there and the
+# userland GNU (time, xargs, awk is mawk). docs/testing.md.
 #
 #   tools/test-linux.sh [TEST.SH ARGS...]     default: fast
 #   tools/test-linux.sh --list                the files it sends, one a line
 #
 # Needs docker (not for --list). The image (tools/test-linux.Dockerfile) is
-# built once and kept as tikz-flora-test:ubuntu-24.04; FLORA_LINUX_REBUILD=1
-# builds it again.
+# built once per architecture and kept as tikz-flora-test:ubuntu-24.04-ARCH;
+# FLORA_LINUX_REBUILD=1 builds it again.
 #
 # The container gets the tree CI checks out, as it stands in the working
 # tree: the files git tracks and those it would track (untracked and not
@@ -36,8 +35,18 @@ if [ "${1:-}" = --list ]; then
   exit 0
 fi
 
-image=tikz-flora-test:ubuntu-24.04
-platform=linux/amd64
+# CI's runner is amd64. FLORA_LINUX_PLATFORM=linux/amd64 runs that
+# architecture here too, emulated on another machine and many times
+# slower; by default the container runs the machine's own architecture,
+# the same Ubuntu, shell and userland.
+platform=${FLORA_LINUX_PLATFORM:-}
+if [ -z "$platform" ]; then
+  case "$(docker info --format '{{.Architecture}}')" in
+    aarch64|arm64) platform=linux/arm64 ;;
+    *) platform=linux/amd64 ;;
+  esac
+fi
+image=tikz-flora-test:ubuntu-24.04-${platform#linux/}
 command -v docker > /dev/null || { echo "test-linux: needs docker" >&2; exit 2; }
 if [ "${FLORA_LINUX_REBUILD:-}" = 1 ] || ! docker image inspect "$image" > /dev/null 2>&1; then
   docker build -q --platform "$platform" -t "$image" -f tools/test-linux.Dockerfile tools > /dev/null
