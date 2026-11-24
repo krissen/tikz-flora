@@ -1,11 +1,12 @@
 """Shows and compares the test times tools/test.sh --times writes (docs/testing.md).
 
-    python3 -I tools/test_times.py show TIMES [--jobs N]
+    python3 -I tools/test_times.py show TIMES [--jobs N|auto]
     python3 -I tools/test_times.py compare OLD NEW
 
 show prints the table, most CPU first, with totals, and the least wall
 time N jobs could take on the same CPU times (each test started on the
-first free job, longest first; at least the longest single test).
+first free job, longest first; at least the longest single test). auto
+is the number of jobs the run recorded.
 compare prints each test's CPU seconds in both runs and the change. CPU
 time (user + sys) is what to compare between runs: wall time depends on
 the machine's load, which each file records on its last line.
@@ -20,6 +21,8 @@ those it left out.
 
 import argparse
 import heapq
+import os
+import re
 import sys
 
 HEADER = ["test", "status", "wall", "user", "sys", "cpu"]
@@ -90,8 +93,24 @@ def cpu(r):
     return r["times"]["cpu"] if r["times"] else 0.0
 
 
+def jobs_arg(text):
+    """A whole number of at least 1, or auto (the jobs the run recorded)."""
+    if text == "auto":
+        return text
+    try:
+        n = int(text)
+    except ValueError:
+        n = 0
+    if n < 1:
+        raise argparse.ArgumentTypeError(f"takes a whole number of at least 1 or auto, not {text!r}")
+    return n
+
+
 def show(path, jobs):
     rows, note = read(path)
+    if jobs == "auto":
+        m = re.search(r"\bjobs=(\d+)", note)
+        jobs = int(m.group(1)) if m else max(1, (os.cpu_count() or 2) // 2)
     order = sorted(rows, key=lambda n: -cpu(rows[n]))
     good = [r for r in rows.values() if counted(r)]
     total = sum(cpu(r) for r in good)
@@ -148,7 +167,7 @@ def main():
     sub = ap.add_subparsers(dest="cmd", required=True)
     s = sub.add_parser("show")
     s.add_argument("times")
-    s.add_argument("--jobs", type=int, default=0)
+    s.add_argument("--jobs", type=jobs_arg, default=0)
     c = sub.add_parser("compare")
     c.add_argument("old")
     c.add_argument("new")
