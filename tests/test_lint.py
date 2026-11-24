@@ -107,6 +107,9 @@ def run(root, bindir, modes, args=()):
     for tool in TOOLS:
         env["FAKE_" + tool.upper().replace("-", "_")] = modes[tool]
     p = toolproc.run([sys.executable, "-I", LINT, *args], env=env, capture_output=True, text=True, check=False)
+    # An error on stderr that the output and the status do not show is a
+    # failure too.
+    check("Traceback" not in p.stderr, f"lint.py ended with a traceback: {p.stderr[-300:]!r}")
     return p.returncode, p.stdout.splitlines()
 
 

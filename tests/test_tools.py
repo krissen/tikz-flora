@@ -503,6 +503,28 @@ def test_toolproc():
             check(not alive(pid), "a child that was not tracked is left running when the signal comes")
             if alive(pid):
                 os.kill(pid, signal.SIGKILL)
+        # Without ps (a PATH that lacks it; and the listing failing as well):
+        # a normal end and a signal still stop what is tracked, with no
+        # traceback.
+        for listing in ("a PATH without ps", "no listing at all"):
+            for how, want in (("exit", 0), ("term", 143)):
+                prog = here + "import os, signal, time\nc = toolproc.popen(['sleep', '37.25'])\nprint(c.pid, flush=True)\nos.environ['PATH'] = '/nonexistent'\n"
+                if listing == "no listing at all":
+                    prog += "toolproc.PS = '/nonexistent/ps'\n"
+                if how == "term":
+                    prog += "os.kill(os.getpid(), signal.SIGTERM)\ntime.sleep(5)\n"
+                p = toolproc.run([sys.executable, "-I", "-c", prog], timeout=40, capture_output=True, text=True)
+                child = int(p.stdout.split()[0]) if p.stdout.split() else None
+                for _ in range(30):
+                    if child is None or not alive(child):
+                        break
+                    time.sleep(0.1)
+                label = f"{how} with {listing}"
+                check(p.returncode == want, f"{label}: rc {p.returncode}, not {want}")
+                check("Traceback" not in p.stderr, f"{label}: a traceback: {p.stderr[-200:]!r}")
+                check(child is not None and not alive(child), f"{label}: the tracked child is left running")
+                if child is not None and alive(child):
+                    os.kill(child, signal.SIGKILL)
         # A command that outlives its timeout while a process of its own, in
         # another group, lives and holds the pipes: stopped as a signal
         # stops it, and the call returns.
