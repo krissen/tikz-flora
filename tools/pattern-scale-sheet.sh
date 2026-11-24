@@ -21,7 +21,7 @@ BOX=${6:-300}
 CROP=${7:-}
 FONT=${PATTERN_AUDIT_FONT:-/System/Library/Fonts/Supplemental/Arial.ttf}
 TMP=$(mktemp -d)
-trap 'rm -rf "$TMP"' EXIT
+trap 'rm -rf "$TMP" || true' EXIT
 args=""
 i=0
 while read -r v f l p k label; do
