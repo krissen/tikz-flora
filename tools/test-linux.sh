@@ -48,12 +48,20 @@ list=
 tarfile=
 child=
 got=
+launching=
 # shellcheck disable=SC2329
 on_signal() {
   got=$1
   docker kill "$name" > /dev/null 2>&1 || true
   [ -z "$child" ] || kill "$child" 2> /dev/null || true
-  [ -n "$child" ] || exit "$got"
+  # Between starting a background job and saving its pid there is no pid to
+  # stop: the signal is acted on right after, by stop_launched.
+  [ -n "$child" ] || [ -n "$launching" ] || exit "$got"
+}
+# After "launching=1; job & child=$!; launching=": a signal that came in
+# between is sent on now.
+stop_launched() {
+  [ -z "$got" ] || { docker kill "$name" > /dev/null 2>&1 || true; kill "$child" 2> /dev/null || true; }
 }
 # Waits for the background job in child; a signal ends the wait before the
 # job, which is waited for, and the run then leaves with the signal's status.
@@ -84,8 +92,11 @@ if [ -z "$platform" ]; then
 fi
 image=tikz-flora-test:ubuntu-24.04-${platform#linux/}
 if [ "${FLORA_LINUX_REBUILD:-}" = 1 ] || ! docker image inspect "$image" > /dev/null 2>&1; then
+  launching=1
   docker build -q --platform "$platform" -t "$image" -f tools/test-linux.Dockerfile tools > /dev/null &
   child=$!
+  launching=
+  stop_launched
   wait_child
   [ "$rc" -eq 0 ] || exit "$rc"
 fi
@@ -96,7 +107,10 @@ files > "$list"
 # --no-recursion: the list names every file, and a directory in it (none
 # is, git lists files) would otherwise bring what git leaves out.
 tar -c --no-xattrs --no-recursion -T "$list" > "$tarfile"
+launching=1
 docker run --rm -i --name "$name" --platform "$platform" -e FLORA_IN_LINUX_CONTAINER=1 "$image" sh -c 'tar -x && exec tools/test.sh "$@"' sh "$@" < "$tarfile" &
 child=$!
+launching=
+stop_launched
 wait_child
 exit "$rc"
