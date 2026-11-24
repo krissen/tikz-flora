@@ -1,10 +1,34 @@
 -- The pattern colour invariants (tests/pattern_matrix.lua) over every
 -- pattern x colourway x backdrop x finish, and proof that the matrix fails
 -- when an invariant is broken.
+-- Split over tests/test_pattern_matrix_1.lua .. _4.lua: each runs
+-- run(part, parts), its share of the patterns, of the mutations and of the
+-- sweeps that follow (tests/split.lua); part 1 runs the checks too small
+-- to weigh.
 local H = dofile("tests/helper.lua")
 local M = dofile("tests/pattern_matrix.lua")
 local Patterns = require("flora.patterns")
 local Pattern = require("flora.pattern")
+
+-- What each item weighs, in CPU seconds (just test-times, 2026-11): a
+-- pattern's share of the matrix, each mutation and each of the sweeps.
+local WEIGHTS = {
+  { "pattern:asanoha", 5 }, { "pattern:celtic_knot", 5 }, { "pattern:greek_crosses", 3 }, { "pattern:hexagram_lattice", 4 },
+  { "pattern:khatam", 3 }, { "pattern:kikko", 3 }, { "pattern:overlapping_circles", 3 }, { "pattern:penrose_rhombs", 5 },
+  { "pattern:rosette_lattice", 12 }, { "pattern:seigaiha", 3 }, { "pattern:shippo", 3 }, { "pattern:sikku_kolam", 12 },
+  { "pattern:stars_8_4", 6 }, { "pattern:truchet", 3 },
+  { "caught:roles on stars_8_4", 7 }, { "caught:order on asanoha", 6 }, { "caught:ground on asanoha", 5 }, { "caught:nofill on kikko", 3 },
+  { "caught:fields on kikko", 3 }, { "caught:contrast on truchet", 3 }, { "caught:saturation on kikko", 3 },
+  { "caught:contrast on rosette_lattice", 11 }, { "caught:vanish on rosette_lattice", 12 }, { "caught:edge on rosette_lattice", 13 },
+  { "caught:units on sikku_kolam", 7 }, { "caught:units on celtic_knot", 15 }, { "caught:tiling on khatam", 4 },
+  { "caught:onecolour on hexagram_lattice", 4 }, { "caught:onpanel on sikku_kolam", 10 }, { "caught:holes on hexagram_lattice", 4 },
+  { "caught:between on hexagram_lattice", 4 }, { "caught:fragments on kikko", 2 },
+  { "block:lacquer", 9 }, { "block:density0", 7 }, { "block:defaults", 40 }, { "block:unitdraw", 43 }, { "block:groundtime", 175 },
+  { "block:fadeunder", 35 }, { "block:reweave", 158 }, { "block:aliases", 2 }, { "block:field scale", 79 },
+}
+
+return function(part, parts)
+local S = dofile("tests/split.lua").new(part, parts, WEIGHTS)
 
 -- The floors, set after measuring the colourways (geo-roles3 report). The
 -- band stands 0.18 to 0.76 off its surface in OKLab L; the lowest is
@@ -20,10 +44,14 @@ local Pattern = require("flora.pattern")
 -- every pattern, ORDER #10 of the geometry work), so none may.
 local FLOORS = { band = 0.15, fields = 0.06, band_any = 0.08, isolated = 0 }
 
-local cells, failures = M.run(FLOORS)
-if os.getenv("FLORA_MATRIX_VERBOSE") then print(string.format("matrix: %d cells, %d saturation cells, %d failures", #cells, M.saturation_cells, #failures)) end
-H.check(M.saturation_cells == #require("flora.inks").colourway_order * 4, "saturation cells: " .. tostring(M.saturation_cells))
-H.check(#cells == #Patterns.list * #require("flora.inks").colourway_order * 3 * 2 * 2, "matrix cells: " .. #cells)
+local mine, nmine = {}, 0
+for _, p in ipairs(Patterns.list) do
+  if S.mine("pattern:" .. p.name) then mine[p.name] = true; nmine = nmine + 1 end
+end
+local cells, failures = M.run(FLOORS, function(n) return mine[n] end)
+if os.getenv("FLORA_MATRIX_VERBOSE") then print(string.format("matrix: %d cells, %d saturation cells, %d failures (part %d of %d)", #cells, M.saturation_cells, #failures, part, parts)) end
+S.check(H, M.saturation_cells == #require("flora.inks").colourway_order * 4, "saturation cells: " .. tostring(M.saturation_cells))
+S.check(H, #cells == nmine * #require("flora.inks").colourway_order * 3 * 2 * 2, "matrix cells: " .. #cells)
 for _, f in ipairs(failures) do H.check(false, f) end
 
 -- The band's distance from every surface it lies on, by colourway and
@@ -54,6 +82,7 @@ end
 
 -- Each mutation breaks one invariant; the matrix must say so.
 local function caught(what, name, mutate, restore)
+  if not S.mine("caught:" .. what .. " on " .. name) then return end
   mutate()
   local ok, _, fs = pcall(function() return M.run(FLOORS, function(n) return n == name end) end)
   restore()
@@ -271,6 +300,7 @@ caught("between", "hexagram_lattice", function()
   end
 end, function() hexagram.cells = hex_cells2 end)
 
+if S.once("knot field") then
 -- The knot's field panel: no strand ends loose in any layout.
 local kcells, kfails = M.knot()
 if os.getenv("FLORA_MATRIX_VERBOSE") then print(string.format("knot field: %d cells, %d failures", #kcells, #kfails)) end
@@ -292,10 +322,11 @@ do
   H.check(mutated > 0, "the knot field missed strands ending loose")
   if os.getenv("FLORA_MATRIX_VERBOSE") then print(string.format("mutation units on the knot field: %d of %d failures", mutated, #fs)) end
 end
+end
 
 -- finish=lacquer: a panel, a gold line, keys set on the page first, and
 -- nothing changed on a pattern without a ground.
-do
+if S.mine("block:lacquer") then
   local lc, lf = M.lacquer()
   H.check(#lc == #Patterns.list * 3 * 2, "lacquer cells: " .. #lc)
   for _, f in ipairs(lf) do H.check(false, f) end
@@ -359,7 +390,7 @@ end
 -- density=0 paints nothing of the pattern; and the check fails when a
 -- placed panel's cells (celtic_knot's) or the ground's panel paint anyway,
 -- the faults put back into pattern.lua's source.
-do
+if S.mine("block:density0") then
   local pages, fs = M.density0()
   H.check(pages == 360, "density0 pages: " .. pages)
   for _, f in ipairs(fs) do H.check(false, f) end
@@ -387,7 +418,7 @@ end
 -- A key written out at its default paints the page the key left out
 -- paints, and the check fails when lacquer fills in its own values only
 -- for keys left out.
-do
+if S.mine("block:defaults") then
   local pages, fs = M.defaults()
   H.check(pages > 0, "defaults painted no page")
   for _, f in ipairs(fs) do H.check(false, f) end
@@ -410,7 +441,7 @@ end
 
 -- A unit falls on one draw, and the check fails when each of its cells is
 -- judged on a draw of its own again.
-do
+if S.mine("block:unitdraw") then
   local pages, units, fs = M.unitdraw(function(n) return n == "sikku_kolam" or n == "celtic_knot" end)
   H.check(pages == 288, "unitdraw pages: " .. pages)
   H.check(units > 0, "unitdraw found no kept unit")
@@ -436,7 +467,7 @@ end
 -- births on every pattern with a ground, and in grow frames on asanoha;
 -- and the check fails when the panel waits for the first cell the
 -- generator lists, or a piece for its cell's painting.
-do
+if S.mine("block:groundtime") then
   local pages, checked, _, fs = M.groundtime()
   H.check(pages == 144, "groundtime pages: " .. pages)
   H.check(checked > 0, "groundtime checked no cells")
@@ -467,7 +498,7 @@ end
 
 -- A faded cell fades into what lies under it, the ground or the page, and
 -- the check fails when every cell fades toward the page again.
-do
+if S.mine("block:fadeunder") then
   local pages, compared, fs = M.fadeunder()
   H.check(pages == 144, "fadeunder pages: " .. pages)
   H.check(compared > 0, "fadeunder compared no colours")
@@ -491,7 +522,7 @@ end
 
 -- A field woven again at its edge keeps the edge's treatment, and the
 -- check fails when the woven cells are all painted whole again.
-do
+if S.mine("block:reweave") then
   local pages, compared, fs = M.reweave()
   H.check(pages == 480, "reweave pages: " .. pages)
   H.check(compared > 0, "reweave compared no cells")
@@ -517,7 +548,7 @@ end
 -- a spec and in a setup line; and the check fails when the field stops
 -- reading the alias (patterns.lua's weight).
 local ALIASES = { celtic_panels = "celtic_knot" }
-do
+if S.mine("block:aliases") then
   local n, bad = M.aliases(ALIASES)
   H.check(n == 4, "alias pages compared: " .. n)
   for _, b in ipairs(bad) do H.check(false, "alias: " .. b) end
@@ -558,7 +589,7 @@ end, function() kikko.cells = kikko_cells2 end)
 -- The field scale (tests/pattern_scale.lua): the same number of cells
 -- across every governing strip within the floor and the ceiling, and the
 -- reference page as it was drawn before the scale followed the field.
-do
+if S.mine("block:field scale") then
   Pattern.FIELD_SCALE.enabled = true
   local S = dofile("tests/pattern_scale.lua")
   local scells, sfails = S.run()
@@ -603,4 +634,6 @@ do
   end, function() Pattern.field_strip = strip end)
 end
 
-H.done("pattern matrix")
+S.finish(H)
+H.done("pattern matrix " .. part)
+end

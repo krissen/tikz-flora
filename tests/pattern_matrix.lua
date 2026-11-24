@@ -1,5 +1,5 @@
 -- The pattern colour invariants, cell by cell over pattern x colourway x
--- ground (off, on) x backdrop x finish (tests/test_pattern_matrix.lua runs it; the floors are
+-- ground (off, on) x backdrop x finish (tests/pattern_matrix_suite.lua runs it, in four parts; the floors are
 -- set there). Each cell paints a small page and records every fill and
 -- stroke inside the pattern's group, with the colour a module asked for
 -- (before a dark backdrop repaints it).
