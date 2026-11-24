@@ -194,27 +194,37 @@ def run(argv, timeout=None, input=None, check=False, capture_output=False, **kw)
     return done
 
 
+SETTLE = 0.2  # seconds a second failure may come after the first and still be its own
+
+
 def run_all(commands, grace=None):
     """Run the commands, each an (argv, popen keywords) pair, at once and
     wait for all of them; when one ends with a status other than 0 the
-    others still running are stopped as a signal stops them (TERM, a wait
-    of up to grace seconds, KILL). Returns each command's status in order,
-    that of a stopped one being the signal's."""
+    others still running (after SETTLE, for one that fails at the same
+    time) are stopped as a signal stops them (TERM, a wait of up to grace
+    seconds, KILL). Returns, in order, each command's (status, how): how is
+    "ok", "failed" (it ended with a status other than 0 by itself) or
+    "stopped" (it was still running when another failed, and was stopped:
+    whatever its status then, it did not fail)."""
     children = []
+    stopped = set()
     try:
         for argv, kw in commands:
             children.append(popen(argv, **kw))
-        stopped = False
+        done = False
         while True:
             codes = [child.poll() for child in children]
             if all(code is not None for code in codes):
                 break
-            if not stopped and any(code not in (None, 0) for code in codes):
-                stopped = True
-                running = [(child.pid, child.pid) for child, code in zip(children, codes) if code is None]
+            if not done and any(code not in (None, 0) for code in codes):
+                done = True
+                time.sleep(SETTLE)
+                codes = [child.poll() for child in children]
+                stopped = {i for i, code in enumerate(codes) if code is None}
+                running = [(children[i].pid, children[i].pid) for i in stopped]
                 _stop(running, signal.SIGTERM, GRACE if grace is None else grace, children)
             time.sleep(0.05)
-        return [child.returncode for child in children]
+        return [(child.returncode, "stopped" if i in stopped else "ok" if child.returncode == 0 else "failed") for i, child in enumerate(children)]
     finally:
         for child in children:
             child.poll()
@@ -267,8 +277,8 @@ def install():
 
 def _run_all_cli(args):
     """run-all CWD OUT CMD... :: CWD OUT CMD... : the commands in their
-    directories, each one's output in its file, and their statuses on a
-    line."""
+    directories, each one's output in its file, and a line each with its
+    status and "ok", "failed" or "stopped" (see run_all)."""
     groups = [[]]
     for arg in args:
         if arg == "::":
@@ -284,7 +294,8 @@ def _run_all_cli(args):
     finally:
         for out in files:
             out.close()
-    print(" ".join(str(c) for c in codes))
+    for status, how in codes:
+        print(status, how)
     return 0
 
 
