@@ -142,6 +142,7 @@ def build_tree(path, full, inject=False):
         write(os.path.join(path, "tests", f"test_{n}.py"), f'print("{n}: ok")\n')
     write(os.path.join(path, "lua", "burn.lua"), BURN)
     write(os.path.join(path, "script.lua"), SCRIPT)
+    write(os.path.join(path, "dir with space", "script.lua"), SCRIPT)
     write(os.path.join(path, "dies.lua"), 'error("planned")\n')
     write(os.path.join(path, "exits.lua"), "os.exit(3)\n")
     write(os.path.join(path, "ok.tsv"), TIMES_OK)
@@ -166,10 +167,10 @@ def all_tests(tree_full):
 CELLS = []
 
 
-def cell(tool, args, expect, tree="good", times=None, ran=None, note="", docker=False, prep=None, nonroot=False):
+def cell(tool, args, expect, tree="good", times=None, ran=None, note="", docker=False, prep=None, nonroot=False, says=None):
     """prep names a fault injected before the call (see PREPS); nonroot
     rows need a user a read-only directory stops."""
-    CELLS.append({"tool": tool, "args": args, "expect": expect, "tree": tree, "times": times, "ran": ran, "note": note, "docker": docker, "prep": prep, "nonroot": nonroot})
+    CELLS.append({"tool": tool, "args": args, "expect": expect, "tree": tree, "times": times, "ran": ran, "note": note, "docker": docker, "prep": prep, "nonroot": nonroot, "says": says})
 
 
 def test_sh_cells():
@@ -297,6 +298,16 @@ def just_cells():
     cell("just", ["nosuchrecipe"], "refuse", note="a recipe that does not exist")
 
 
+def argument_cells():
+    """A recipe that passes on its arguments keeps each one whole, with its
+    spaces and parentheses."""
+    cell("just", ["profile", "-e", "print( 1 + (2 * 3) )"], "ok", says="profile:", note="just profile -e with parentheses and spaces")
+    cell("just", ["profile", "dir with space/script.lua"], "ok", says="profile:", note="just profile a script whose path has spaces")
+    cell("just", ["test-times", "2", "a b"], "refuse", times="none-recipe", says="no test named a b", note="just test-times with a test name with a space")
+    cell("just", ["test", "1 2"], "refuse", says="not '1 2'", note="just test with a jobs value with a space")
+    cell("just", ["test-linux", "a b"], "refuse", tree="real", docker=True, says="no test named a b", note="just test-linux with a test name with a space")
+
+
 def fault_cells():
     """A step after a measurement is made fails: the measurement stays,
     the run names where, and it ends non-zero ("saved"). A step before it
@@ -358,6 +369,7 @@ def bodies_cells():
     cell("just", ["bodies-compare", "HEAD", "slides"], "fail", tree="gitchanged", note="just bodies-compare, trees that differ")
     cell("just", ["bodies-compare"], "refuse", note="just bodies-compare with no REF")
     cell("just", ["bodies-compare", "nosuchref"], "refuse", tree="git", note="just bodies-compare with a REF that is no commit")
+    cell("just", ["bodies-compare", "HEAD", "a b"], "refuse", tree="git", says="no suite 'a b'", note="just bodies-compare with a suite name with a space")
     cell("just", ["bodies-compare", "HEAD", "nosuch"], "refuse", tree="git", note="just bodies-compare with a suite that does not exist")
 
 
@@ -366,6 +378,7 @@ def build_cells():
     test_times_cells()
     profile_cells()
     just_cells()
+    argument_cells()
     fault_cells()
     bodies_cells()
     linux_cells()
@@ -565,6 +578,8 @@ def judge(c, rc, out, err, tree, subst):
             bad.append("the pages of a comparison that differs are not left, named")
     if times == "saved":
         bad.extend(saved_problems(rc, both, tree, ran))
+    if c.get("says") and c["says"] not in both:
+        bad.append(f"it does not print {c['says']!r}")
     if c.get("prep") == "needs-dev-full" and not ("profile:" in err and "could not write" in err):
         bad.append("the report is not on stderr with the reason")
     if c["tool"] == "bodies-compare" or c["args"][:1] == ["bodies-compare"]:
