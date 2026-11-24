@@ -7,16 +7,20 @@ package.path = "./lua/?.lua;" .. package.path
 -- sets its own resolutions.
 require("flora.tune").gilt_dpi = 100
 
-local H = { failures = 0 }
+local H = { failures = 0, checks = 0 }
 
 function H.check(cond, msg)
+  H.checks = H.checks + 1
   if not cond then
     H.failures = H.failures + 1
     io.stderr:write("FAIL: " .. msg .. "\n")
   end
 end
 
+-- FLORA_COUNT_CHECKS=1 says how many checks the test made (a test split
+-- across files makes, in all its parts, the checks the whole made).
 function H.done(name)
+  if os.getenv("FLORA_COUNT_CHECKS") then io.stderr:write(string.format("%s: %d checks\n", name, H.checks)) end
   if H.failures > 0 then
     io.stderr:write(string.format("%s: %d failure(s)\n", name, H.failures))
     os.exit(1)
