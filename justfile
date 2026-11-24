@@ -38,14 +38,26 @@ test jobs="auto":
 # run that ends last stays when two overlap; each shows its own).
 test-times jobs="4" *names:
     #!/bin/sh
-    set -eu
+    set -u
     mkdir -p build
     log=$(mktemp build/test-times.XXXXXX)
-    trap 'rm -f "$log.tsv"' EXIT
-    FLORA_PYTHON={{PYTHON}} tools/test.sh -j {{jobs}} --times "$log.tsv" {{names}} > "$log" 2>&1 || { tail -n 30 "$log"; echo "test-times: the whole output is in $log"; exit 1; }
-    python3 -I tools/test_times.py show "$log.tsv" --jobs {{jobs}}
-    cp "$log.tsv" "$log.new" && mv "$log.new" build/test-times.tsv
-    rm -f "$log"
+    rc=0
+    FLORA_PYTHON={{PYTHON}} tools/test.sh -j {{jobs}} --times "$log.tsv" {{names}} > "$log" 2>&1 || rc=$?
+    # The measurement, once made, is kept whatever happens after it: tests
+    # that failed, or a reporting step that does.
+    if [ -s "$log.tsv" ]; then
+      cp "$log.tsv" "$log.new" && mv "$log.new" build/test-times.tsv
+      python3 -I tools/test_times.py show "$log.tsv" --jobs {{jobs}} || { echo "test-times: the times are in build/test-times.tsv" >&2; [ "$rc" -ne 0 ] || rc=1; }
+      rm -f "$log.tsv"
+      [ "$rc" -eq 0 ] || echo "test-times: the times are kept in build/test-times.tsv" >&2
+    fi
+    if [ "$rc" -ne 0 ]; then
+      tail -n 30 "$log" >&2
+      echo "test-times: the whole output is in $log" >&2
+    else
+      rm -f "$log"
+    fi
+    exit "$rc"
 
 # E.g. `just test-linux` (the fast set), `just test-linux tools` or
 # `just test-linux -j 4 mix` (tools/test-linux.sh, docs/testing.md): the
