@@ -519,23 +519,44 @@ def ci_unrun(text):
     return sorted(lost)
 
 
-def test_ci_runs_every_test():
-    """No test file is left out of the test workflow: each test_*.lua and
-    test_*.py is named in one of its jobs, and each other file under tests/
-    says in CI_EXEMPT why it is not a test of its own. A mutation of the
-    workflow (a name taken out of its groups) is seen."""
-    with open(os.path.join(ROOT, ".github", "workflows", "test.yml")) as f:
-        text = f.read()
-    check(not ci_unrun(text), f"tests the test workflow does not run: {ci_unrun(text)}")
-    for name in ("compose", "pattern_perimeter_1", "tools_matrix"):
+# The names the proof takes out of the workflow: one in a matrix group, one
+# among others in a long group, one in a step of its own.
+CI_MUTATED = ("compose", "pattern_perimeter_1", "tools_matrix")
+
+
+def ci_mutations(text, names):
+    """What is wrong with the proof that ci_unrun sees a name taken out of
+    the workflow's jobs: a name that cannot be taken out (it is not in a job
+    line) proves nothing, and is a problem of its own."""
+    problems = []
+    for name in names:
         token = re.compile(rf"(?<![a-z0-9_]){name}(?![a-z0-9_]) ?")
         lines, done = text.splitlines(keepends=True), False
         for i, line in enumerate(lines):
             if not done and not line.lstrip().startswith(("#", "- name:")) and token.search(line):
                 lines[i], done = token.sub("", line, count=1), True
-        if done:
-            mutated = [m for m in ci_unrun("".join(lines)) if name in m]
-            check(mutated, f"taking {name} out of the workflow's jobs is not seen")
+        if not done:
+            problems.append(f"{name} could not be taken out of the workflow, which has it in no job line: its mutation proves nothing")
+        elif not [m for m in ci_unrun("".join(lines)) if name in m]:
+            problems.append(f"taking {name} out of the workflow's jobs is not seen")
+    return problems
+
+
+def test_ci_runs_every_test():
+    """No test file is left out of the test workflow: each test_*.lua and
+    test_*.py is named in one of its jobs, and each other file under tests/
+    says in CI_EXEMPT why it is not a test of its own. A mutation of the
+    workflow (a name taken out of its groups) is seen, and the test fails
+    when a mutation cannot be made."""
+    with open(os.path.join(ROOT, ".github", "workflows", "test.yml")) as f:
+        text = f.read()
+    check(not ci_unrun(text), f"tests the test workflow does not run: {ci_unrun(text)}")
+    for problem in ci_mutations(text, CI_MUTATED):
+        check(False, problem)
+    # The form itself: a name that is in no job line is reported, one that is
+    # in a comment or a step's name only likewise.
+    absent = ci_mutations(text, ("nosuchname", "texlua"))
+    check(len(absent) == 2 and all("could not be taken out" in p for p in absent), f"a name the workflow does not have in a job line is not reported: {absent}")
 
 
 def test_ci_paths():
@@ -661,7 +682,7 @@ def test_run_all():
         codes = p.stdout.strip()
         check(codes == "[(-15, 'stopped'), (3, 'failed')]", f"run_all, one fails: the one that failed is 'failed', the other 'stopped': {codes!r}")
         check(took < 8, f"run_all, one fails: took {took:.1f} s, the other was stopped only when its own time was up")
-        check(gone(pids_of(a)), "run_all, one fails: the other is left running")
+        check(len(pids_of(a)) == 1 and gone(pids_of(a)), "run_all, one fails: the other did not start, or is left running")
         # Both fail at the same moment: both are 'failed', neither stopped.
         p, took = run([(["sh", "-c", "exit 3"], {}), (["sh", "-c", "exit 4"], {})])
         check(p.stdout.strip() == "[(3, 'failed'), (4, 'failed')]", f"run_all, both fail: {p.stdout.strip()!r}")
@@ -671,7 +692,7 @@ def test_run_all():
         p, took = run([(["sh", "-c", f"while [ ! -s {b} ]; do sleep 0.05; done; exit 3"], {}), (["sh", "-c", f"trap '' TERM; echo $$ > {b}; sleep 30"], {})], grace=2)
         check(p.stdout.strip().startswith("[(3, 'failed'), (-9, 'stopped')]"), f"run_all, one ignores TERM: failed and stopped (by KILL): {p.stdout.strip()!r}")
         check(2 <= took < 12, f"run_all, one ignores TERM: took {took:.1f} s, not the grace of 2 s")
-        check(gone(pids_of(b)), "run_all, one ignores TERM: it is left running after the grace")
+        check(len(pids_of(b)) == 1 and gone(pids_of(b)), "run_all, one ignores TERM: it did not start, or is left running after the grace")
         # An interrupt while they run stops them all.
         c, e = os.path.join(d, "c"), os.path.join(d, "e")
         prog = here + f"toolproc.run_all([(['sh', '-c', 'echo $$ > {c}; exec sleep 30'], {{}}), (['sh', '-c', 'echo $$ > {e}; exec sleep 30'], {{}})])\n"
@@ -683,7 +704,7 @@ def test_run_all():
             os.kill(q.pid, signal.SIGTERM)
             got = q.wait(timeout=30)
         check(got == 143, f"run_all, interrupted: rc {got}, not 143")
-        check(gone(pids_of(c, e)), "run_all, interrupted: a command is left running")
+        check(len(pids_of(c, e)) == 2 and gone(pids_of(c, e)), "run_all, interrupted: a command did not start, or is left running")
 
 
 def read_text(path):
