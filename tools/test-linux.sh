@@ -55,9 +55,27 @@ if [ "${FLORA_LINUX_REBUILD:-}" = 1 ] || ! docker image inspect "$image" > /dev/
 fi
 [ $# -gt 0 ] || set -- fast
 list=$(mktemp "${TMPDIR:-/tmp}/test-linux.XXXXXX")
-trap 'rm -f "$list"' EXIT
+tarfile=$(mktemp "${TMPDIR:-/tmp}/test-linux.XXXXXX")
+# The container has a name of this run's own and is stopped when the run is
+# interrupted: a signal to this shell would otherwise leave the container,
+# and the tests in it, running.
+name=tikz-flora-test-$$
+dpid=
+got=
+trap 'rm -f "$list" "$tarfile"' EXIT
+trap 'got=130; docker kill "$name" > /dev/null 2>&1; [ -z "$dpid" ] || kill "$dpid" 2> /dev/null' INT
+trap 'got=143; docker kill "$name" > /dev/null 2>&1; [ -z "$dpid" ] || kill "$dpid" 2> /dev/null' TERM
+trap 'got=129; docker kill "$name" > /dev/null 2>&1; [ -z "$dpid" ] || kill "$dpid" 2> /dev/null' HUP
 files > "$list"
 # --no-recursion: the list names every file, and a directory in it (none
 # is, git lists files) would otherwise bring what git leaves out.
-tar -c --no-xattrs --no-recursion -T "$list" |
-  docker run --rm -i --platform "$platform" -e FLORA_IN_LINUX_CONTAINER=1 "$image" sh -c 'tar -x && exec tools/test.sh "$@"' sh "$@"
+tar -c --no-xattrs --no-recursion -T "$list" > "$tarfile"
+docker run --rm -i --name "$name" --platform "$platform" -e FLORA_IN_LINUX_CONTAINER=1 "$image" sh -c 'tar -x && exec tools/test.sh "$@"' sh "$@" < "$tarfile" &
+dpid=$!
+rc=0
+wait "$dpid" || rc=$?
+# A signal ends the wait before the container does: wait for it, then exit
+# with the signal's status.
+while kill -0 "$dpid" 2> /dev/null; do wait "$dpid" 2> /dev/null || true; done
+[ -z "$got" ] || rc=$got
+exit "$rc"
