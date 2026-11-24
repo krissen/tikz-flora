@@ -21,13 +21,22 @@
 set -eu
 cd "$(dirname "$0")/.."
 refuse() { echo "bodies-compare: $1" >&2; exit 2; }
-ref=${1:?usage: tools/bodies-compare.sh REF [SUITE...]}
+[ $# -ge 1 ] && [ -n "$1" ] || refuse "usage: tools/bodies-compare.sh REF [SUITE...]"
+ref=$1
 shift
 command -v git > /dev/null || refuse "needs git, to unpack $ref's tree"
 command -v texlua > /dev/null || refuse "needs texlua"
 git rev-parse --is-inside-work-tree > /dev/null 2>&1 || refuse "not in a git working tree; $ref's tree comes from its history"
 git rev-parse --verify --quiet "$ref^{commit}" > /dev/null || refuse "$ref is not a commit"
 [ $# -gt 0 ] || set -- bands slides progression protect
+# The suites tools/bodies.lua knows; it too refuses another, but only after
+# the suites before it have run.
+for suite in "$@"; do
+  case "$suite" in
+    bands|slides|progression|protect) ;;
+    *) refuse "no suite '$suite' (bands, slides, progression, protect)" ;;
+  esac
+done
 root=$(pwd)
 mkdir -p build
 out=$(mktemp -d build/bodies.XXXXXX)
