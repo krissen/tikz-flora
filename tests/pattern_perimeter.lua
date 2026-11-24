@@ -1,4 +1,4 @@
--- The perimeter band's invariant matrix (tests/test_pattern_perimeter.lua): every
+-- The perimeter band's invariant matrix (tests/pattern_perimeter_suite.lua, in four parts): every
 -- pattern x band width x paper x edge (each value and none) x backdrop, on
 -- a page with a frame title, the theme's top inset and header clip, and a
 -- reservation in the top band. M.run returns the cells swept and every

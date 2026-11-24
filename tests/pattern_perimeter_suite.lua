@@ -5,12 +5,32 @@
 -- broken the way it guards against; an edge the page leaves out is the
 -- pattern's own in a band, and edge=dissolve written out is not; and the
 -- band's keys leave every other layout as it was.
+-- The suite is split over tests/test_pattern_perimeter_1.lua .. _4.lua: each
+-- runs run(part, parts), its share of the matrix's patterns and of the
+-- mutations, and part 1 the checks too small to weigh (tests/split.lua).
 local H = dofile("tests/helper.lua")
 local Patterns = require("flora.patterns")
 local Pattern = require("flora.pattern")
 local Paint = require("flora.paint")
 local Compose = require("flora.compose")
 local Rng = require("flora.rng")
+
+-- What each item weighs, in CPU seconds (just test-times, 2026-11): a
+-- pattern's share of the matrix (and of the checks that run for every
+-- pattern), and each mutation.
+local WEIGHTS = {
+  { "pattern:asanoha", 54 }, { "pattern:celtic_knot", 108 }, { "pattern:greek_crosses", 32 }, { "pattern:hexagram_lattice", 35 },
+  { "pattern:khatam", 36 }, { "pattern:kikko", 24 }, { "pattern:overlapping_circles", 21 }, { "pattern:penrose_rhombs", 34 },
+  { "pattern:rosette_lattice", 84 }, { "pattern:seigaiha", 17 }, { "pattern:shippo", 24 }, { "pattern:sikku_kolam", 163 },
+  { "pattern:stars_8_4", 36 }, { "pattern:truchet", 16 },
+  { "mutant:no keep", 18 }, { "mutant:no text holes", 23 }, { "mutant:cut off the band", 23 }, { "mutant:crooked cut", 22 },
+  { "mutant:off centre", 23 }, { "mutant:rows off the edge", 23 }, { "mutant:top cut", 22 }, { "mutant:rule over the text", 1 },
+  { "mutant:own width per side", 1 }, { "mutant:no room to dissolve", 1 }, { "mutant:cells for the width asked", 1 },
+  { "mutant:most rows", 2 }, { "mutant:narrow panel", 2 }, { "mutant:warn twice", 6 },
+}
+
+return function(part, parts)
+local S = dofile("tests/split.lua").new(part, parts, WEIGHTS)
 
 -- The numbers in a painter's output, for comparing two drawings.
 local function numbers(s)
@@ -48,6 +68,7 @@ end
 
 local ox, oy = 37.25, -11.5
 for _, p in ipairs(Patterns.list) do
+  if S.mine("pattern:" .. p.name) then
   local moved = Pattern.shift_cells(p.cells(env_of(p)), ox, oy)
   local a = paint_cells(p, p.cells(env_of(p)), function(x, y) return x + ox, y + oy end)
   local b = paint_cells(p, moved, function(x, y) return x, y end)
@@ -56,6 +77,7 @@ for _, p in ipairs(Patterns.list) do
   -- Moving one drawing leaves the module's own tables where they were.
   local c = paint_cells(p, p.cells(env_of(p)), function(x, y) return x + ox, y + oy end)
   H.check(a == c, p.name .. ": moving cells changed a later drawing")
+  end
 end
 
 local Band = require("flora.band")
@@ -66,7 +88,7 @@ local B = dofile("tests/pattern_perimeter.lua")
 local function pattern(name)
   for _, p in ipairs(Patterns.list) do if p.name == name then return p end end
 end
-do
+if S.once("periods") then
   local px, py = Pattern.periods(pattern("kikko"))
   H.check(px and math.abs(px - 3 * pattern("kikko").scale) < 1e-3, "kikko's repeat along x: " .. tostring(px))
   H.check(py and math.abs(py - math.sqrt(3) * pattern("kikko").scale) < 1e-3, "kikko's repeat along y: " .. tostring(py))
@@ -74,9 +96,13 @@ end
 
 -- The matrix.
 local verbose = os.getenv("FLORA_MATRIX_VERBOSE")
-local cells, failures = B.run()
-if verbose then print(string.format("band: %d cells, %d failures", #failures == 0 and cells or cells, #failures)) end
-H.check(cells == #Patterns.list * ((#B.WIDTHS * #B.PAPERS + #B.NARROW) * #B.EDGES + 1) * #B.BACKDROPS, "band cells: " .. cells)
+local mine, nmine = {}, 0
+for _, p in ipairs(Patterns.list) do
+  if S.mine("pattern:" .. p.name) then mine[p.name] = true; nmine = nmine + 1 end
+end
+local cells, failures = B.run({ patterns = mine })
+if verbose then print(string.format("band: %d cells, %d failures (part %d of %d)", cells, #failures, part, parts)) end
+S.check(H, cells == nmine * ((#B.WIDTHS * #B.PAPERS + #B.NARROW) * #B.EDGES + 1) * #B.BACKDROPS, "band cells: " .. cells)
 for i, f in ipairs(failures) do
   if i > 40 then break end
   H.check(false, string.format("band %s: %s: %s", f[1], f[2], f[3]))
@@ -87,6 +113,7 @@ end
 local SMALL = { patterns = { kikko = true, asanoha = true, stars_8_4 = true, greek_crosses = true },
   widths = { 12 }, papers = { B.PAPERS[1] }, backdrops = { "light" } }
 local function mutant(name, fn, replacement, invariant, opts)
+  if not S.mine("mutant:" .. name) then return end
   local orig = Pattern[fn]
   Pattern[fn] = replacement(orig)
   local _, fails = B.run(opts or SMALL)
@@ -179,7 +206,7 @@ mutant("warn twice", "warn", function(orig) return function(pt, msg)
   table.insert(pt.pattern_warnings, msg)
 end end, "warn", { patterns = { penrose_rhombs = true }, widths = { 12 }, papers = { B.PAPERS[1] }, backdrops = { "light" } })
 -- And with the warnings: a hero, the patterns that do not carry a band.
-do
+if S.once("warnings") then
   local orig = B.expected
   B.expected = function(p, wmm, edge, widths)
     local out = orig(p, wmm, edge, widths)
@@ -192,7 +219,7 @@ do
   for _, f in ipairs(fails) do if f[1] == "warn" then n = n + 1 end end
   H.check(n > 0, "khatam at 8 mm gives no warning, or the check does not see it")
 end
-do
+if S.once("hero warning") then
   local spec = B.spec("kikko", 12, B.PAPERS[1], false, "light")
   spec.pattern_hero = "rosette"
   local pt = Compose.page(spec)
@@ -209,7 +236,7 @@ end
 
 -- A page whose narrowest margin leaves no room for a band draws none, says
 -- so once, and paints nothing.
-do
+if S.once("no room") then
   local nc = B.NONE
   for _, edge in ipairs(B.EDGES) do
     local spec = B.spec("kikko", nc[3], nc[2], edge, "light", nc[4])
@@ -225,7 +252,7 @@ end
 -- A finish the pattern does not take, in a band of whole rows: the log
 -- says so once, though the band paints its sides one by one; and given
 -- twice, the check sees it.
-do
+if S.once("finish note") then
   local function notes(name, edge)
     local spec = B.spec(name, 12, B.PAPERS[1], edge, "light")
     spec.pattern_finish = "lacquer"
@@ -244,7 +271,7 @@ end
 
 -- The edge a page leaves out is the pattern's own in a band; edge=dissolve
 -- written out (the key's default) is dissolve, into the margin.
-do
+if S.once("own edge") then
   local function inner(name, edge)
     local pt = Compose.page(B.spec(name, 12, B.PAPERS[1], edge, "light"))
     return pt.pattern.band and pt.pattern.band.inner or pt.pattern.inner
@@ -261,7 +288,7 @@ end
 
 -- Under edge=cell on a dark backdrop the ground follows the cells
 -- (ground=auto); under border and whole rows it is a straight panel.
-do
+if S.once("ground follows") then
   local function ground(name, edge)
     local spec = B.spec(name, 12, B.PAPERS[1], edge, "dark")
     local pt = Compose.page(spec)
@@ -274,7 +301,7 @@ do
 end
 
 -- The band's keys change nothing on a page of another layout.
-do
+if S.once("other layouts") then
   local function page(extra)
     local spec = B.spec("kikko", 12, B.PAPERS[1], false, "light")
     spec.layout, spec.perimeter_width = "surround", nil
@@ -284,4 +311,6 @@ do
   H.check(page() == page({ perimeter_width = 8 }), "surround: the band's width changed the page")
 end
 
-H.done("test_pattern_perimeter")
+S.finish(H)
+H.done("test_pattern_perimeter_" .. part)
+end

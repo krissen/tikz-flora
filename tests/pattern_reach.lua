@@ -1,7 +1,7 @@
 -- What a pattern's cells paint, measured from the paint itself: every
 -- fill and stroke a cell lays (its piece of the ground, its plates, its
 -- construction lines and its bands), not the outline the field placed it
--- by. tests/test_pattern_reach.lua runs it over every pattern x ground x
+-- by. tests/pattern_reach_suite.lua runs it, in three parts, over every pattern x ground x
 -- edge x layout x outer and hero, and proves that it fails when a cell's
 -- paint is left out of its clearance.
 --

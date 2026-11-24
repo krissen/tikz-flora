@@ -106,7 +106,9 @@ tarfile=$(mktemp "${TMPDIR:-/tmp}/test-linux.XXXXXX")
 files > "$list"
 # --no-recursion: the list names every file, and a directory in it (none
 # is, git lists files) would otherwise bring what git leaves out.
-tar -c --no-xattrs --no-recursion -T "$list" > "$tarfile"
+# COPYFILE_DISABLE: macOS's tar would add a ._ file for each file that has
+# attributes, and the container would then hold files the tree does not.
+COPYFILE_DISABLE=1 tar -c --no-xattrs --no-recursion -T "$list" > "$tarfile"
 launching=1
 docker run --rm -i --name "$name" --platform "$platform" -e FLORA_IN_LINUX_CONTAINER=1 "$image" sh -c 'tar -x && exec tools/test.sh "$@"' sh "$@" < "$tarfile" &
 child=$!

@@ -5,9 +5,9 @@
 #
 #   tools/pattern-scale-modes.sh OUT [JOBS]
 #
-# Runs tests/test_pattern_matrix.lua (verbose), tests/test_pattern.lua,
-# tests/test_pattern_protect.lua and tests/test_pattern_reach.lua in each
-# mode, JOBS at a time (default 4), and writes OUT/<mode>__<test>.out with
+# Runs the parts of tests/test_pattern_matrix_N.lua (verbose),
+# tests/test_pattern.lua, tests/test_pattern_protect.lua and the parts of
+# tests/test_pattern_reach_N.lua in each mode, JOBS at a time (default 4), and writes OUT/<mode>__<test>.out with
 # the exit code on its last line, and OUT/summary.tsv: mode, test, exit,
 # the FAIL lines. Run from the repository root.
 set -eu
@@ -16,7 +16,7 @@ JOBS=${2:-4}
 mkdir -p "$OUT"
 jobs() {
   for m in field key0.5 key0.75 key1; do
-    for t in test_pattern_matrix test_pattern test_pattern_protect test_pattern_reach; do echo "$m $t"; done
+    for t in test_pattern_matrix_1 test_pattern_matrix_2 test_pattern_matrix_3 test_pattern_matrix_4 test_pattern test_pattern_protect test_pattern_reach_1 test_pattern_reach_2 test_pattern_reach_3; do echo "$m $t"; done
   done
 }
 # shellcheck disable=SC2016 # the inner script expands its own arguments

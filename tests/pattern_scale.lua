@@ -1,5 +1,5 @@
 -- The field scale's invariants (pattern.lua's M.FIELD_SCALE), over every
--- pattern x page format x layout, for tests/test_pattern_matrix.lua:
+-- pattern x page format x layout, for tests/pattern_matrix_suite.lua:
 --
 --   periods   a field holds the same number of the pattern's cells across
 --             its governing strip on every page, whatever the strip's

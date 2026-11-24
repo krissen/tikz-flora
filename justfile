@@ -56,7 +56,7 @@ test-linux *args:
 bodies-compare ref *suites:
     tools/bodies-compare.sh "$@"
 
-# E.g. `just profile tests/test_pattern_perimeter.lua`, or `just profile
+# E.g. `just profile tests/test_pattern_perimeter_1.lua`, or `just profile
 # --time flora.pattern.clearance tests/test_pattern.lua` (docs/testing.md):
 # where a Lua run spends its time, sampled by function and line.
 profile *args:
