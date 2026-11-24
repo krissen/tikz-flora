@@ -10,7 +10,9 @@ started may be left running, those the tools started in turn included.
 Every child is started here, in a session of its own, and is tracked
 until it has been waited for. On INT, TERM or HUP (install) the signal is
 sent on to every tracked group and to every other child of the process (one
-started a moment before it was tracked, or not through here), which lets a
+started a moment before it was tracked, or not through here; found with
+/bin/ps, and where that cannot be run only the tracked groups are stopped,
+which needs nothing), which lets a
 supervisor like tools/test.sh stop what it started; the groups are waited
 for up to GRACE seconds (TOOLPROC_GRACE, in seconds, sets it), what did not
 obey is killed, and the test ends with status 128 plus the signal's number.
@@ -56,22 +58,30 @@ def _kill(pid, sig):
         pass
 
 
+PS = "/bin/ps"  # by path: a PATH without ps (a test's) must not stop the stop
+
+
 def _processes():
-    """(pid, ppid, pgid, live) of every process; live is false for a
-    zombie, which is dead and only waits to be waited for."""
-    out = subprocess.run(["ps", "-A", "-o", "pid=,ppid=,pgid=,stat="], capture_output=True, text=True, check=False).stdout
+    """(pid, ppid, pgid, live) of every process, live false for a zombie
+    (dead, waiting to be waited for); None when they cannot be listed."""
+    try:
+        done = subprocess.run([PS, "-A", "-o", "pid=,ppid=,pgid=,stat="], capture_output=True, text=True, check=False)
+    except OSError:
+        return None
     rows = []
-    for line in out.splitlines():
+    for line in done.stdout.splitlines():
         parts = line.split()
         if len(parts) >= 4 and all(p.isdigit() for p in parts[:3]):
             rows.append((int(parts[0]), int(parts[1]), int(parts[2]), not parts[3].startswith("Z")))
-    return rows
+    return rows if done.returncode == 0 and rows else None
 
 
-def _stop(targets, sig, grace):
+def _stop(targets, sig, grace, reap=()):
     """Send sig to each target, a (pid, group) pair where the group is None
     for a process alone (or in this process's own group); wait up to grace
-    for them to be gone; kill what is left."""
+    for them to be gone; kill what is left. Where the processes cannot be
+    listed, the wait asks each group with signal 0 and reaps the children
+    in reap, which is slower to see a group gone and never fails."""
     own = os.getpgrp()
     groups = {g for _, g in targets if g is not None and g != own}
     alone = {p for p, g in targets if g is None or g == own}
@@ -82,11 +92,26 @@ def _stop(targets, sig, grace):
         for p in alone:
             _kill(p, s)
 
+    def gone():
+        rows = _processes()
+        if rows is not None:
+            return not any(live and (pgid in groups or pid in alone) for pid, _, pgid, live in rows)
+        for child in reap:
+            child.poll()
+        try:
+            for g in groups:
+                os.killpg(g, 0)
+            for p in alone:
+                os.kill(p, 0)
+        except ProcessLookupError:
+            return True
+        except PermissionError:
+            return False
+        return False
+
     send(sig)
     deadline = time.monotonic() + grace
-    while time.monotonic() < deadline:
-        if not any(live and (pgid in groups or pid in alone) for pid, _, pgid, live in _processes()):
-            break
+    while time.monotonic() < deadline and not gone():
         time.sleep(0.1)
     send(signal.SIGKILL)
 
@@ -94,8 +119,9 @@ def _stop(targets, sig, grace):
 def stop_group(pid, sig=signal.SIGTERM, grace=None):
     """Stop the group led by pid (the process alone if it leads none)."""
     grace = GRACE if grace is None else grace
-    leads = any(p == pid and g == pid and live for p, _, g, live in _processes())
-    _stop([(pid, pid if leads else None)], sig, grace)
+    rows = _processes()
+    leads = rows is None or any(p == pid and g == pid and live for p, _, g, live in rows)
+    _stop([(pid, pid if leads else None)] + ([(pid, None)] if rows is None else []), sig, grace)
 
 
 def forget(child):
@@ -168,21 +194,30 @@ def run(argv, timeout=None, input=None, check=False, capture_output=False, **kw)
     return done
 
 
-def stop_all(sig=signal.SIGTERM, grace=None):
-    """Send sig to every tracked group and every other child of this
-    process, wait up to grace for them, kill the rest."""
+def stop_all(sig=signal.SIGTERM, grace=None, scan=True):
+    """Send sig to every tracked group and, with scan, every other child of
+    this process, wait up to grace for them, kill the rest."""
     grace = GRACE if grace is None else grace
     with _lock:
         tracked = list(_live.values())
     targets = {child.pid: child.pid for child in tracked}
-    for pid, ppid, pgid, live in _processes():
+    for pid, ppid, pgid, live in (_processes() or []) if scan else []:
         if ppid == os.getpid() and live:
             targets.setdefault(pid, pgid)
-    _stop(list(targets.items()), sig, grace)
+    _stop(list(targets.items()), sig, grace, tracked)
     for child in tracked:
         child.poll()
         with _lock:
             _live.pop(child.pid, None)
+
+
+def _at_exit():
+    """A program that has ended cleanly has nothing tracked, and then
+    nothing to look for."""
+    with _lock:
+        tracked = bool(_live)
+    if tracked:
+        stop_all()
 
 
 def _on_signal(num, _frame):
@@ -200,7 +235,7 @@ def install():
     ignored."""
     for sig in (signal.SIGINT, signal.SIGTERM, signal.SIGHUP):
         signal.signal(sig, _on_signal)
-    atexit.register(stop_all)
+    atexit.register(_at_exit)
 
 
 if __name__ == "__main__":
