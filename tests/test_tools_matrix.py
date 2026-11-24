@@ -72,6 +72,8 @@ n=${f##*/test_}
 n=${n%.lua}
 case "$n" in
   fail) echo "fail: failing on purpose"; exit 3 ;;
+  mkdirtimes) mkdir -p "$TIMES_TARGET"; echo "mkdirtimes: ok" ;;
+  lockdir) chmod a-w "$LOCK_DIR"; echo "lockdir: ok" ;;
   killed) kill -KILL $PPID; sleep 5 ;;
   *) echo "$n: ok" ;;
 esac
@@ -99,7 +101,7 @@ def fast_names():
     return m.group(1).split() if m else []
 
 
-def build_tree(path, full):
+def build_tree(path, full, inject=False):
     """A tree the tools run in: the tools themselves, the justfile, and the
     stand-in tests (all that pass; with full also fail and killed)."""
     os.makedirs(os.path.join(path, "tools"))
@@ -110,6 +112,8 @@ def build_tree(path, full):
     names = {*fast_names(), "ok", "marker"} - {"bake", "lint", "tools", "tools_matrix"}
     if full:
         names |= {"fail", "killed"}
+    if inject:
+        names |= {"mkdirtimes", "lockdir"}
     for n in sorted(names):
         write(os.path.join(path, "tests", f"test_{n}.lua"), "-- stand-in\n")
     for n in ("bake", "lint", "tools", "tools_matrix"):
@@ -140,8 +144,10 @@ def all_tests(tree_full):
 CELLS = []
 
 
-def cell(tool, args, expect, tree="good", times=None, ran=None, note="", docker=False):
-    CELLS.append({"tool": tool, "args": args, "expect": expect, "tree": tree, "times": times, "ran": ran, "note": note, "docker": docker})
+def cell(tool, args, expect, tree="good", times=None, ran=None, note="", docker=False, prep=None, nonroot=False):
+    """prep names a fault injected before the call (see PREPS); nonroot
+    rows need a user a read-only directory stops."""
+    CELLS.append({"tool": tool, "args": args, "expect": expect, "tree": tree, "times": times, "ran": ran, "note": note, "docker": docker, "prep": prep, "nonroot": nonroot})
 
 
 def test_sh_cells():
@@ -269,6 +275,25 @@ def just_cells():
     cell("just", ["nosuchrecipe"], "refuse", note="a recipe that does not exist")
 
 
+def fault_cells():
+    """A step after a measurement is made fails: the measurement stays,
+    the run names where, and it ends non-zero ("saved"). A step before it
+    fails: nothing runs ("refuse")."""
+    for prep, what in (("shim-cp", "cp fails"), ("shim-mv", "mv fails")):
+        cell("test.sh", ["--times", "{T}", "core"], "fail", times="saved", ran=["core"], prep=prep, note=f"--times, {what} after the run")
+        cell("just", ["test-times", "2", "core"], "fail", times="saved", ran=["core"], prep=prep, note=f"just test-times, {what} after the run")
+    cell("test.sh", ["--times", "{T}", "mkdirtimes"], "fail", tree="inject", times="saved", ran=["mkdirtimes"], note="--times FILE becomes a directory during the run")
+    cell("test.sh", ["--times", "{LOCK}/t.tsv", "lockdir"], "fail", tree="inject", times="saved", ran=["lockdir"], nonroot=True, note="--times FILE's directory becomes read-only during the run")
+    cell("test.sh", ["--times", "{T}", "core"], "ok", times="whole", ran=["core"], prep="old-file", note="--times FILE exists: replaced")
+    cell("just", ["test-times", "2", "core"], "fail", times="saved", ran=["core"], prep="pointer-dir", note="build/test-times.tsv is a directory: the run's file stays")
+    cell("just", ["test-times", "2", "core"], "ok", times="recipe", ran=["core"], prep="pointer-file", note="build/test-times.tsv is an older file: replaced by the link")
+    cell("just", ["test-times", "2", "core"], "ok", times="recipe", ran=["core"], prep="pointer-dangling", note="build/test-times.tsv is a dangling link: replaced")
+    cell("just", ["test-times", "2", "core"], "refuse", times="none-recipe", prep="runs-file", note="build/test-times is a file: nothing is run")
+    cell("just", ["test-times", "2", "core"], "refuse", times="none-recipe", prep="build-readonly", nonroot=True, note="build/ is read-only: nothing is run")
+    cell("just", ["test-times", "2", "core"], "refuse", times="none-recipe", prep="runs-readonly", nonroot=True, note="build/test-times is read-only: nothing is run")
+    cell("profile", ["--out", "/dev/full", "script.lua"], "fail", prep="needs-dev-full", note="--out a file that takes no data: the report goes to stderr")
+
+
 def linux_cells():
     cell("test-linux", ["--list"], "ok", tree="real", note="--list in the repository")
     cell("test-linux", ["--list"], "refuse", note="--list outside a git working tree")
@@ -301,6 +326,7 @@ def build_cells():
     test_times_cells()
     profile_cells()
     just_cells()
+    fault_cells()
     linux_cells()
     extra_cells()
 
@@ -336,18 +362,66 @@ def command_for(c, tree, subst, shell):
     raise ValueError(tool)
 
 
+def make_shim(work, name):
+    """A directory with a failing program of that name, for PATH."""
+    shim = os.path.join(work, "shim-" + name)
+    write(os.path.join(shim, name), "#!/bin/sh\nexit 1\n", 0o755)
+    return shim
+
+
+def prepare(c, tree, work, env):
+    """Inject the row's fault."""
+    prep = c.get("prep")
+    if not prep:
+        return
+    build = os.path.join(tree, "build")
+    if prep in ("shim-cp", "shim-mv"):
+        env["PATH"] = make_shim(work, prep[5:]) + os.pathsep + env["PATH"]
+    elif prep == "old-file":
+        write(os.path.join(work, "t.tsv"), "older\n")
+    elif prep == "pointer-dir":
+        os.makedirs(os.path.join(build, "test-times.tsv"))
+    elif prep == "pointer-file":
+        write(os.path.join(build, "test-times.tsv"), "older\n")
+    elif prep == "pointer-dangling":
+        os.makedirs(build)
+        os.symlink("test-times/gone.tsv", os.path.join(build, "test-times.tsv"))
+    elif prep == "runs-file":
+        write(os.path.join(build, "test-times"), "in the way\n")
+    elif prep == "build-readonly":
+        os.makedirs(build)
+        os.chmod(build, 0o555)
+    elif prep == "runs-readonly":
+        os.makedirs(os.path.join(build, "test-times"))
+        os.chmod(os.path.join(build, "test-times"), 0o555)
+
+
+def unlock(*dirs):
+    for d in dirs:
+        for root, subdirs, _ in os.walk(d):
+            for sub in [root, *(os.path.join(root, x) for x in subdirs)]:
+                try:
+                    os.chmod(sub, 0o755)
+                except OSError:
+                    pass
+
+
 def run_cell(c, trees, stub, shell, results_dir, index):
     work = os.path.join(results_dir, str(index))
     os.makedirs(work)
     tree = trees[c["tree"]]
-    private = c["tool"] == "just" or c["times"] in ("recipe", "recipe-kept", "none-recipe")
+    private = c["tool"] == "just" or c["times"] in ("recipe", "recipe-kept", "none-recipe", "saved")
     if private:
         tree = os.path.join(work, "tree")
         shutil.copytree(trees[c["tree"]], tree, symlinks=True)
-    subst = {"T": os.path.join(work, "t.tsv"), "NODIR": os.path.join(work, "no", "such"), "DIR": os.path.join(work, "adir")}
+    subst = {"T": os.path.join(work, "t.tsv"), "NODIR": os.path.join(work, "no", "such"), "DIR": os.path.join(work, "adir"), "LOCK": os.path.join(work, "lock")}
     os.makedirs(subst["DIR"])
+    os.makedirs(subst["LOCK"])
     env = dict(os.environ)
     env["PATH"] = stub + os.pathsep + env["PATH"]
+    env["TIMES_TARGET"] = subst["T"]
+    env["LOCK_DIR"] = subst["LOCK"]
+    prepare(c, tree, work, env)
     env["FLORA_PYTHON"] = sys.executable
     env.pop("FLORA_IN_LINUX_CONTAINER", None) if c["tree"] != "real" else None
     if c["tree"] == "nodocker":
@@ -369,7 +443,9 @@ def run_cell(c, trees, stub, shell, results_dir, index):
         rc, out, err = p.returncode, p.stdout, p.stderr
     except subprocess.TimeoutExpired:
         rc, out, err = -999, "", "timed out"
-    return judge(c, rc, out, err, tree, subst)
+    result = judge(c, rc, out, err, tree, subst)
+    unlock(work)
+    return result
 
 
 def ran_lines(out):
@@ -437,13 +513,37 @@ def judge(c, rc, out, err, tree, subst):
                 bad.append(problem)
         if times == "recipe-kept" and KEPT not in both:
             bad.append("the path of the kept measurement is not said")
-    if times == "none-recipe" and os.path.exists(os.path.join(tree, KEPT)):
-        bad.append("a measurement was kept for a run that never started")
+    if times == "none-recipe":
+        runs = os.path.join(tree, "build", "test-times")
+        made = os.path.lexists(os.path.join(tree, KEPT)) or (os.path.isdir(runs) and any(f.endswith(".tsv") for f in os.listdir(runs)))
+        if made:
+            bad.append("a measurement was kept for a run that never started")
+    if times == "saved":
+        bad.extend(saved_problems(rc, both, tree, ran))
+    if c.get("prep") == "needs-dev-full" and not ("profile:" in err and "could not write" in err):
+        bad.append("the report is not on stderr with the reason")
     if c["tool"] == "profile" and expect == "ok" and c["args"][:1] != ["-e"]:
         rep = read(t) if c["times"] == "whole" and os.path.exists(t) else err
         if "profile:" not in rep:
             bad.append("no report")
     return bad, rc
+
+
+def saved_problems(rc, text, tree, names):
+    """After a failed step the measurement is left, at a path the run
+    names, and the run ends non-zero."""
+    bad = []
+    if rc == 0:
+        bad.append("rc 0 though the measurement could not be saved")
+    named = [p.rstrip(".;)") for p in re.findall(r"[\w/.+-]+\.tsv", text)]
+    left = []
+    for p in named:
+        full = p if os.path.isabs(p) else os.path.join(tree, p)
+        if os.path.isfile(full) and times_problem(full, names) is None:
+            left.append(p)
+    if not left:
+        bad.append(f"no whole measurement at any path the run names ({named})")
+    return bad
 
 
 def times_problem(path, names):
@@ -507,6 +607,8 @@ def main():
         trees = {"good": os.path.join(base, "good"), "full": os.path.join(base, "full")}
         build_tree(trees["good"], False)
         build_tree(trees["full"], True)
+        trees["inject"] = os.path.join(base, "inject")
+        build_tree(trees["inject"], False, inject=True)
         trees["real"] = ROOT
         trees["nodocker"] = trees["good"]
         real_texlua = shutil.which("texlua")
@@ -517,6 +619,10 @@ def main():
                 need = "texlua"
             if c["tool"] == "just" and not have["just"]:
                 need = "just"
+            if c.get("nonroot") and hasattr(os, "geteuid") and os.geteuid() == 0:
+                need = "a user other than root"
+            if c.get("prep") == "needs-dev-full" and not os.path.exists("/dev/full"):
+                need = "/dev/full"
             if c.get("docker") and not have["docker"]:
                 need = "docker (running, and not inside the container)"
             if c["tool"] == "test-linux" and c["tree"] == "real" and not shutil.which("git"):
