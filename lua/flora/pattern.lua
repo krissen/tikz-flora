@@ -100,21 +100,27 @@ local function seg_point(px, py, a, b)
   return math.sqrt(x * x + y * y)
 end
 
+-- One of Liang-Barsky's four clips: the range t0..t1 left by the edge
+-- whose p and q are given, or nil when the segment misses it.
+local function clip(p, q, t0, t1)
+  if p == 0 then
+    if q < 0 then return nil end
+  else
+    local t = q / p
+    if p < 0 then t0 = math.max(t0, t) else t1 = math.min(t1, t) end
+    if t0 > t1 then return nil end
+  end
+  return t0, t1
+end
+
 -- Whether segment a-b meets rectangle r (Liang-Barsky).
 local function seg_hits_rect(a, b, r)
-  local t0, t1 = 0, 1
   local dx, dy = b[1] - a[1], b[2] - a[2]
-  for _, e in ipairs({ { -dx, a[1] - r[1] }, { dx, r[3] - a[1] }, { -dy, a[2] - r[2] }, { dy, r[4] - a[2] } }) do
-    local p, q = e[1], e[2]
-    if p == 0 then
-      if q < 0 then return false end
-    else
-      local t = q / p
-      if p < 0 then t0 = math.max(t0, t) else t1 = math.min(t1, t) end
-      if t0 > t1 then return false end
-    end
-  end
-  return true
+  local t0, t1 = clip(-dx, a[1] - r[1], 0, 1)
+  if t0 then t0, t1 = clip(dx, r[3] - a[1], t0, t1) end
+  if t0 then t0, t1 = clip(-dy, a[2] - r[2], t0, t1) end
+  if t0 then t0 = clip(dy, r[4] - a[2], t0, t1) end
+  return t0 ~= nil
 end
 
 local function in_poly(x, y, P)
@@ -138,16 +144,40 @@ function M.clearance(c, r)
     return math.max(0, rect_dist(c.circle[1], c.circle[2], r) - c.circle[3])
   end
   local P = c.verts
-  for _, q in ipairs({ { r[1], r[2] }, { r[3], r[2] }, { r[3], r[4] }, { r[1], r[4] } }) do
-    if in_poly(q[1], q[2], P) then return 0 end
+  -- The outline's first vertex well inside r: the outline meets r, as the
+  -- edge test below would find (both edges from that vertex reach into r).
+  local v1 = P[1]
+  if v1 and v1[1] > r[1] + 1e-9 and v1[1] < r[3] - 1e-9 and v1[2] > r[2] + 1e-9 and v1[2] < r[4] - 1e-9 then return 0 end
+  -- An outline whose box lies apart from r can neither hold a corner of r
+  -- nor cross it: only the distances below are left to measure.
+  local x0, y0, x1, y1 = math.huge, math.huge, -math.huge, -math.huge
+  for i = 1, #P do
+    local v = P[i]
+    local x, y = v[1], v[2]
+    if x < x0 then x0 = x end
+    if x > x1 then x1 = x end
+    if y < y0 then y0 = y end
+    if y > y1 then y1 = y end
+  end
+  local apart = x1 < r[1] or x0 > r[3] or y1 < r[2] or y0 > r[4]
+  if not apart then
+    if in_poly(r[1], r[2], P) or in_poly(r[3], r[2], P) or in_poly(r[3], r[4], P) or in_poly(r[1], r[4], P) then return 0 end
   end
   local d, j = math.huge, #P
   for i = 1, #P do
     local a, b = P[j], P[i]
-    if seg_hits_rect(a, b, r) then return 0 end
-    d = math.min(d, rect_dist(a[1], a[2], r), rect_dist(b[1], b[2], r),
-      seg_point(r[1], r[2], a, b), seg_point(r[3], r[2], a, b),
-      seg_point(r[3], r[4], a, b), seg_point(r[1], r[4], a, b))
+    if not apart and seg_hits_rect(a, b, r) then return 0 end
+    -- No point of the edge lies nearer r than the edge's own box does: an
+    -- edge whose box lies farther than the nearest edge so far is passed.
+    local ax, ay, bx, by = a[1], a[2], b[1], b[2]
+    local gx = math.max(r[1] - math.max(ax, bx), 0, math.min(ax, bx) - r[3])
+    local gy = math.max(r[2] - math.max(ay, by), 0, math.min(ay, by) - r[4])
+    local lim = d + 1e-9
+    if gx * gx + gy * gy <= lim * lim then
+      d = math.min(d, rect_dist(ax, ay, r), rect_dist(bx, by, r),
+        seg_point(r[1], r[2], a, b), seg_point(r[3], r[2], a, b),
+        seg_point(r[3], r[4], a, b), seg_point(r[1], r[4], a, b))
+    end
     j = i
   end
   return d
@@ -1337,6 +1367,43 @@ function M.row_plan(spec, p, w)
   return { n = n, f = f, floor = lo, period = P * f, along = px and px * k * f, below = f < lo - 1e-9 }
 end
 
+-- What M.row_phase has found, so a band laid again (on the next slide, or
+-- the next page of the same pattern and width) does not lay its 48 trial
+-- lattices again. The offset depends on the arguments, on the pattern's
+-- cells function and on the pattern's own values (its scale, its roles and
+-- the like, which the cells function may read); the key holds all of
+-- them, so a changed setting that changes the cells' size or repeat, a
+-- pattern whose values are changed or a cells function swapped for another
+-- finds no stale answer. M.forget_row_phases() empties the store.
+local phases = setmetatable({}, { __mode = "k" })
+
+-- Pattern p's own values as text, functions left out, keys sorted. Strings
+-- are quoted and numbers are not, so 1 and "1", or a string with a comma or
+-- an equals sign in it, make other texts than the values they imitate; a
+-- table met again is "@" and the number of its first visit.
+local function values_key(v, seen)
+  local t = type(v)
+  if t == "number" then return string.format("%.17g", v) end
+  if t == "string" then return string.format("%q", v) end
+  if t ~= "table" then return t == "function" and "" or tostring(v) end
+  seen = seen or { n = 0 }
+  if seen[v] then return "@" .. seen[v] end
+  seen.n = seen.n + 1
+  seen[v] = seen.n
+  local keys = {}
+  for k, x in pairs(v) do
+    if type(x) ~= "function" then keys[#keys + 1] = { values_key(k, seen), x } end
+  end
+  table.sort(keys, function(x, y) return x[1] < y[1] end)
+  local out = {}
+  for i, e in ipairs(keys) do out[i] = e[1] .. "=" .. values_key(e[2], seen) end
+  return "{" .. table.concat(out, ",") .. "}"
+end
+
+function M.forget_row_phases()
+  phases = setmetatable({}, { __mode = "k" })
+end
+
 -- The lattice's offset across a strip whose band is w wide: the one, of
 -- 48 tried over a repeat, at which whole cells (lying wholly below the
 -- inner edge) cover most of the band's innermost repeat, each by its tile
@@ -1344,6 +1411,19 @@ end
 -- outline. Returns that offset and the share covered: all of it when the
 -- whole cells end in a straight edge.
 function M.row_phase(p, size, w, period, along)
+  local memo = phases[p.cells]
+  if not memo then memo = {}; phases[p.cells] = memo end
+  local k = string.format("%.17g %.17g %.17g %s %s", size, w, period, along and string.format("%.17g", along) or "-", values_key(p))
+  local found = memo[k]
+  if not found then
+    found = { M.measure_row_phase(p, size, w, period, along) }
+    memo[k] = found
+  end
+  return found[1], found[2]
+end
+
+-- M.row_phase's measure, without the store.
+function M.measure_row_phase(p, size, w, period, along)
   local win = along or period
   local best, share = 0, -1
   for t = 0, 47 do
@@ -1351,19 +1431,28 @@ function M.row_phase(p, size, w, period, along)
     local cells = p.cells({ x0 = -2 * win, y0 = -period - oy, x1 = 2 * win, y1 = w + period - oy, size = size,
       rng = Rng.new(1), opts = {}, style = {} })
     M.shift_cells(cells, 0, oy)
+    -- Each whole cell's polygon with its box: a point outside the box is
+    -- outside the polygon.
     local whole = {}
     for _, c in ipairs(cells) do
       local ok = true
       for _, v in ipairs(c.verts) do if v[2] > w + 1e-6 then ok = false; break end end
-      if ok then whole[#whole + 1] = c.tile or c.verts end
+      if ok then
+        local P = c.tile or c.verts
+        local x0, y0, x1, y1 = math.huge, math.huge, -math.huge, -math.huge
+        for _, v in ipairs(P) do
+          x0, y0, x1, y1 = math.min(x0, v[1]), math.min(y0, v[2]), math.max(x1, v[1]), math.max(y1, v[2])
+        end
+        whole[#whole + 1] = { P, x0, y0, x1, y1 }
+      end
     end
     local n, hit = 0, 0
     for i = 0, 23 do
       for j = 0, 11 do
         local x, y = -win / 2 + win * (i + 0.5) / 24, w - period * (j + 0.5) / 12
         n = n + 1
-        for _, P in ipairs(whole) do
-          if in_poly(x, y, P) then hit = hit + 1; break end
+        for _, q in ipairs(whole) do
+          if x >= q[2] and x <= q[4] and y >= q[3] and y <= q[5] and in_poly(x, y, q[1]) then hit = hit + 1; break end
         end
       end
     end

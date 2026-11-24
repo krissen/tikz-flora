@@ -50,18 +50,28 @@ local function contours(cmds, pj)
   end
   return polys
 end
-local function inside(polys,x,y)
-  local winding=0
-  for _,p in ipairs(polys) do
-    local a=p[#p]
-    for _,b in ipairs(p) do
-      if (a[2]<=y and b[2]>y) or (b[2]<=y and a[2]>y) then
-        local ix=a[1]+(y-a[2])*(b[1]-a[1])/(b[2]-a[2])
-        if ix>x then winding=winding+(b[2]>a[2] and 1 or -1) end
+-- Whether (x, y) lies inside clip c by the non-zero winding rule. The
+-- clip's crossings with the line at y are found once per y and kept:
+-- every cell of a row asks at the same y.
+local function inside_row(c,x,y)
+  c.rows=c.rows or {}
+  local row=c.rows[y]
+  if not row then
+    row={}
+    for _,p in ipairs(c) do
+      local a=p[#p]
+      for _,b in ipairs(p) do
+        if (a[2]<=y and b[2]>y) or (b[2]<=y and a[2]>y) then
+          row[#row+1]=a[1]+(y-a[2])*(b[1]-a[1])/(b[2]-a[2])
+          row[#row+1]=b[2]>a[2] and 1 or -1
+        end
+        a=b
       end
-      a=b
     end
+    c.rows[y]=row
   end
+  local winding=0
+  for n=1,#row,2 do if row[n]>x then winding=winding+row[n+1] end end
   return winding~=0
 end
 function Rec:allowed(x,y)
@@ -71,7 +81,7 @@ function Rec:allowed(x,y)
   for _,c in ipairs(self.clips) do
     c.cache=c.cache or {}
     local v=c.cache[key]
-    if v==nil then v=inside(c,x,y); c.cache[key]=v end
+    if v==nil then v=inside_row(c,x,y); c.cache[key]=v end
     if not v then return false end
   end
   return true

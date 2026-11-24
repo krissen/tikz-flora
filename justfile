@@ -1,4 +1,8 @@
 set export
+# A recipe that passes on what it was given does so as "$@": each argument
+# stays one argument, with its spaces and parentheses (`just profile -e
+# 'print(1)'`), where {{args}} would be pasted into the command line.
+set positional-arguments
 
 PATH := env("HOME") / "Library/TinyTeX/bin/universal-darwin" + ":" + env("PATH")
 TEXINPUTS := "./tex//:"
@@ -30,7 +34,7 @@ bench:
 # when JOBS is left out). `just test 1` stops at the first failure.
 # Every test, JOBS at a time (default half the processors), e.g. `just test 6`.
 test jobs="auto":
-    FLORA_PYTHON={{PYTHON}} tools/test.sh -j {{jobs}}
+    FLORA_PYTHON={{PYTHON}} tools/test.sh -j "$1"
 
 # Every test (or NAMES) timed, JOBS (a number or auto) at a time: the times
 # are kept as build/test-times/STAMP-PID.tsv, build/test-times.tsv points at
@@ -38,19 +42,25 @@ test jobs="auto":
 # `python3 -I tools/test_times.py compare OLD NEW` compares two runs
 # (docs/testing.md).
 test-times jobs="4" *names:
-    FLORA_PYTHON={{PYTHON}} {{PYTHON}} -I tools/test_times.py run {{jobs}} {{names}}
+    FLORA_PYTHON={{PYTHON}} {{PYTHON}} -I tools/test_times.py run "$@"
 
 # E.g. `just test-linux` (the fast set), `just test-linux tools` or
 # `just test-linux -j 4 mix` (tools/test-linux.sh, docs/testing.md): the
 # tests in a container of CI's Ubuntu, where /bin/sh is dash; needs docker.
 test-linux *args:
-    tools/test-linux.sh {{args}}
+    tools/test-linux.sh "$@"
+
+# E.g. `just bodies-compare main` or `just bodies-compare HEAD~1 bands`
+# (tools/bodies-compare.sh, docs/testing.md): whether the working tree
+# paints byte for byte what REF painted, page by page.
+bodies-compare ref *suites:
+    tools/bodies-compare.sh "$@"
 
 # E.g. `just profile tests/test_pattern_perimeter.lua`, or `just profile
 # --time flora.pattern.clearance tests/test_pattern.lua` (docs/testing.md):
 # where a Lua run spends its time, sampled by function and line.
 profile *args:
-    texlua tools/profile.lua {{args}}
+    texlua tools/profile.lua "$@"
 
 # Lint the Lua (lua-language-server, .luarc.json), the Python (ruff, and
 # pyright when installed) and tools/*.sh (shellcheck). .lint-exempt lists the
@@ -177,7 +187,7 @@ renderers:
 # form, e.g. `just renderers-bench dpr=1 settings=backdrop=dark`.
 renderers-bench *ARGS:
     cd site && npm ci --no-audit --no-fund --silent
-    node site/tests/renderers-bench.mjs {{ARGS}}
+    node site/tests/renderers-bench.mjs "$@"
 
 # Drives the built site in headless Chrome (site/tests/e2e.mjs).
 # The garden for other web pages: build/garden/ holds garden.js, its

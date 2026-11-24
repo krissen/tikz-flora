@@ -547,6 +547,68 @@ def test_toolproc():
             os.kill(sleeper, signal.SIGKILL)
 
 
+def test_run_all():
+    """toolproc.run_all: commands at once, all waited for; when one fails
+    the others are stopped like a signal stops them, at once or after the
+    grace; an interrupt stops them all."""
+    here = f"import sys; sys.path.insert(0, {TOOLS!r}); import toolproc; toolproc.install()\n"
+
+    def run(commands, grace=None):
+        prog = here + f"print(toolproc.run_all({commands!r}, grace={grace!r}))\n"
+        started = time.monotonic()
+        p = toolproc.run([sys.executable, "-I", "-c", prog], timeout=60, capture_output=True, text=True)
+        return p, time.monotonic() - started
+
+    def pids_of(*files):
+        out = []
+        for f in files:
+            if os.path.exists(f) and read_text(f).strip().isdigit():
+                out.append(int(read_text(f)))
+        return out
+
+    def gone(pids):
+        for _ in range(30):
+            if not any(alive(p) for p in pids):
+                return True
+            time.sleep(0.1)
+        return False
+
+    with tempfile.TemporaryDirectory() as d:
+        quick = (["sh", "-c", "exit 0"], {})
+        p, took = run([quick, (["sh", "-c", "sleep 0.3"], {})])
+        check(p.stdout.strip() == "[(0, 'ok'), (0, 'ok')]", f"run_all, all succeed: {p.stdout.strip()!r} {p.stderr[-200:]!r}")
+        # One fails at once, the other would run for half a minute.
+        a = os.path.join(d, "a")
+        # (the failing command second: the first one still running must not hide it)
+        p, took = run([(["sh", "-c", f"echo $$ > {a}; exec sleep 30"], {}), (["sh", "-c", "exit 3"], {})])
+        codes = p.stdout.strip()
+        check(codes == "[(-15, 'stopped'), (3, 'failed')]", f"run_all, one fails: the one that failed is 'failed', the other 'stopped': {codes!r}")
+        check(took < 8, f"run_all, one fails: took {took:.1f} s, the other was stopped only when its own time was up")
+        check(gone(pids_of(a)), "run_all, one fails: the other is left running")
+        # Both fail at the same moment: both are 'failed', neither stopped.
+        p, took = run([(["sh", "-c", "exit 3"], {}), (["sh", "-c", "exit 4"], {})])
+        check(p.stdout.strip() == "[(3, 'failed'), (4, 'failed')]", f"run_all, both fail: {p.stdout.strip()!r}")
+        # One fails while the other ignores TERM: stopped after the grace.
+        b = os.path.join(d, "b")
+        # (it fails only once the other has set its trap and said so)
+        p, took = run([(["sh", "-c", f"while [ ! -s {b} ]; do sleep 0.05; done; exit 3"], {}), (["sh", "-c", f"trap '' TERM; echo $$ > {b}; sleep 30"], {})], grace=2)
+        check(p.stdout.strip().startswith("[(3, 'failed'), (-9, 'stopped')]"), f"run_all, one ignores TERM: failed and stopped (by KILL): {p.stdout.strip()!r}")
+        check(2 <= took < 12, f"run_all, one ignores TERM: took {took:.1f} s, not the grace of 2 s")
+        check(gone(pids_of(b)), "run_all, one ignores TERM: it is left running after the grace")
+        # An interrupt while they run stops them all.
+        c, e = os.path.join(d, "c"), os.path.join(d, "e")
+        prog = here + f"toolproc.run_all([(['sh', '-c', 'echo $$ > {c}; exec sleep 30'], {{}}), (['sh', '-c', 'echo $$ > {e}; exec sleep 30'], {{}})])\n"
+        with toolproc.popen([sys.executable, "-I", "-c", prog]) as q:
+            for _ in range(100):
+                if len(pids_of(c, e)) == 2:
+                    break
+                time.sleep(0.05)
+            os.kill(q.pid, signal.SIGTERM)
+            got = q.wait(timeout=30)
+        check(got == 143, f"run_all, interrupted: rc {got}, not 143")
+        check(gone(pids_of(c, e)), "run_all, interrupted: a command is left running")
+
+
 def read_text(path):
     with open(path) as f:
         return f.read()
@@ -566,6 +628,7 @@ def main():
         test_no_loose_processes()
         test_ci_paths()
         test_toolproc()
+        test_run_all()
         test_concurrent_runs()
     if failures:
         print(f"tools: {len(failures)} failure(s)", file=sys.stderr)

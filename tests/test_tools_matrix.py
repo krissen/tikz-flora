@@ -72,6 +72,33 @@ def read(path):
 # ends as texlua does.
 STUB_TEXLUA = """#!/bin/sh
 f=$1
+case "$f" in
+  *bodies.lua)
+    # tools/bodies.lua: a line a suite, the same for any two trees unless
+    # the working tree holds a file called changed; with BODIES_HOLD set it
+    # sleeps first, as a long painting does.
+    shift
+    # BODIES_FAIL names the side that ends with status 3 (ref is the one
+    # that runs in a directory called ref), BODIES_LATE the side that is
+    # slow: its sleeper's pid is recorded in $BODIES_PIDS.
+    side=new
+    case "$PWD" in */ref) side=ref ;; esac
+    # A late side that fails sleeps first; one that is only slow is a bare
+    # sleep, which TERM kills (as it kills a painting).
+    if [ "$BODIES_LATE" = "$side" ]; then
+      echo $$ >> "$BODIES_PIDS/$side"
+      case "$BODIES_FAIL" in "$side"|both) sleep ${BODIES_LATE_FOR:-1.5} ;; *) exec sleep ${BODIES_LATE_FOR:-1.5} ;; esac
+    fi
+    case "$BODIES_FAIL" in "$side"|both) echo "stand-in: the $side side failed" >&2; exit 3 ;; esac
+    [ -z "$BODIES_HOLD" ] || { trap 'kill $!' TERM INT HUP; sleep 37.25 & wait; }
+    [ "$1" != --fixtures ] || shift 2
+    [ $# -gt 0 ] || exit 2
+    for s in "$@"; do
+      if [ -f changed ]; then v=b; else v=a; fi
+      printf '%s\tpage\t%s\n' "$s" "$v"
+    done
+    exit 0 ;;
+esac
 [ -f "$f" ] || { echo "texlua: cannot open $f" >&2; exit 1; }
 n=${f##*/test_}
 n=${n%.lua}
@@ -112,7 +139,7 @@ def build_tree(path, full, inject=False):
     """A tree the tools run in: the tools themselves, the justfile, and the
     stand-in tests (all that pass; with full also fail and killed)."""
     os.makedirs(os.path.join(path, "tools"))
-    for f in ("test.sh", "test_times.py", "toolproc.py", "profile.lua", "test-linux.sh", "test-linux.Dockerfile"):
+    for f in ("test.sh", "test_times.py", "toolproc.py", "profile.lua", "test-linux.sh", "test-linux.Dockerfile", "bodies-compare.sh"):
         if os.path.exists(os.path.join(TOOLS, f)):
             shutil.copy(os.path.join(TOOLS, f), os.path.join(path, "tools", f))
     shutil.copy(os.path.join(ROOT, "justfile"), os.path.join(path, "justfile"))
@@ -127,6 +154,7 @@ def build_tree(path, full, inject=False):
         write(os.path.join(path, "tests", f"test_{n}.py"), f'print("{n}: ok")\n')
     write(os.path.join(path, "lua", "burn.lua"), BURN)
     write(os.path.join(path, "script.lua"), SCRIPT)
+    write(os.path.join(path, "dir with space", "script.lua"), SCRIPT)
     write(os.path.join(path, "dies.lua"), 'error("planned")\n')
     write(os.path.join(path, "exits.lua"), "os.exit(3)\n")
     write(os.path.join(path, "ok.tsv"), TIMES_OK)
@@ -151,10 +179,10 @@ def all_tests(tree_full):
 CELLS = []
 
 
-def cell(tool, args, expect, tree="good", times=None, ran=None, note="", docker=False, prep=None, nonroot=False):
+def cell(tool, args, expect, tree="good", times=None, ran=None, note="", docker=False, prep=None, nonroot=False, says=None, env=None, within=None, not_says=None):
     """prep names a fault injected before the call (see PREPS); nonroot
     rows need a user a read-only directory stops."""
-    CELLS.append({"tool": tool, "args": args, "expect": expect, "tree": tree, "times": times, "ran": ran, "note": note, "docker": docker, "prep": prep, "nonroot": nonroot})
+    CELLS.append({"tool": tool, "args": args, "expect": expect, "tree": tree, "times": times, "ran": ran, "note": note, "docker": docker, "prep": prep, "nonroot": nonroot, "says": says, "env": env or {}, "within": within, "not_says": not_says})
 
 
 def test_sh_cells():
@@ -282,6 +310,16 @@ def just_cells():
     cell("just", ["nosuchrecipe"], "refuse", note="a recipe that does not exist")
 
 
+def argument_cells():
+    """A recipe that passes on its arguments keeps each one whole, with its
+    spaces and parentheses."""
+    cell("just", ["profile", "-e", "print( 1 + (2 * 3) )"], "ok", says="profile:", note="just profile -e with parentheses and spaces")
+    cell("just", ["profile", "dir with space/script.lua"], "ok", says="profile:", note="just profile a script whose path has spaces")
+    cell("just", ["test-times", "2", "a b"], "refuse", times="none-recipe", says="no test named a b", note="just test-times with a test name with a space")
+    cell("just", ["test", "1 2"], "refuse", says="not '1 2'", note="just test with a jobs value with a space")
+    cell("just", ["test-linux", "a b"], "refuse", tree="real", docker=True, says="no test named a b", note="just test-linux with a test name with a space")
+
+
 def fault_cells():
     """A step after a measurement is made fails: the measurement stays,
     the run names where, and it ends non-zero ("saved"). A step before it
@@ -319,12 +357,66 @@ def linux_cells():
     cell("just", ["test-linux", "nosuch"], "refuse", tree="real", note="just test-linux with a test that does not exist", docker=True)
 
 
+def bodies_failures():
+    """One side of the comparison fails and the other has already ended, or
+    is still painting (it would for twenty seconds): the comparison names
+    the side that failed and not the other (a side it stopped did not
+    fail), is done within a few seconds, says where the pages are, ends
+    non-zero and leaves nothing running; when both fail, both are named."""
+    ref_says, new_says = "HEAD failed to paint", "the working tree failed to paint"
+    for fail, late, what in (("new", "new", "the working tree failed, the reference already done"),
+                             ("new", "ref", "the working tree failed, the reference still painting"),
+                             ("ref", "ref", "the reference failed, the working tree already done"),
+                             ("ref", "new", "the reference failed, the working tree still painting")):
+        waits = late != fail
+        cell("bodies-compare", ["HEAD", "slides"], "fail", tree="git", times="kept-dir", within=8 if waits else None,
+             says=new_says if fail == "new" else ref_says, not_says=ref_says if fail == "new" else new_says,
+             env={"BODIES_FAIL": fail, "BODIES_LATE": late, "BODIES_LATE_FOR": "20" if waits else "1.5"}, note=what)
+    cell("bodies-compare", ["HEAD", "slides"], "refuse", tree="git", prep="path:dirname,git", says="needs texlua", note="without texlua")
+    cell("bodies-compare", ["HEAD", "slides"], "refuse", tree="git", prep="path:dirname,texlua", says="needs git", note="without git")
+    cell("bodies-compare", ["HEAD", "slides"], "refuse", tree="git", env={"FLORA_PYTHON": "/nonexistent/python"}, says="needs /nonexistent/python", note="without python")
+    cell("bodies-compare", ["HEAD", "slides"], "fail", tree="git", env={"FLORA_PYTHON": shutil.which("false") or "/usr/bin/false"}, says="could not be run", note="the program that runs the paints fails")
+    cell("bodies-compare", ["HEAD", "slides"], "fail", tree="git", times="kept-dir", says=ref_says, env={"BODIES_FAIL": "both"}, note="both fail: both are named")
+    cell("bodies-compare", ["HEAD", "slides"], "fail", tree="git", times="kept-dir", says=new_says, env={"BODIES_FAIL": "both"}, note="both fail: the working tree is named")
+
+
+def bodies_cells():
+    """tools/bodies-compare.sh and its recipe, run against a stand-in
+    bodies.lua in a one-commit git repository (the real suites take
+    minutes): the trees "git" and "gitchanged" are the stand-in tree as a
+    repository, the second with a file the commit lacks, so that the
+    working tree paints something else than HEAD did."""
+    cell("bodies-compare", [], "refuse", note="no REF")
+    cell("bodies-compare", [""], "refuse", note="an empty REF")
+    cell("bodies-compare", ["nosuchref"], "refuse", tree="git", note="a REF that is no commit")
+    cell("bodies-compare", ["--bogus"], "refuse", tree="git", note="an option in place of a REF")
+    cell("bodies-compare", ["HEAD"], "refuse", note="outside a git working tree")
+    cell("bodies-compare", ["HEAD"], "ok", tree="git", note="the default suites")
+    for suites in (["slides"], ["bands", "protect"], ["bands", "slides", "progression", "protect"]):
+        cell("bodies-compare", ["HEAD", *suites], "ok", tree="git", note=f"suites {' '.join(suites)}")
+    cell("bodies-compare", ["HEAD", "nosuch"], "refuse", tree="git", note="a suite that does not exist")
+    cell("bodies-compare", ["HEAD", "slides", "nosuch"], "refuse", tree="git", note="a good suite and one that does not exist")
+    cell("bodies-compare", ["HEAD", ""], "refuse", tree="git", note="an empty suite")
+    cell("bodies-compare", ["HEAD", "slides"], "fail", tree="gitchanged", times="kept-dir", note="a working tree that paints something else: the pages stay, named")
+    cell("bodies-compare", ["HEAD", "slides"], "refuse", tree="git", prep="build-readonly", nonroot=True, note="build/ is read-only: nothing is painted")
+    cell("just", ["bodies-compare", "HEAD", "slides"], "ok", tree="git", note="just bodies-compare")
+    cell("just", ["bodies-compare", "HEAD"], "ok", tree="git", note="just bodies-compare with the default suites")
+    cell("just", ["bodies-compare", "HEAD", "slides"], "fail", tree="gitchanged", note="just bodies-compare, trees that differ")
+    cell("just", ["bodies-compare"], "refuse", note="just bodies-compare with no REF")
+    cell("just", ["bodies-compare", "nosuchref"], "refuse", tree="git", note="just bodies-compare with a REF that is no commit")
+    cell("just", ["bodies-compare", "HEAD", "a b"], "refuse", tree="git", says="no suite 'a b'", note="just bodies-compare with a suite name with a space")
+    cell("just", ["bodies-compare", "HEAD", "nosuch"], "refuse", tree="git", note="just bodies-compare with a suite that does not exist")
+
+
 def build_cells():
     test_sh_cells()
     test_times_cells()
     profile_cells()
     just_cells()
+    argument_cells()
     fault_cells()
+    bodies_cells()
+    bodies_failures()
     linux_cells()
 
 
@@ -352,6 +444,8 @@ def command_for(c, tree, subst, shell):
         return ["texlua", os.path.join(tree, "tools", "profile.lua"), *args]
     if tool == "test-linux":
         return [*sh, os.path.join(tree, "tools", "test-linux.sh"), *args]
+    if tool == "bodies-compare":
+        return [*sh, os.path.join(tree, "tools", "bodies-compare.sh"), *args]
     if tool == "just":
         return ["just", *args]
     raise ValueError(tool)
@@ -372,6 +466,15 @@ def prepare(c, tree, work, env):
     build = os.path.join(tree, "build")
     if prep in ("shim-cp", "shim-mv"):
         env["PATH"] = make_shim(work, prep[5:]) + os.pathsep + env["PATH"]
+    elif prep.startswith("path:"):
+        # A PATH with only these programs (of those the call would find).
+        bindir = os.path.join(work, "only-bin")
+        os.makedirs(bindir)
+        for name in prep[5:].split(","):
+            found = shutil.which(name, path=env["PATH"])
+            if found:
+                os.symlink(found, os.path.join(bindir, name))
+        env["PATH"] = bindir
     elif prep == "old-file":
         write(os.path.join(work, "t.tsv"), "older\n")
     elif prep == "pointer-dir":
@@ -379,12 +482,12 @@ def prepare(c, tree, work, env):
     elif prep == "pointer-file":
         write(os.path.join(build, "test-times.tsv"), "older\n")
     elif prep == "pointer-dangling":
-        os.makedirs(build)
+        os.makedirs(build, exist_ok=True)
         os.symlink("test-times/gone.tsv", os.path.join(build, "test-times.tsv"))
     elif prep == "runs-file":
         write(os.path.join(build, "test-times"), "in the way\n")
     elif prep == "build-readonly":
-        os.makedirs(build)
+        os.makedirs(build, exist_ok=True)
         os.chmod(build, 0o555)
     elif prep == "runs-readonly":
         os.makedirs(os.path.join(build, "test-times"))
@@ -405,7 +508,7 @@ def run_cell(c, trees, stub, shell, results_dir, index):
     work = os.path.join(results_dir, str(index))
     os.makedirs(work)
     tree = trees[c["tree"]]
-    private = c["tool"] == "just" or c["times"] in ("recipe", "recipe-kept", "none-recipe", "saved")
+    private = c["tool"] in ("just", "bodies-compare") or c["prep"] or c["times"] in ("recipe", "recipe-kept", "none-recipe", "saved", "kept-dir")
     if private:
         tree = os.path.join(work, "tree")
         shutil.copytree(trees[c["tree"]], tree, symlinks=True)
@@ -415,9 +518,13 @@ def run_cell(c, trees, stub, shell, results_dir, index):
     env = dict(os.environ)
     env["PATH"] = stub + os.pathsep + env["PATH"]
     env["TIMES_TARGET"] = subst["T"]
+    subst["PIDS"] = os.path.join(work, "pids")
+    os.makedirs(subst["PIDS"])
+    env["BODIES_PIDS"] = subst["PIDS"]
     env["LOCK_DIR"] = subst["LOCK"]
-    prepare(c, tree, work, env)
     env["FLORA_PYTHON"] = sys.executable
+    prepare(c, tree, work, env)
+    env.update(c.get("env") or {})
     env.pop("FLORA_IN_LINUX_CONTAINER", None) if c["tree"] != "real" else None
     if c["tree"] == "nodocker":
         tool_dir = os.path.join(work, "bin")
@@ -433,12 +540,14 @@ def run_cell(c, trees, stub, shell, results_dir, index):
         cmd = [cmd[0], "--justfile", os.path.join(tree, "justfile"), "--working-directory", tree, *cmd[1:]]
     cwd = ROOT if c["tree"] == "real" else tree
     timeout = 600 if c.get("docker") else 120
+    started = time.monotonic()
     try:
         p = toolproc.run(cmd, cwd=cwd, env=env, capture_output=True, text=True, timeout=timeout, check=False)
         rc, out, err = p.returncode, p.stdout, p.stderr
     except subprocess.TimeoutExpired:
         rc, out, err = -999, "", "timed out"
-    result = judge(c, rc, out, err, tree, subst)
+    elapsed = time.monotonic() - started
+    result = judge(c, rc, out, err, tree, subst, elapsed)
     unlock(work)
     return result
 
@@ -447,7 +556,7 @@ def ran_lines(out):
     return sorted(m.group(1) for m in re.finditer(r"^(\w+): ok$", out, re.MULTILINE))
 
 
-def judge(c, rc, out, err, tree, subst):
+def judge(c, rc, out, err, tree, subst, elapsed=0.0):
     """The problems with the way a call ended; none when it behaved."""
     bad = []
     both = out + err
@@ -513,10 +622,31 @@ def judge(c, rc, out, err, tree, subst):
         made = os.path.lexists(os.path.join(tree, KEPT)) or (os.path.isdir(runs) and any(f.endswith(".tsv") for f in os.listdir(runs)))
         if made:
             bad.append("a measurement was kept for a run that never started")
+    if times == "kept-dir":
+        m = re.search(r"\(see (build/bodies\.\w+)\)", both)
+        kept = os.path.join(tree, m.group(1)) if m else ""
+        if not (m and os.path.isfile(os.path.join(kept, "ref.txt")) and os.path.isfile(os.path.join(kept, "new.txt"))):
+            bad.append("the pages of a comparison that differs are not left, named")
     if times == "saved":
         bad.extend(saved_problems(rc, both, tree, ran))
+    # What a stand-in painting left running: nothing.
+    for name in os.listdir(subst["PIDS"]):
+        for pid in read(os.path.join(subst["PIDS"], name)).split():
+            if alive(int(pid)):
+                bad.append(f"the {name} side's process {pid} is left running")
+    if c.get("within") and elapsed > c["within"]:
+        bad.append(f"it took {elapsed:.1f} s, not within {c['within']} s")
+    if c.get("says") and c["says"] not in both:
+        bad.append(f"it does not print {c['says']!r}")
+    if c.get("not_says") and c["not_says"] in both:
+        bad.append(f"it prints {c['not_says']!r}, which is not what failed")
     if c.get("prep") == "needs-dev-full" and not ("profile:" in err and "could not write" in err):
         bad.append("the report is not on stderr with the reason")
+    if c["tool"] == "bodies-compare" or c["args"][:1] == ["bodies-compare"]:
+        if expect == "ok" and "identical to" not in out:
+            bad.append("it does not say the trees are identical")
+        if expect == "fail" and "differ from" not in out and not c.get("says"):
+            bad.append("it does not say how many pages differ")
     if c["tool"] == "profile" and expect == "ok" and c["args"][:1] != ["-e"]:
         rep = read(t) if c["times"] == "whole" and os.path.exists(t) else err
         if "profile:" not in rep:
@@ -646,7 +776,7 @@ def interrupted_run(base, outer, sig):
     tree = os.path.join(base, f"nested-{outer}-{sig.name}")
     os.makedirs(tree)
     for part in ("tools", "tests", "docs"):
-        shutil.copytree(os.path.join(ROOT, part), os.path.join(tree, part), symlinks=True)
+        shutil.copytree(os.path.join(ROOT, part), os.path.join(tree, part), symlinks=True, ignore=shutil.ignore_patterns("__pycache__"))
     shutil.copy(os.path.join(ROOT, "justfile"), tree)
     env = {**os.environ, "TOOLS_MATRIX_HOLD": "1", "TOOLS_TEST_HOLD": "1", "TOOLS_MATRIX_DOCKER": "0", "FLORA_PYTHON": sys.executable}
     return interrupt_and_check(f"test.sh -j 2 {outer}", tree, [os.path.join(tree, "tools", "test.sh"), "-j", "2", outer], env, sig)
@@ -685,12 +815,22 @@ exec "$REAL_GIT" "$@"
 """
 
 
-def build_git_tree(path):
-    """The stand-in tree as a git repository with one commit."""
+# Nothing in the background: git starts maintenance (git maintenance run
+# --auto --detach, or gc --auto --detach before git 2.29) after a commit,
+# and it takes objects/maintenance.lock for a moment, in the middle of
+# whatever then reads the tree.
+GIT_QUIET = ("maintenance.auto", "false"), ("gc.auto", "0"), ("gc.autoDetach", "false")
+
+
+def build_git_tree(path, extra=None):
+    """The stand-in tree as a git repository with one commit (and, for
+    extra, a file that the commit lacks)."""
     build_tree(path, False)
     env = {**os.environ, "GIT_AUTHOR_NAME": "t", "GIT_AUTHOR_EMAIL": "t@t", "GIT_COMMITTER_NAME": "t", "GIT_COMMITTER_EMAIL": "t@t"}
-    for cmd in (["git", "init", "-q"], ["git", "add", "-A"], ["git", "commit", "-q", "-m", "tree"]):
+    for cmd in (["git", "init", "-q"], *(["git", "config", key, value] for key, value in GIT_QUIET), ["git", "add", "-A"], ["git", "commit", "-q", "-m", "tree"]):
         toolproc.run(cmd, cwd=path, env=env, capture_output=True, check=True)
+    if extra:
+        write(os.path.join(path, extra), "")
 
 
 def interrupted_linux(base, phase, sig):
@@ -809,6 +949,26 @@ def interrupted_stubborn(base, sig):
     return [f"interrupt {sig.name} of tools/test.sh -j 2 with a test that ignores TERM: {pr}" for pr in problems]
 
 
+def build_git_trees(base, name):
+    """The stand-in tree as a git repository with one commit, and another
+    with a file the commit lacks (tools/bodies-compare.sh compares the two;
+    the stand-in bodies.lua paints something else for the file). The second
+    is built the same way, not a copy of the first one's .git."""
+    git_tree, changed = os.path.join(base, name), os.path.join(base, name + "-changed")
+    build_git_tree(git_tree)
+    build_git_tree(changed, extra="changed")
+    return git_tree, changed
+
+
+def interrupted_bodies(base, sig):
+    """tools/bodies-compare.sh while both sides paint, interrupted."""
+    stub = os.path.join(base, "stub-bodies")
+    write(os.path.join(stub, "texlua"), STUB_TEXLUA, 0o755)
+    tree, _ = build_git_trees(base, f"bodies-{sig.name}")
+    env = {**os.environ, "PATH": stub + os.pathsep + os.environ["PATH"], "BODIES_HOLD": "1"}
+    return interrupt_and_check("tools/bodies-compare.sh HEAD slides", tree, [os.path.join(tree, "tools", "bodies-compare.sh"), "HEAD", "slides"], env, sig)
+
+
 def interrupted_container(base, sig):
     """tools/test-linux.sh running a long test in the container is sent sig:
     it ends with 128 plus the signal, and the container is gone."""
@@ -854,7 +1014,7 @@ def test_recipes_have_rows():
     documentation names each."""
     just = read(os.path.join(ROOT, "justfile"))
     docs = read(os.path.join(ROOT, "docs", "testing.md"))
-    tool_files = ("tools/test.sh", "tools/test_times.py", "tools/profile.lua", "tools/test-linux.sh")
+    tool_files = ("tools/test.sh", "tools/test_times.py", "tools/profile.lua", "tools/test-linux.sh", "tools/bodies-compare.sh")
     recipes = {}
     current = None
     for line in just.splitlines():
@@ -897,6 +1057,9 @@ def main():
         build_tree(trees["inject"], False, inject=True)
         trees["real"] = ROOT
         trees["nodocker"] = trees["good"]
+        trees["git"], trees["gitchanged"] = os.path.join(base, "git"), os.path.join(base, "git-changed")
+        if shutil.which("git"):
+            build_git_trees(base, "git")
         real_texlua = shutil.which("texlua")
         runnable = []
         for i, c in enumerate(CELLS):
@@ -911,6 +1074,8 @@ def main():
                 need = "/dev/full"
             if c.get("docker") and not have["docker"]:
                 need = "docker (running, and not inside the container)"
+            if c["tree"] in ("git", "gitchanged") and not shutil.which("git"):
+                need = "git"
             if c["tool"] == "test-linux" and c["tree"] == "real" and not shutil.which("git"):
                 need = "git"
             if c["tool"] == "test-linux" and c["args"] == ["--list"] and c["expect"] == "ok" and os.environ.get("FLORA_IN_LINUX_CONTAINER"):
@@ -946,6 +1111,9 @@ def main():
         interrupt_runs.append(interrupts.submit(interrupted_between, nest, signal.SIGTERM))
         interrupt_runs.append(interrupts.submit(interrupted_between, nest, signal.SIGINT))
         interrupt_runs.append(interrupts.submit(interrupted_stubborn, nest, signal.SIGTERM))
+        if os.path.exists(os.path.join(TOOLS, "bodies-compare.sh")) and shutil.which("git"):
+            for sig in (signal.SIGINT, signal.SIGTERM):
+                interrupt_runs.append(interrupts.submit(interrupted_bodies, nest, sig))
         if have["docker"]:
             interrupt_runs.append(interrupts.submit(interrupted_container, nest, signal.SIGTERM))
         with concurrent.futures.ThreadPoolExecutor(max_workers=jobs) as pool:
