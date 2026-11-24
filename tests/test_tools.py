@@ -481,25 +481,115 @@ CI_EXEMPT_PREFIXES = {
 CI_EXEMPT_SUFFIXES = {".tex": "compiled by just test-tex, which needs a full TeX installation"}
 
 
+def ci_code(text):
+    """The workflow without its comments: whole comment lines and what
+    follows a # after blanks (a # in a quoted string is cut too, which no
+    line of this workflow has; a commented-out command in a run: block does
+    not run, so it goes with the rest)."""
+    lines = [re.sub(r"\s+#.*$", "", line) for line in text.splitlines() if not line.lstrip().startswith("#")]
+    return "\n".join(lines) + "\n"
+
+
+OFF = re.compile(r"^\s*(?:-\s+)?if:\s*(?:false|\"false\"|'false'|\$\{\{\s*false\s*\}\})\s*$", re.MULTILINE)
+
+
+def ci_jobs(code):
+    """{job: lines} of the workflow's jobs, those switched off (if: false at
+    the job) left out."""
+    m = re.search(r"^jobs:\n", code, re.MULTILINE)
+    jobs, cur = {}, None
+    for line in code[m.end():].splitlines() if m else []:
+        head = re.match(r"^  ([A-Za-z0-9_-]+):\s*$", line)
+        if head:
+            cur = head.group(1)
+            jobs[cur] = []
+        elif cur is not None:
+            jobs[cur].append(line)
+    out = {}
+    for name, lines in jobs.items():
+        before_steps = []
+        for line in lines:
+            if re.match(r"^    steps:\s*$", line):
+                break
+            before_steps.append(line)
+        if not OFF.search("\n".join(before_steps)):
+            out[name] = lines
+    return out
+
+
+def ci_run_text(step):
+    """The shell of a step's run: key, inline or as a block."""
+    for i, line in enumerate(step):
+        m = re.match(r"^(\s+)(?:-\s+)?run:\s*(.*)$", line)
+        if not m:
+            continue
+        if m.group(2) not in ("|", ">", "|-", ">-"):
+            return m.group(2)
+        body = []
+        for later in step[i + 1:]:
+            if later.strip() and len(later) - len(later.lstrip()) <= len(m.group(1)):
+                break
+            body.append(later.strip())
+        return "\n".join(body)
+    return ""
+
+
+def ci_matrix_tests(lines):
+    """The values of the job's matrix `tests:`, each a group of names."""
+    for i, line in enumerate(lines):
+        if re.match(r"^\s+tests:\s*$", line):
+            groups = []
+            for later in lines[i + 1:]:
+                m = re.match(r"^\s+-\s+(.+)$", later)
+                if not m:
+                    break
+                groups.append(m.group(1))
+            return groups
+    return []
+
+
 def ci_named(text):
-    """The tests a workflow runs: the names in its matrix groups (tools/test.sh
-    NAME; `fast` stands for the pre-push set), the names after tools/test.sh in
-    its steps, and the test files it runs by path."""
+    """The test files the workflow runs: in the jobs that are not switched
+    off (if: false), in the steps that are not, the names given to
+    tools/test.sh (`fast` stands for the pre-push set), the test files named
+    by path, and the values of a job's matrix `tests:` when a step of the job
+    loops over them and gives each to tools/test.sh (for t in ${{
+    matrix.tests }}; do tools/test.sh $t; done). Comments count for nothing.
+
+    Its limits, said here and in docs/testing.md: it reads the text and does
+    not run the workflow, so a condition other than a plain `if: false`
+    (on an event, a branch, a result) is taken to hold; a command that is
+    not tools/test.sh or a test file's path does not count; an `exclude` or
+    `include` in a matrix is not read (ci_unrun refuses a workflow that has
+    one); and the paths filter that decides whether the workflow runs at all
+    is checked by test_ci_paths, not here."""
     with open(os.path.join(ROOT, "tools", "test.sh")) as f:
         fast = re.search(r'^FAST="([^"]*)"', f.read(), re.MULTILINE)
     fast_names = fast.group(1).split() + ["bake"] if fast else []
-    named = set()
-    for m in re.finditer(r"^\s+tests:\n((?:\s+-\s+[a-z0-9_ ]+\n)+)", text, re.MULTILINE):
-        for line in m.group(1).splitlines():
-            named.update(line.strip()[1:].split())
-    for m in re.finditer(r"tools/test\.sh ([a-z0-9_ ]+)", text):
-        named.update(m.group(1).split())
+    named, paths = set(), set()
+    for lines in ci_jobs(ci_code(text)).values():
+        steps = []
+        for line in lines[next((k for k, line in enumerate(lines) if re.match(r"^    steps:\s*$", line)), len(lines)) + 1:]:
+            if re.match(r"^      - ", line):
+                steps.append([line])
+            elif steps:
+                steps[-1].append(line)
+        groups = ci_matrix_tests(lines)
+        for step in steps:
+            if OFF.search("\n".join(step)):
+                continue
+            run = ci_run_text(step)
+            for m in re.finditer(r"tools/test\.sh((?:\s+[a-z0-9_]+)+)", run):
+                named.update(m.group(1).split())
+            paths.update(m.group(0) for m in re.finditer(r"tests/test_[a-z0-9_]+\.(?:py|lua)", run))
+            loop = re.search(r"for\s+(\w+)\s+in\s+\$\{\{\s*matrix\.tests\s*\}\}\s*;\s*do\s+(.*?)\s*;\s*done", run, re.DOTALL)
+            if loop and re.search(rf"tools/test\.sh\s+\"?\${{?{loop.group(1)}\b", loop.group(2)):
+                for group in groups:
+                    named.update(group.split())
     if "fast" in named:
         named.discard("fast")
         named.update(fast_names)
-    files = {f"tests/test_{n}.lua" for n in named} | {f"tests/test_{n}.py" for n in named}
-    files.update(m.group(0) for m in re.finditer(r"tests/test_[a-z0-9_]+\.(?:py|lua)", text))
-    return files
+    return {f"tests/test_{n}.lua" for n in named} | {f"tests/test_{n}.py" for n in named} | paths
 
 
 def ci_unrun(text):
@@ -507,6 +597,8 @@ def ci_unrun(text):
     listed as exempt, each with why it is named."""
     ran = ci_named(text)
     lost = []
+    if re.search(r"^\s+(?:exclude|include):", ci_code(text), re.MULTILINE):
+        lost.append("the workflow has a matrix include or exclude, which this check does not read")
     for dirpath, dirs, names in os.walk(os.path.join(ROOT, "tests")):
         dirs[:] = [d for d in dirs if d != "__pycache__"]
         for name in names:
@@ -519,26 +611,84 @@ def ci_unrun(text):
     return sorted(lost)
 
 
-# The names the proof takes out of the workflow: one in a matrix group, one
-# among others in a long group, one in a step of its own.
-CI_MUTATED = ("compose", "pattern_perimeter_1", "tools_matrix")
-
-
-def ci_mutations(text, names):
-    """What is wrong with the proof that ci_unrun sees a name taken out of
-    the workflow's jobs: a name that cannot be taken out (it is not in a job
-    line) proves nothing, and is a problem of its own."""
-    problems = []
-    for name in names:
+def take_out(name):
+    """A mutation: `name` taken out of the first job line that has it (not a
+    comment, not a step's name); text and the line's index, or None."""
+    def make(text, then=None):
         token = re.compile(rf"(?<![a-z0-9_]){name}(?![a-z0-9_]) ?")
-        lines, done = text.splitlines(keepends=True), False
+        lines = text.splitlines(keepends=True)
         for i, line in enumerate(lines):
-            if not done and not line.lstrip().startswith(("#", "- name:")) and token.search(line):
-                lines[i], done = token.sub("", line, count=1), True
-        if not done:
-            problems.append(f"{name} could not be taken out of the workflow, which has it in no job line: its mutation proves nothing")
-        elif not [m for m in ci_unrun("".join(lines)) if name in m]:
-            problems.append(f"taking {name} out of the workflow's jobs is not seen")
+            if not line.lstrip().startswith(("#", "- name:")) and token.search(line):
+                lines[i] = token.sub("", line, count=1)
+                return then(lines, i) if then else "".join(lines)
+        return None
+    return make
+
+
+def take_out_and_say(name, how):
+    """Taken out, and written in a comment instead: as a test's path, as
+    tools/test.sh's call, or after the group it left."""
+    def then(lines, i):
+        if how == "after the group":
+            lines[i] = lines[i].rstrip("\n") + f" # tools/test.sh {name}\n"
+        else:
+            lines.insert(0, f"# {'tests/test_' + name + '.lua' if how == 'path' else 'tools/test.sh ' + name}\n")
+        return "".join(lines)
+    return lambda text: take_out(name)(text, then)
+
+
+def replace_once(old, new):
+    return lambda text: text.replace(old, new, 1) if old in text else None
+
+
+def switch_off(after, nth=1):
+    """`if: false` put on the line after the nth one that starts with
+    `after` (a job's runs-on, a step's name)."""
+    def make(text):
+        lines = text.splitlines(keepends=True)
+        seen = 0
+        for i, line in enumerate(lines):
+            seen += line.strip().startswith(after)
+            if line.strip().startswith(after) and seen == nth:
+                indent = line[: len(line) - len(line.lstrip())].replace("- ", "  ")
+                lines.insert(i + 1, f"{indent}if: false\n")
+                return "".join(lines)
+        return None
+    return make
+
+
+# What the check must see, each with the name it must then report as run by
+# no job: names taken out of a job line (one in a matrix group, one among
+# others in a long group, one in a step of its own); a name that is written
+# in a comment instead (as a path, as tools/test.sh's call, after its
+# group); the loop that runs the matrix's tests taken away; a job and a
+# step switched off. A mutation that cannot be made is a failure of its own.
+CI_MUTATIONS = (
+    ("compose taken out", take_out("compose"), "compose"),
+    ("pattern_perimeter_1 taken out", take_out("pattern_perimeter_1"), "pattern_perimeter_1"),
+    ("tools_matrix taken out", take_out("tools_matrix"), "tools_matrix"),
+    ("compose in a comment as a path", take_out_and_say("compose", "path"), "compose"),
+    ("compose in a comment as a call", take_out_and_say("compose", "call"), "compose"),
+    ("compose in a comment after its group", take_out_and_say("compose", "after the group"), "compose"),
+    ("the loop over the matrix's tests gone", replace_once("for t in ${{ matrix.tests }}; do tools/test.sh $t; done", "echo nothing"), "compose"),
+    ("the loop over the matrix's tests not given to tools/test.sh", replace_once("do tools/test.sh $t; done", "do echo $t; done"), "compose"),
+    ("the lua job switched off", switch_off("runs-on: ubuntu-latest"), "compose"),
+    ("the tools job switched off", switch_off("runs-on: ubuntu-latest", 2), "tools_matrix"),
+    ("the step of the tests switched off", switch_off("- name: tests"), "compose"),
+)
+
+
+def ci_mutations(text, mutations=CI_MUTATIONS):
+    """What is wrong with the proof that ci_unrun sees each mutation of the
+    workflow: one that cannot be made proves nothing and is a problem of its
+    own, and so is one that is not seen."""
+    problems = []
+    for label, make, name in mutations:
+        mutated = make(text)
+        if mutated is None:
+            problems.append(f"{label}: the mutation could not be made on the workflow, so it proves nothing")
+        elif not [m for m in ci_unrun(mutated) if name in m]:
+            problems.append(f"{label}: not seen, {name} is still taken to be run")
     return problems
 
 
@@ -551,12 +701,16 @@ def test_ci_runs_every_test():
     with open(os.path.join(ROOT, ".github", "workflows", "test.yml")) as f:
         text = f.read()
     check(not ci_unrun(text), f"tests the test workflow does not run: {ci_unrun(text)}")
-    for problem in ci_mutations(text, CI_MUTATED):
+    for problem in ci_mutations(text):
         check(False, problem)
-    # The form itself: a name that is in no job line is reported, one that is
-    # in a comment or a step's name only likewise.
-    absent = ci_mutations(text, ("nosuchname", "texlua"))
-    check(len(absent) == 2 and all("could not be taken out" in p for p in absent), f"a name the workflow does not have in a job line is not reported: {absent}")
+    # The form itself: a mutation that cannot be made (a name in no job line,
+    # one in a step's name only, a line that is not there) is reported.
+    cannot = ci_mutations(text, (("no such name", take_out("nosuchname"), "nosuchname"), ("a step's name", take_out("texlua"), "texlua"),
+                                 ("no such loop", replace_once("not in the workflow", "x"), "compose")))
+    check(len(cannot) == 3 and all("could not be made" in p for p in cannot), f"a mutation that cannot be made is not reported: {cannot}")
+    # And one that is made and not seen: a mutation that changes nothing.
+    unseen = ci_mutations(text, (("no change", lambda t: t, "compose"),))
+    check(len(unseen) == 1 and "not seen" in unseen[0], f"a mutation that is not seen is not reported: {unseen}")
 
 
 def test_ci_paths():

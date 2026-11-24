@@ -34,12 +34,14 @@ jobs:
       fail-fast: false
       matrix:
         # Dealt out by CPU seconds on a laptop (just test-times 4 on the
-        # tree of 2026-11-24, then python3 -I tools/test_times.py groups
-        # build/test-times.tsv 12 --skip tools_matrix): 291 to 328 s a group.
-        # A job ran 0.9 to 1.25 s of CI for each such second, plus about
-        # 25 s of setup, so a group takes five to seven minutes. The heavy
-        # pattern tests are split in parts (tests/split.lua) so that none is
-        # more than a group's share. tools_matrix has the job below.
+        # tree of 2026-11-24): 291 to 328 s a group. On CI they took 4 min
+        # 26 s to 7 min 22 s (the first run). To deal them out again run
+        # just test-times 4 first, then python3 -I tools/test_times.py
+        # groups build/test-times.tsv 12 --skip tools_matrix: that file is
+        # the latest run's, and no times are kept with the repository
+        # (docs/testing.md). The heavy pattern tests are split in parts
+        # (tests/split.lua) so that none is more than a group's share.
+        # tools_matrix has the job below.
         tests:
           - pattern_matrix_1 pattern_matrix_4
           - header_mark pattern_protect
