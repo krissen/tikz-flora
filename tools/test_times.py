@@ -2,6 +2,7 @@
 
     python3 -I tools/test_times.py show TIMES [--jobs N|auto]
     python3 -I tools/test_times.py compare OLD NEW
+    python3 -I tools/test_times.py run JOBS [TEST...]
 
 show prints the table, most CPU first, with totals, and the least wall
 time N jobs could take on the same CPU times (each test started on the
@@ -10,6 +11,14 @@ is the number of jobs the run recorded.
 compare prints each test's CPU seconds in both runs and the change. CPU
 time (user + sys) is what to compare between runs: wall time depends on
 the machine's load, which each file records on its last line.
+
+run is what `just test-times` does: tools/test.sh -j JOBS --times FILE
+with a FILE of this run's own, build/test-times/STAMP-PID.tsv, then show.
+Nothing deletes a times file; build/ can be emptied by hand. The run's
+output is kept beside it as STAMP-PID.out and shown, with the path of the
+times, when the run did not succeed. build/test-times.tsv is a link to the
+latest run's file; when it cannot be made the run says so, names the real
+file, and exits non-zero.
 
 A file that is empty, lacks its header or its closing line (a run that
 did not finish writing it), or has a line that is not a test's times is
@@ -23,7 +32,9 @@ import argparse
 import heapq
 import os
 import re
+import subprocess
 import sys
+import time
 
 HEADER = ["test", "status", "wall", "user", "sys", "cpu"]
 
@@ -162,12 +173,71 @@ def compare(old_path, new_path):
     print(f"old: {onote}\nnew: {nnote}")
 
 
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+RUNS = os.path.join("build", "test-times")
+POINTER = os.path.join("build", "test-times.tsv")
+
+
+def tail(path, n):
+    with open(path, errors="replace") as f:
+        return "".join(f.readlines()[-n:])
+
+
+def point(times):
+    """build/test-times.tsv, made a link to this run's file; the file
+    itself is never touched."""
+    link = os.path.join(ROOT, POINTER)
+    tmp = f"{link}.{os.getpid()}"
+    try:
+        os.symlink(os.path.relpath(os.path.join(ROOT, times), os.path.dirname(link)), tmp)
+        os.replace(tmp, link)
+    except OSError as e:
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass
+        raise TimesError(f"cannot point {POINTER} at it ({e.strerror}); the times are in {os.path.join(ROOT, times)}") from None
+
+
+def run_tests(jobs, names):
+    """One run of tools/test.sh with its times kept, shown and pointed to."""
+    try:
+        os.makedirs(os.path.join(ROOT, RUNS), exist_ok=True)
+    except OSError as e:
+        raise TimesError(f"cannot make {RUNS} ({e.strerror}); no test was run") from None
+    base = os.path.join(RUNS, f"{time.strftime('%Y%m%dT%H%M%SZ', time.gmtime())}-{os.getpid()}")
+    times, log = base + ".tsv", base + ".out"
+    try:
+        out = open(os.path.join(ROOT, log), "w")  # noqa: SIM115
+    except OSError as e:
+        raise TimesError(f"cannot write {log} ({e.strerror}); no test was run") from None
+    with out:
+        rc = subprocess.run([os.path.join(ROOT, "tools", "test.sh"), "-j", jobs, "--times", times, *names], cwd=ROOT, stdout=out, stderr=subprocess.STDOUT, check=False).returncode
+    problem = None
+    if os.path.exists(os.path.join(ROOT, times)):
+        try:
+            show(os.path.join(ROOT, times), jobs_arg(jobs))
+            point(times)
+        except (TimesError, argparse.ArgumentTypeError) as e:
+            problem = str(e)
+        print(f"times: {times} ({POINTER} points at it)" if problem is None else f"times: {times}")
+    if rc != 0:
+        print(tail(os.path.join(ROOT, log), 30), end="", file=sys.stderr)
+        print(f"test_times: the whole output is in {log}", file=sys.stderr)
+    if problem:
+        raise TimesError(problem)
+    return rc
+
+
 def main():
     ap = argparse.ArgumentParser(description="Shows and compares the test times tools/test.sh --times writes.")
     sub = ap.add_subparsers(dest="cmd", required=True)
     s = sub.add_parser("show")
     s.add_argument("times")
     s.add_argument("--jobs", type=jobs_arg, default=0)
+    r = sub.add_parser("run")
+    r.add_argument("jobs")
+    r.add_argument("names", nargs="*")
     c = sub.add_parser("compare")
     c.add_argument("old")
     c.add_argument("new")
@@ -175,6 +245,8 @@ def main():
     try:
         if a.cmd == "show":
             show(a.times, a.jobs)
+        elif a.cmd == "run":
+            return run_tests(a.jobs, a.names)
         else:
             compare(a.old, a.new)
     except TimesError as e:

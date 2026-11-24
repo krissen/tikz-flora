@@ -32,32 +32,13 @@ bench:
 test jobs="auto":
     FLORA_PYTHON={{PYTHON}} tools/test.sh -j {{jobs}}
 
+# Every test (or NAMES) timed, JOBS (a number or auto) at a time: the times
+# are kept as build/test-times/STAMP-PID.tsv, build/test-times.tsv points at
+# the latest, and the table shows the least wall time jobs could take.
 # `python3 -I tools/test_times.py compare OLD NEW` compares two runs
-# (docs/testing.md). Every test (or NAMES) timed, JOBS at a time, shown with
-# the least wall time jobs could take, and kept as build/test-times.tsv (the
-# run that ends last stays when two overlap; each shows its own).
+# (docs/testing.md).
 test-times jobs="4" *names:
-    #!/bin/sh
-    set -u
-    mkdir -p build
-    log=$(mktemp build/test-times.XXXXXX)
-    rc=0
-    FLORA_PYTHON={{PYTHON}} tools/test.sh -j {{jobs}} --times "$log.tsv" {{names}} > "$log" 2>&1 || rc=$?
-    # The measurement, once made, is kept whatever happens after it: tests
-    # that failed, or a reporting step that does.
-    if [ -s "$log.tsv" ]; then
-      cp "$log.tsv" "$log.new" && mv "$log.new" build/test-times.tsv
-      python3 -I tools/test_times.py show "$log.tsv" --jobs {{jobs}} || { echo "test-times: the times are in build/test-times.tsv" >&2; [ "$rc" -ne 0 ] || rc=1; }
-      rm -f "$log.tsv"
-      [ "$rc" -eq 0 ] || echo "test-times: the times are kept in build/test-times.tsv" >&2
-    fi
-    if [ "$rc" -ne 0 ]; then
-      tail -n 30 "$log" >&2
-      echo "test-times: the whole output is in $log" >&2
-    else
-      rm -f "$log"
-    fi
-    exit "$rc"
+    FLORA_PYTHON={{PYTHON}} {{PYTHON}} -I tools/test_times.py run {{jobs}} {{names}}
 
 # E.g. `just test-linux` (the fast set), `just test-linux tools` or
 # `just test-linux -j 4 mix` (tools/test-linux.sh, docs/testing.md): the
