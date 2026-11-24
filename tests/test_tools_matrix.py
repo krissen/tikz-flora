@@ -78,6 +78,13 @@ case "$f" in
     # the working tree holds a file called changed; with BODIES_HOLD set it
     # sleeps first, as a long painting does.
     shift
+    # BODIES_FAIL names the side that ends with status 3 (ref is the one
+    # that runs in a directory called ref), BODIES_LATE the side that is
+    # slow: its sleeper's pid is recorded in $BODIES_PIDS.
+    side=new
+    case "$PWD" in */ref) side=ref ;; esac
+    [ "$BODIES_LATE" != "$side" ] || { trap 'kill $!' TERM INT HUP; sleep 1.5 & echo $! >> "$BODIES_PIDS/$side"; wait; }
+    [ "$BODIES_FAIL" != "$side" ] || { echo "stand-in: the $side side failed" >&2; exit 3; }
     [ -z "$BODIES_HOLD" ] || { trap 'kill $!' TERM INT HUP; sleep 37.25 & wait; }
     [ "$1" != --fixtures ] || shift 2
     [ $# -gt 0 ] || exit 2
@@ -167,10 +174,10 @@ def all_tests(tree_full):
 CELLS = []
 
 
-def cell(tool, args, expect, tree="good", times=None, ran=None, note="", docker=False, prep=None, nonroot=False, says=None):
+def cell(tool, args, expect, tree="good", times=None, ran=None, note="", docker=False, prep=None, nonroot=False, says=None, env=None):
     """prep names a fault injected before the call (see PREPS); nonroot
     rows need a user a read-only directory stops."""
-    CELLS.append({"tool": tool, "args": args, "expect": expect, "tree": tree, "times": times, "ran": ran, "note": note, "docker": docker, "prep": prep, "nonroot": nonroot, "says": says})
+    CELLS.append({"tool": tool, "args": args, "expect": expect, "tree": tree, "times": times, "ran": ran, "note": note, "docker": docker, "prep": prep, "nonroot": nonroot, "says": says, "env": env or {}})
 
 
 def test_sh_cells():
@@ -345,6 +352,18 @@ def linux_cells():
     cell("just", ["test-linux", "nosuch"], "refuse", tree="real", note="just test-linux with a test that does not exist", docker=True)
 
 
+def bodies_failures():
+    """One side of the comparison fails and the other has already ended, or
+    is still painting: either way the comparison says which side failed and
+    where the pages are, ends non-zero and leaves nothing running."""
+    for fail, other, late, what in (("new", "ref", "new", "the working tree failed, the reference already done"),
+                                    ("new", "ref", "ref", "the working tree failed, the reference still painting"),
+                                    ("ref", "new", "ref", "the reference failed, the working tree already done"),
+                                    ("ref", "new", "new", "the reference failed, the working tree still painting")):
+        said = "the working tree failed to paint" if fail == "new" else "failed to paint"
+        cell("bodies-compare", ["HEAD", "slides"], "fail", tree="git", times="kept-dir", says=said, env={"BODIES_FAIL": fail, "BODIES_LATE": late}, note=what)
+
+
 def bodies_cells():
     """tools/bodies-compare.sh and its recipe, run against a stand-in
     bodies.lua in a one-commit git repository (the real suites take
@@ -381,6 +400,7 @@ def build_cells():
     argument_cells()
     fault_cells()
     bodies_cells()
+    bodies_failures()
     linux_cells()
 
 
@@ -473,6 +493,10 @@ def run_cell(c, trees, stub, shell, results_dir, index):
     env = dict(os.environ)
     env["PATH"] = stub + os.pathsep + env["PATH"]
     env["TIMES_TARGET"] = subst["T"]
+    subst["PIDS"] = os.path.join(work, "pids")
+    os.makedirs(subst["PIDS"])
+    env["BODIES_PIDS"] = subst["PIDS"]
+    env.update(c.get("env") or {})
     env["LOCK_DIR"] = subst["LOCK"]
     prepare(c, tree, work, env)
     env["FLORA_PYTHON"] = sys.executable
@@ -578,6 +602,11 @@ def judge(c, rc, out, err, tree, subst):
             bad.append("the pages of a comparison that differs are not left, named")
     if times == "saved":
         bad.extend(saved_problems(rc, both, tree, ran))
+    # What a stand-in painting left running: nothing.
+    for name in os.listdir(subst["PIDS"]):
+        for pid in read(os.path.join(subst["PIDS"], name)).split():
+            if alive(int(pid)):
+                bad.append(f"the {name} side's process {pid} is left running")
     if c.get("says") and c["says"] not in both:
         bad.append(f"it does not print {c['says']!r}")
     if c.get("prep") == "needs-dev-full" and not ("profile:" in err and "could not write" in err):
@@ -585,7 +614,7 @@ def judge(c, rc, out, err, tree, subst):
     if c["tool"] == "bodies-compare" or c["args"][:1] == ["bodies-compare"]:
         if expect == "ok" and "identical to" not in out:
             bad.append("it does not say the trees are identical")
-        if expect == "fail" and "differ from" not in out:
+        if expect == "fail" and "differ from" not in out and not c.get("says"):
             bad.append("it does not say how many pages differ")
     if c["tool"] == "profile" and expect == "ok" and c["args"][:1] != ["-e"]:
         rep = read(t) if c["times"] == "whole" and os.path.exists(t) else err
