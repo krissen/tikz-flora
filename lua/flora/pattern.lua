@@ -1377,21 +1377,26 @@ end
 -- finds no stale answer. M.forget_row_phases() empties the store.
 local phases = setmetatable({}, { __mode = "k" })
 
--- Pattern p's own values as text, functions left out, keys sorted.
+-- Pattern p's own values as text, functions left out, keys sorted. Strings
+-- are quoted and numbers are not, so 1 and "1", or a string with a comma or
+-- an equals sign in it, make other texts than the values they imitate; a
+-- table met again is "@" and the number of its first visit.
 local function values_key(v, seen)
   local t = type(v)
   if t == "number" then return string.format("%.17g", v) end
+  if t == "string" then return string.format("%q", v) end
   if t ~= "table" then return t == "function" and "" or tostring(v) end
-  seen = seen or {}
-  if seen[v] then return "@" end
-  seen[v] = true
+  seen = seen or { n = 0 }
+  if seen[v] then return "@" .. seen[v] end
+  seen.n = seen.n + 1
+  seen[v] = seen.n
   local keys = {}
-  for k in pairs(v) do keys[#keys + 1] = k end
-  table.sort(keys, function(x, y) return tostring(x) < tostring(y) end)
-  local out = {}
-  for _, k in ipairs(keys) do
-    if type(v[k]) ~= "function" then out[#out + 1] = tostring(k) .. "=" .. values_key(v[k], seen) end
+  for k, x in pairs(v) do
+    if type(x) ~= "function" then keys[#keys + 1] = { values_key(k, seen), x } end
   end
+  table.sort(keys, function(x, y) return x[1] < y[1] end)
+  local out = {}
+  for i, e in ipairs(keys) do out[i] = e[1] .. "=" .. values_key(e[2], seen) end
   return "{" .. table.concat(out, ",") .. "}"
 end
 

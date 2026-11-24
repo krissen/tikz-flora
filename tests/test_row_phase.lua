@@ -65,6 +65,14 @@ changed("the pattern's own scale", function() kikko.scale = scale * 1.25 end, fu
 -- function may read it, so it is part of the key.
 local core = kikko.core
 changed("a value of the pattern's own", function() kikko.core = core + 0.1 end, function() kikko.core = core end)
+-- Values that differ only in what they are: a number and the string that
+-- reads the same, and a string with a comma and an equals sign in it and the
+-- two values it imitates.
+kikko.va = 1
+changed("a value that turns from a number to a string", function() kikko.va = "1" end, function() kikko.va = nil end)
+kikko.va = "1,vb=2"
+changed("a string that imitates two values", function() kikko.va = 1; kikko.vb = 2 end, function() kikko.va, kikko.vb = nil, nil end)
+kikko.va = nil
 local cells = kikko.cells
 changed("a cells function swapped", function()
   kikko.cells = function(env)
