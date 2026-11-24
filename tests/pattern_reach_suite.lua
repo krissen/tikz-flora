@@ -3,20 +3,43 @@
 -- the paint itself), over every pattern x ground x edge x layout x outer
 -- and hero x scale, and proof that the sweep fails when the field places
 -- cells by their outline alone.
+-- Split over tests/test_pattern_reach_1.lua .. _3.lua: each runs
+-- run(part, parts), its share of the patterns (the sweep and its auto
+-- ground on the dark backdrop) and of the mutations (tests/split.lua).
 local H = dofile("tests/helper.lua")
 local M = dofile("tests/pattern_reach.lua")
 local Patterns = require("flora.patterns")
 local Pattern = require("flora.pattern")
 
+-- What each item weighs, in CPU seconds (just test-times, 2026-11): a
+-- pattern's share of the sweep and of the dark one, and each mutation.
+local GROUNDS = { "auto", "panel", "motif", "round", "cells", "on" }
+local WEIGHTS = {
+  { "pattern:asanoha", 30 }, { "pattern:celtic_knot", 18 }, { "pattern:greek_crosses", 25 }, { "pattern:hexagram_lattice", 22 },
+  { "pattern:khatam", 21 }, { "pattern:kikko", 18 }, { "pattern:overlapping_circles", 7 }, { "pattern:penrose_rhombs", 24 },
+  { "pattern:rosette_lattice", 44 }, { "pattern:seigaiha", 7 }, { "pattern:shippo", 8 }, { "pattern:sikku_kolam", 69 },
+  { "pattern:stars_8_4", 41 }, { "pattern:truchet", 16 },
+  { "mutant:outline-only", 99 }, { "mutant:panel-edge-to-edge", 26 },
+}
+for _, g in ipairs(GROUNDS) do WEIGHTS[#WEIGHTS + 1] = { "mutant:ground larger:" .. g, 19 } end
+
+return function(part, parts)
+local S = dofile("tests/split.lua").new(part, parts, WEIGHTS)
+
 local verbose = os.getenv("FLORA_MATRIX_VERBOSE")
-local cells, failures = M.run()
-if verbose then print(string.format("reach: %d cells, %d failures", #cells, #failures)) end
-H.check(#cells == #Patterns.list * #M.GROUNDS * #M.EDGES * 2 * #M.VARIANTS * 2, "reach cells: " .. #cells)
+local mine, nmine = {}, 0
+for _, p in ipairs(Patterns.list) do
+  if S.mine("pattern:" .. p.name) then mine[p.name] = true; nmine = nmine + 1 end
+end
+local function owned(name) return mine[name] end
+local cells, failures = M.run(owned)
+if verbose then print(string.format("reach: %d cells, %d failures (part %d of %d)", #cells, #failures, part, parts)) end
+S.check(H, #cells == nmine * #M.GROUNDS * #M.EDGES * 2 * #M.VARIANTS * 2, "reach cells: " .. #cells)
 -- And auto on the dark backdrop, where it lays the ground as one panel.
 do
   local grounds = M.GROUNDS
   M.GROUNDS, M.BACKDROP = { "auto" }, "dark"
-  local dc, df = M.run()
+  local dc, df = M.run(owned)
   M.GROUNDS, M.BACKDROP = grounds, nil
   if verbose then print(string.format("reach, auto on the dark backdrop: %d cells, %d failures", #dc, #df)) end
   for _, f in ipairs(df) do H.check(false, "dark: " .. f) end
@@ -49,27 +72,31 @@ end
 -- The field placing cells by their outline alone, as it did before their
 -- ground and plates were counted: the ground squares of the dot grids
 -- reach past their dots into the text.
-local footprint = Pattern.footprint
-Pattern.footprint = function(c) return { c } end
-local ok, _, fs = unchecked(M.run, function(n) return n == "sikku_kolam" or n == "rosette_lattice" end)
-Pattern.footprint = footprint
-H.check(ok and #fs > 0, "the reach sweep missed cells placed by their outline alone")
-if verbose then print(string.format("mutation outline-only: %d failing cells", ok and #fs or -1)) end
+if S.mine("mutant:outline-only") then
+  local footprint = Pattern.footprint
+  Pattern.footprint = function(c) return { c } end
+  local ok, _, fs = unchecked(M.run, function(n) return n == "sikku_kolam" or n == "rosette_lattice" end)
+  Pattern.footprint = footprint
+  H.check(ok and #fs > 0, "the reach sweep missed cells placed by their outline alone")
+  if verbose then print(string.format("mutation outline-only: %d failing cells", ok and #fs or -1)) end
+end
 
 -- The ground's panel as it was first drawn: its side of the page edge to
 -- edge, under the hero and into the margin.
-local panel_path = Pattern.panel_path
-Pattern.panel_path = function(f)
-  local t, o = f.text, f.gap
-  local x0, x1 = -2, f.W + 2
-  if f.side and f.side.left and not f.side.right then x1 = t.x0 - o end
-  if f.side and f.side.right and not f.side.left then x0 = t.x1 + o end
-  return { { "m", x0, -2 }, { "l", x1, -2 }, { "l", x1, f.top + 2 }, { "l", x0, f.top + 2 }, { "z" } }
+if S.mine("mutant:panel-edge-to-edge") then
+  local panel_path = Pattern.panel_path
+  Pattern.panel_path = function(f)
+    local t, o = f.text, f.gap
+    local x0, x1 = -2, f.W + 2
+    if f.side and f.side.left and not f.side.right then x1 = t.x0 - o end
+    if f.side and f.side.right and not f.side.left then x0 = t.x1 + o end
+    return { { "m", x0, -2 }, { "l", x1, -2 }, { "l", x1, f.top + 2 }, { "l", x0, f.top + 2 }, { "z" } }
+  end
+  local ok2, _, fs2 = unchecked(M.run, function(n) return n == "asanoha" end)
+  Pattern.panel_path = panel_path
+  H.check(ok2 and #fs2 > 0, "the reach sweep missed a ground panel under the hero and in the margin")
+  if verbose then print(string.format("mutation panel-edge-to-edge: %d failing cells", ok2 and #fs2 or -1)) end
 end
-local ok2, _, fs2 = unchecked(M.run, function(n) return n == "asanoha" end)
-Pattern.panel_path = panel_path
-H.check(ok2 and #fs2 > 0, "the reach sweep missed a ground panel under the hero and in the margin")
-if verbose then print(string.format("mutation panel-edge-to-edge: %d failing cells", ok2 and #fs2 or -1)) end
 
 -- Every way the ground is laid, a piece larger than the field measured:
 -- each piece grown a third about its cell, the panel 8 pt past its edges.
@@ -107,17 +134,21 @@ do
     end }
   end
   local grounds = M.GROUNDS
-  for _, g in ipairs({ "auto", "panel", "motif", "round", "cells", "on" }) do
+  for _, g in ipairs(GROUNDS) do
+    if S.mine("mutant:ground larger:" .. g) then
     M.GROUNDS = { g }
     -- auto lays its ground (the panel) on a dark backdrop only.
     M.BACKDROP = g == "auto" and "dark" or nil
     local ok_larger, _, fs_larger = unchecked(M.run, function(n) return n == "asanoha" or n == "sikku_kolam" or n == "rosette_lattice" end)
     H.check(ok_larger and #fs_larger > 0, "the reach sweep missed a ground piece larger than measured under ground=" .. g)
     if verbose then print(string.format("mutation ground larger than measured, ground=%s: %d failing cells", g, ok_larger and #fs_larger or -1)) end
+    end
   end
   M.GROUNDS = grounds
   M.BACKDROP = nil
   Pattern.edge_pieces = edge_pieces
 end
 
-H.done("pattern reach")
+S.finish(H)
+H.done("pattern reach " .. part)
+end
