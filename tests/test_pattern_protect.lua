@@ -7,6 +7,18 @@
 local H = dofile("tests/helper.lua")
 local M = dofile("tests/pattern_protect.lua")
 
+-- The sweep's own geometry: a fill that holds the rectangle's middle
+-- overlaps it at a gap of 0 too (the sweep takes the gap less a hair, so
+-- the limit is negative), whatever the box test would say.
+do
+  local square = { { 0, 0 }, { 20, 0 }, { 20, 20 }, { 0, 20 } }
+  local r = { 9, 9, 11, 11 }
+  for _, g in ipairs({ 6 - 1e-6, 0, -1e-6 }) do
+    H.check(M.shape_overlaps({ polys = { square }, discs = {} }, true, 0, r, g), "a fill that holds the rectangle's middle overlaps it at gap " .. g)
+  end
+  H.check(not M.shape_overlaps({ polys = { square }, discs = {} }, false, 0, r, -1e-6), "a stroke far from the rectangle does not overlap it")
+end
+
 -- Four whole stars round a cross, and a reservation inside the cross only:
 -- every star clears it by more than the gap, the cross does not. (The
 -- page's widest strip, 344 pt at its foot, is past the field scale's

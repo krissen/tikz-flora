@@ -123,8 +123,9 @@ local function overlaps(sh, fill, w, r, g)
   for _, P in ipairs(sh.polys) do
     local n = #P
     -- A polygon whose box lies farther than lim from r comes nowhere
-    -- near it, nor holds its middle.
-    if n > 0 and box_dist(P, r) > lim + 1e-9 then goto next end
+    -- near it, nor holds its middle (a negative lim, for a gap of 0, is
+    -- as far as 0: a box that touches r may still enclose its middle).
+    if n > 0 and box_dist(P, r) > math.max(lim, 0) + 1e-9 then goto next end
     if fill and n >= 3 and in_poly(mx, my, P) then return true end
     for i = 1, n - 1 do
       if seg_rect_dist(P[i], P[i + 1], r) < lim then return true end
@@ -342,4 +343,5 @@ function M.sweep(filter, opts)
   return cells, failures
 end
 
+M.shape_overlaps = overlaps
 return M
