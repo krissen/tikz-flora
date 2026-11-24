@@ -38,8 +38,8 @@ for suite in "$@"; do
   esac
 done
 root=$(pwd)
-mkdir -p build
-out=$(mktemp -d build/bodies.XXXXXX)
+mkdir -p build 2> /dev/null || refuse "cannot make build/; nothing was painted"
+out=$(mktemp -d build/bodies.XXXXXX 2> /dev/null) || refuse "cannot make a directory under build/; nothing was painted"
 keep=
 trap '[ -n "$keep" ] || rm -rf "$out"' EXIT
 mkdir "$out/ref"
