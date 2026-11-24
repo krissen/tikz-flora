@@ -26,6 +26,8 @@ ref=$1
 shift
 command -v git > /dev/null || refuse "needs git, to unpack $ref's tree"
 command -v texlua > /dev/null || refuse "needs texlua"
+PY=${FLORA_PYTHON:-python3}
+command -v "$PY" > /dev/null || refuse "needs $PY (FLORA_PYTHON), which runs the two paints at once and stops them"
 git rev-parse --is-inside-work-tree > /dev/null 2>&1 || refuse "not in a git working tree; $ref's tree comes from its history"
 git rev-parse --verify --quiet "$ref^{commit}" > /dev/null || refuse "$ref is not a commit"
 [ $# -gt 0 ] || set -- bands slides progression protect
@@ -47,30 +49,31 @@ mkdir "$out/ref"
 git archive -o "$out/ref.tar" "$ref"
 tar -x -C "$out/ref" -f "$out/ref.tar"
 rm "$out/ref.tar"
-# A signal to this shell is sent on to both paints, which are then waited
-# for; and neither is left running when the other fails. A trap's action
-# must not end with a command whose failure set -e acts on (the paint may
-# be gone).
-refpid=
-newpid=
+# The two paints run at once through tools/toolproc.py, which waits for both,
+# stops the other when one fails, and stops both when it is signalled; this
+# shell only passes a signal on to it, and reads the two statuses it prints.
+child=
 got=
-trap 'got=130; kill "$refpid" "$newpid" 2> /dev/null || true' INT
-trap 'got=143; kill "$refpid" "$newpid" 2> /dev/null || true' TERM
-trap 'got=129; kill "$refpid" "$newpid" 2> /dev/null || true' HUP
-(cd "$out/ref" && exec texlua "$root/tools/bodies.lua" --fixtures "$root/tests/fixtures/slides" "$@") > "$out/ref.txt" &
-refpid=$!
-texlua tools/bodies.lua "$@" > "$out/new.txt" &
-newpid=$!
+# shellcheck disable=SC2329
+on_signal() {
+  got=$1
+  [ -z "$child" ] || kill "$child" 2> /dev/null || true
+}
+trap 'on_signal 130' INT
+trap 'on_signal 143' TERM
+trap 'on_signal 129' HUP
 keep=1
-refrc=0
-newrc=0
-# The other paint may have ended already: that is no failure here.
-wait "$refpid" || { refrc=$?; kill "$newpid" 2> /dev/null || true; }
-wait "$newpid" || newrc=$?
-while kill -0 "$refpid" 2> /dev/null || kill -0 "$newpid" 2> /dev/null; do wait 2> /dev/null || true; done
+"$PY" -I tools/toolproc.py run-all \
+  "$out/ref" "$out/ref.txt" texlua "$root/tools/bodies.lua" --fixtures "$root/tests/fixtures/slides" "$@" \
+  :: . "$out/new.txt" texlua tools/bodies.lua "$@" > "$out/status" &
+child=$!
+[ -z "$got" ] || kill "$child" 2> /dev/null || true
+wait "$child" || true
+while kill -0 "$child" 2> /dev/null; do wait "$child" 2> /dev/null || true; done
 [ -z "$got" ] || { keep=; exit "$got"; }
-[ "$refrc" -eq 0 ] || { echo "bodies-compare: $ref failed to paint (see $out)"; exit 1; }
-[ "$newrc" -eq 0 ] || { echo "bodies-compare: the working tree failed to paint (see $out)"; exit 1; }
+read -r refrc newrc < "$out/status" || { echo "bodies-compare: the paints could not be run (see $out)"; exit 1; }
+[ "$refrc" = 0 ] || { echo "bodies-compare: $ref failed to paint (see $out)"; exit 1; }
+[ "$newrc" = 0 ] || { echo "bodies-compare: the working tree failed to paint (see $out)"; exit 1; }
 n=$(wc -l < "$out/new.txt" | tr -d ' ')
 if cmp -s "$out/ref.txt" "$out/new.txt"; then
   echo "bodies-compare: $n identical to $ref ($*)"
