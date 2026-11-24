@@ -112,17 +112,28 @@ done
 if [ "$jobs" = 1 ] && [ -z "$times" ]; then
   child=
   got=
-  trap 'got=130; kill -TERM "$child" 2> /dev/null' INT
-  trap 'got=143; kill -TERM "$child" 2> /dev/null' TERM
-  trap 'got=129; kill -TERM "$child" 2> /dev/null' HUP
+  # The action of a trap must not end with a command whose failure set -e
+  # acts on: the test may be gone already, or not started yet.
+  # shellcheck disable=SC2329
+  on_signal() {
+    got=$1
+    [ -z "$child" ] || kill -TERM "$child" 2> /dev/null || true
+  }
+  trap 'on_signal 130' INT
+  trap 'on_signal 143' TERM
+  trap 'on_signal 129' HUP
   for t in "$@"; do
+    [ -z "$got" ] || exit "$got"
     (run "$t" exec) &
     child=$!
+    # A signal that came before child was set is sent on now.
+    [ -z "$got" ] || kill -TERM "$child" 2> /dev/null || true
     rc=0
     wait "$child" || rc=$?
     # A signal ends the wait before the test: wait for the test, then
     # leave with the signal's status.
     while kill -0 "$child" 2> /dev/null; do wait "$child" 2> /dev/null || true; done
+    child=
     [ -z "$got" ] || exit "$got"
     [ "$rc" -eq 0 ] || exit "$rc"
   done
@@ -144,7 +155,7 @@ if [ -n "$times" ]; then
 fi
 d=$(mktemp -d "${TMPDIR:-/tmp}/flora-test.XXXXXX")
 keep=
-trap '[ -n "$keep" ] || rm -rf "$d"' EXIT
+trap '[ -n "$keep" ] || rm -rf "$d" || true' EXIT
 printf '%s\n' "$@" > "$d/names"
 # The tests in a process group of their own, stopped as one when the run
 # is interrupted. The shell cannot make one without a terminal (set -m is
@@ -156,18 +167,10 @@ printf '%s\n' "$@" > "$d/names"
   xargs -P "$jobs" -n 1 tools/test.sh --keep "$d" < "$d/names" &
 xpid=$!
 stop() {
-  echo "test.sh: interrupted; stopping the tests, no times written" >&2
-  "$PY" -c '
-import os, signal, sys
-pid = int(sys.argv[1])
-try:
-    os.killpg(pid, signal.SIGTERM)
-except ProcessLookupError:
-    try:
-        os.kill(pid, signal.SIGTERM)
-    except ProcessLookupError:
-        pass
-' "$xpid" || echo "test.sh: could not stop the tests (process group $xpid)" >&2
+  echo "test.sh: interrupted; stopping the tests, no times written" >&2 || true
+  # tools/toolproc.py: TERM to the group, a wait for it to be gone, KILL
+  # for what is left, as for every other tool that starts processes.
+  "$PY" -I tools/toolproc.py stop-group "$xpid" TERM || echo "test.sh: could not stop the tests (process group $xpid)" >&2
   wait "$xpid" || true
   exit "$1"
 }
