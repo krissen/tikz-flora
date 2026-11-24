@@ -33,12 +33,19 @@ test jobs="auto":
     FLORA_PYTHON={{PYTHON}} tools/test.sh -j {{jobs}}
 
 # `python3 -I tools/test_times.py compare OLD NEW` compares two runs
-# (docs/testing.md). Every test (or NAMES) timed, JOBS at a time, to
-# build/test-times.tsv, shown with the least wall time jobs could take.
+# (docs/testing.md). Every test (or NAMES) timed, JOBS at a time, shown with
+# the least wall time jobs could take, and kept as build/test-times.tsv (the
+# run that ends last stays when two overlap; each shows its own).
 test-times jobs="4" *names:
+    #!/bin/sh
+    set -eu
     mkdir -p build
-    FLORA_PYTHON={{PYTHON}} tools/test.sh -j {{jobs}} --times build/test-times.tsv {{names}} > build/test-times.out 2>&1 || (tail -30 build/test-times.out; exit 1)
-    python3 -I tools/test_times.py show build/test-times.tsv --jobs {{jobs}}
+    log=$(mktemp build/test-times.XXXXXX)
+    trap 'rm -f "$log.tsv"' EXIT
+    FLORA_PYTHON={{PYTHON}} tools/test.sh -j {{jobs}} --times "$log.tsv" {{names}} > "$log" 2>&1 || { tail -n 30 "$log"; echo "test-times: the whole output is in $log"; exit 1; }
+    python3 -I tools/test_times.py show "$log.tsv" --jobs {{jobs}}
+    cp "$log.tsv" "$log.new" && mv "$log.new" build/test-times.tsv
+    rm -f "$log"
 
 # E.g. `just test-linux` (the fast set), `just test-linux tools` or
 # `just test-linux -j 4 mix` (tools/test-linux.sh, docs/testing.md): the

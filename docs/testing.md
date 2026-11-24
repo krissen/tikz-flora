@@ -26,9 +26,13 @@ The container gets the tree CI checks out, as it stands in the working tree: the
 
 It needs docker. The first run for an architecture builds its image (under a minute natively, several minutes emulated); `FLORA_LINUX_REBUILD=1` builds it again. Docker's virtual machine stops while the Mac sleeps, so a run's wall time across a sleep says nothing; time a run inside, with `--times`.
 
+## Two runs at once
+
+Several people, or several agents, run tests on one machine, so nothing the tools use may be shared between two runs. `tools/test.sh` keeps each run's files in a directory of its own (`mktemp -d`) and stops only the process group it made; `--times FILE` is written next to FILE under a name with the run's process id and moved over it at the end; `tools/test-linux.sh` sends a list from `mktemp` and starts an unnamed container. The one shared name is the image, built from the same recipe by whichever run finds it missing, and `build/test-times.tsv`, where the last finished run stays. A test of the tools finds the processes it started by the pid they record, never by their command line, and `tests/test_tools.py` runs two copies of the runner's tests at once beside an unrelated process that has the command line of its sleepers, and requires that both pass and that the process is left alone.
+
 ## Timing
 
-`tools/test.sh --times FILE` writes one tab-separated line per test: its name, exit status, and wall, user, sys and CPU (user + sys) seconds, most CPU first; the last line records the jobs, the time (UTC) and the machine's load average when the run ended. `just test-times [JOBS] [NAMES]` runs it to `build/test-times.tsv` (default 4 jobs, every test) and shows it:
+`tools/test.sh --times FILE` writes one tab-separated line per test: its name, exit status, and wall, user, sys and CPU (user + sys) seconds, most CPU first; the last line records the jobs, the time (UTC) and the machine's load average when the run ended. `just test-times [JOBS] [NAMES]` runs it (default 4 jobs, every test), shows its own file and keeps it as `build/test-times.tsv` (when two runs overlap the one that ends last stays; its own output goes to a file of its own, named when the run fails):
 
 ```
 python3 -I tools/test_times.py show build/test-times.tsv
