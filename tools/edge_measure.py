@@ -14,12 +14,14 @@ fragments, the painted pieces cut off from the field smaller than a
 cell. Needs numpy and Pillow.
 """
 import csv
-import subprocess
 import sys
 from pathlib import Path
 
 import numpy as np
 from PIL import Image
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import toolproc
 
 DPI = 40
 
@@ -47,6 +49,7 @@ def components(mask):
 
 
 def main(out):
+    toolproc.install()
     out = Path(out)
     with open(out / "cells.tsv") as f:
         rows = list(csv.DictReader(f, delimiter="\t"))
@@ -54,7 +57,7 @@ def main(out):
     for r in rows:
         name = f"{r['pattern']}__ground-{r['ground']}__{r['edge']}"
         png = out / name
-        subprocess.run(["pdftocairo", "-png", "-transp", "-singlefile", "-r", str(DPI), str(out / (name + ".pdf")), str(png)], check=True)
+        toolproc.run(["pdftocairo", "-png", "-transp", "-singlefile", "-r", str(DPI), str(out / (name + ".pdf")), str(png)], check=True)
         a = np.asarray(Image.open(str(png) + ".png").convert("RGBA"))[:, :, 3] > 20
         px = DPI / 72.27
         x1 = int(float(r["text_x0"]) * px)
