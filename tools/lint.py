@@ -20,11 +20,13 @@ import glob
 import json
 import os
 import shutil
-import subprocess
 import sys
 import tempfile
 import urllib.parse
 import urllib.request
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import toolproc
 
 # LINT_ROOT points the run at another tree; tests/test_lint.py uses it.
 ROOT = os.environ.get("LINT_ROOT") or os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -68,7 +70,7 @@ def relative(path):
 
 
 def run(cmd):
-    return subprocess.run(cmd, cwd=ROOT, capture_output=True, text=True, check=False)
+    return toolproc.run(cmd, cwd=ROOT, capture_output=True, text=True, check=False)
 
 
 def lua(server):
@@ -141,6 +143,7 @@ def pyright(exe):
 
 
 def main():
+    toolproc.install()
     require_pyright = "--require-pyright" in sys.argv[1:]
     patterns = exempt_patterns()
     tools = [

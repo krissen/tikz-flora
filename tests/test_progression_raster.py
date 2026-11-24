@@ -2,7 +2,7 @@
 
 Run python3 tests/test_progression_raster.py from the repository root.
 """
-import subprocess
+import sys
 import tempfile
 import time
 from concurrent.futures import ThreadPoolExecutor
@@ -11,6 +11,9 @@ from pathlib import Path
 from struct import iter_unpack
 
 from PIL import Image, ImageChops, ImageFilter
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / 'tools'))
+import toolproc
 
 LUA = r"""
 package.path='./lua/?.lua;'..package.path
@@ -110,7 +113,7 @@ end
 
 
 def raster(path):
-    subprocess.run(
+    toolproc.run(
         ['pdftoppm', '-r', '72', '-singlefile', '-png', str(path), str(path.with_suffix(''))],
         check=True, capture_output=True,
     )
@@ -133,13 +136,14 @@ def painted(image):
 
 
 def main():
+    toolproc.install()
     start = time.monotonic()
     with tempfile.TemporaryDirectory(prefix='flora-growth-') as directory:
         root = Path(directory)
         script = root / 'stages.lua'
         script.write_text(LUA)
         prefix = root / 'stage'
-        subprocess.run(['texlua', str(script), str(prefix)], check=True)
+        toolproc.run(['texlua', str(script), str(prefix)], check=True)
         paths = [root / f'stage-{i:02d}.pdf' for i in range(65)]
         with ThreadPoolExecutor(max_workers=4) as pool:
             images = list(pool.map(raster, paths))

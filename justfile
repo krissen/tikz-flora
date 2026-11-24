@@ -25,11 +25,32 @@ bench:
     grep real build/bench.txt
     pdfinfo build/manuscript.pdf | grep -E 'Pages|File size'
 
-# Run the Lua unit tests under texlua, and the tune.lua writer's test.
-test:
-    for f in tests/test_*.lua; do texlua "$f" || exit 1; done
-    {{PYTHON}} -I tests/test_bake.py
-    {{PYTHON}} -I tests/test_lint.py
+# The Lua unit tests under texlua, the tune.lua writer's and the linter's
+# tests: tools/test.sh, the list CI and the pre-push hook use (-j auto
+# when JOBS is left out). `just test 1` stops at the first failure.
+# Every test, JOBS at a time (default half the processors), e.g. `just test 6`.
+test jobs="auto":
+    FLORA_PYTHON={{PYTHON}} tools/test.sh -j {{jobs}}
+
+# Every test (or NAMES) timed, JOBS (a number or auto) at a time: the times
+# are kept as build/test-times/STAMP-PID.tsv, build/test-times.tsv points at
+# the latest, and the table shows the least wall time jobs could take.
+# `python3 -I tools/test_times.py compare OLD NEW` compares two runs
+# (docs/testing.md).
+test-times jobs="4" *names:
+    FLORA_PYTHON={{PYTHON}} {{PYTHON}} -I tools/test_times.py run {{jobs}} {{names}}
+
+# E.g. `just test-linux` (the fast set), `just test-linux tools` or
+# `just test-linux -j 4 mix` (tools/test-linux.sh, docs/testing.md): the
+# tests in a container of CI's Ubuntu, where /bin/sh is dash; needs docker.
+test-linux *args:
+    tools/test-linux.sh {{args}}
+
+# E.g. `just profile tests/test_pattern_perimeter.lua`, or `just profile
+# --time flora.pattern.clearance tests/test_pattern.lua` (docs/testing.md):
+# where a Lua run spends its time, sampled by function and line.
+profile *args:
+    texlua tools/profile.lua {{args}}
 
 # Lint the Lua (lua-language-server, .luarc.json), the Python (ruff, and
 # pyright when installed) and tools/*.sh (shellcheck). .lint-exempt lists the

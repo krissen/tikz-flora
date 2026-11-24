@@ -13,12 +13,14 @@ so a pattern whose fill outweighs its lines stands out. Needs numpy and
 Pillow.
 """
 import csv
-import subprocess
 import sys
 from pathlib import Path
 
 import numpy as np
 from PIL import Image
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import toolproc
 
 DPI = 100
 
@@ -33,13 +35,14 @@ def lightness(rgb):
 
 
 def main(out, band_l=0.40):
+    toolproc.install()
     out = Path(out)
     with open(out / "cells.tsv") as f:
         rows = [r for r in csv.DictReader(f, delimiter="\t") if r["ground"] == "off" and r["edge"] == "cell"]
     res = []
     for r in rows:
         name = f"{r['pattern']}__ground-off__cell"
-        subprocess.run(["pdftocairo", "-png", "-singlefile", "-r", str(DPI), str(out / (name + ".pdf")), str(out / ("form-" + name))], check=True)
+        toolproc.run(["pdftocairo", "-png", "-singlefile", "-r", str(DPI), str(out / (name + ".pdf")), str(out / ("form-" + name))], check=True)
         img = np.asarray(Image.open(str(out / ("form-" + name)) + ".png").convert("RGB")).astype(float)
         px = DPI / 72.27
         h = img.shape[0]
