@@ -36,6 +36,9 @@ import subprocess
 import sys
 import time
 
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import toolproc
+
 HEADER = ["test", "status", "wall", "user", "sys", "cpu"]
 
 
@@ -212,7 +215,7 @@ def run_tests(jobs, names):
     except OSError as e:
         raise TimesError(f"cannot write {log} ({e.strerror}); no test was run") from None
     with out:
-        rc = subprocess.run([os.path.join(ROOT, "tools", "test.sh"), "-j", jobs, "--times", times, *names], cwd=ROOT, stdout=out, stderr=subprocess.STDOUT, check=False).returncode
+        rc = toolproc.run([os.path.join(ROOT, "tools", "test.sh"), "-j", jobs, "--times", times, *names], cwd=ROOT, stdout=out, stderr=subprocess.STDOUT, check=False).returncode
     problem = None
     if os.path.exists(os.path.join(ROOT, times)):
         try:
@@ -246,6 +249,7 @@ def main():
         if a.cmd == "show":
             show(a.times, a.jobs)
         elif a.cmd == "run":
+            toolproc.install()
             return run_tests(a.jobs, a.names)
         else:
             compare(a.old, a.new)

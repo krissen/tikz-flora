@@ -6,9 +6,13 @@
 # and found nothing in it. No network and none of the real tools.
 # Run from the repository root: python3 -I tests/test_lint.py
 import os
-import subprocess
 import sys
 import tempfile
+
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "tools"))
+import toolproc
+
+toolproc.install()
 
 LINT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "tools", "lint.py")
 
@@ -102,7 +106,7 @@ def run(root, bindir, modes, args=()):
     env = {"PATH": bindir, "LINT_ROOT": root}
     for tool in TOOLS:
         env["FAKE_" + tool.upper().replace("-", "_")] = modes[tool]
-    p = subprocess.run([sys.executable, "-I", LINT, *args], env=env, capture_output=True, text=True, check=False)
+    p = toolproc.run([sys.executable, "-I", LINT, *args], env=env, capture_output=True, text=True, check=False)
     return p.returncode, p.stdout.splitlines()
 
 
