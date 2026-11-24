@@ -255,7 +255,8 @@ def alive(pid):
 
 def test_runner(d):
     os.makedirs(os.path.join(d, "tools"))
-    shutil.copy(os.path.join(TOOLS, "test.sh"), os.path.join(d, "tools", "test.sh"))
+    for name in ("test.sh", "toolproc.py"):
+        shutil.copy(os.path.join(TOOLS, name), os.path.join(d, "tools", name))
     for name, text in FAKE_TESTS.items():
         write(os.path.join(d, "tests", f"test_{name}.lua"), text)
     sh = os.path.join(d, "tools", "test.sh")
@@ -455,6 +456,80 @@ def test_no_loose_processes():
     check(os.path.exists(os.path.join(ROOT, "tools", "toolproc.py")), "tools/toolproc.py is missing")
 
 
+def glob_regex(pattern):
+    """A path glob as a regex: ** crosses directories, * does not."""
+    return re.compile("".join(".*" if part == "**" else "[^/]*" if part == "*" else re.escape(part) for part in re.split(r"(\*\*|\*)", pattern)) + "$")
+
+
+def test_ci_paths():
+    """The test workflow runs when a file its tests use changes: every
+    file the tests and tools/test.sh name, and the ones the table of calls
+    reads, matches its paths."""
+    with open(os.path.join(ROOT, ".github", "workflows", "test.yml")) as f:
+        text = f.read()
+    block = text.split("    paths:\n", 1)[1].split("  workflow_dispatch:", 1)[0]
+    globs = [m.group(1) for m in re.finditer(r'^\s*-\s*"([^"]+)"', block, re.MULTILINE)]
+    check(len(globs) >= 5, f"found only {globs} in the workflow's paths (the scan is broken?)")
+    regexes = [glob_regex(g) for g in globs]
+    used = read_paths() | {"justfile", "docs/testing.md", "tools/toolproc.py", "tools/test-linux.Dockerfile", ".github/workflows/test.yml"}
+    for rel in sorted(used):
+        check(any(r.match(rel) for r in regexes), f"{rel} is used by the tests and is not in the test workflow's paths")
+
+
+def test_toolproc():
+    """What toolproc promises when a signal or a timeout comes at a bad
+    moment."""
+    here = f"import sys; sys.path.insert(0, {TOOLS!r}); import toolproc; toolproc.install()\n"
+    with tempfile.TemporaryDirectory() as d:
+        # A signal while the thread holds the lock the handler takes.
+        held = here + "import os, signal\nwith toolproc._lock:\n    os.kill(os.getpid(), signal.SIGTERM)\n    print('not reached')\n"
+        try:
+            p = toolproc.run([sys.executable, "-I", "-c", held], timeout=20, capture_output=True, text=True)
+            check(p.returncode == 143, f"a signal while the lock is held: rc {p.returncode}, not 143")
+        except subprocess.TimeoutExpired:
+            check(False, "a signal while the lock is held hangs the handler")
+        # A child that was not tracked (started a moment before, or not here).
+        loose = here + "import subprocess, time\nc = subprocess.Popen(['sleep', '37.25'], start_new_session=True)\nprint(c.pid, flush=True)\ntime.sleep(60)\n"
+        with toolproc.popen([sys.executable, "-I", "-c", loose], stdout=subprocess.PIPE, text=True) as q:
+            assert q.stdout is not None
+            pid = int(q.stdout.readline())
+            os.kill(q.pid, signal.SIGTERM)
+            got = q.wait(timeout=20)
+            for _ in range(50):
+                if not alive(pid):
+                    break
+                time.sleep(0.1)
+            check(got == 143, f"a child that was not tracked: rc {got}, not 143")
+            check(not alive(pid), "a child that was not tracked is left running when the signal comes")
+            if alive(pid):
+                os.kill(pid, signal.SIGKILL)
+        # A command that outlives its timeout while a process of its own, in
+        # another group, lives and holds the pipes: stopped as a signal
+        # stops it, and the call returns.
+        pidfile = os.path.join(d, "sleeper")
+        super_ = here + f"import toolproc\nc = toolproc.popen(['sleep', '37.25'])\nopen({pidfile!r}, 'w').write(str(c.pid))\nc.wait()\n"
+        start = time.monotonic()
+        try:
+            toolproc.run([sys.executable, "-I", "-c", super_], timeout=2, capture_output=True)
+            check(False, "a command over its time did not raise")
+        except subprocess.TimeoutExpired:
+            pass
+        check(time.monotonic() - start < 12, f"a command over its time took {time.monotonic() - start:.1f} s to be stopped")
+        sleeper = int(read_text(pidfile)) if os.path.exists(pidfile) else None
+        for _ in range(30):
+            if sleeper is None or not alive(sleeper):
+                break
+            time.sleep(0.1)
+        check(sleeper is not None and not alive(sleeper), "a command over its time left its own process running")
+        if sleeper is not None and alive(sleeper):
+            os.kill(sleeper, signal.SIGKILL)
+
+
+def read_text(path):
+    with open(path) as f:
+        return f.read()
+
+
 def main():
     toolproc.install()
     part = os.environ.get("TOOLS_TEST_PART")
@@ -467,6 +542,8 @@ def main():
     if part != "runner":
         test_linux_input()
         test_no_loose_processes()
+        test_ci_paths()
+        test_toolproc()
         test_concurrent_runs()
     if failures:
         print(f"tools: {len(failures)} failure(s)", file=sys.stderr)

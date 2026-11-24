@@ -78,10 +78,11 @@ n=${n%.lua}
 case "$n" in
   fail) echo "fail: failing on purpose"; exit 3 ;;
   slow) trap 'kill $!' TERM INT HUP; sleep 37.25 & wait ;;
+  stubborn) trap '' TERM; echo $$ > "$STUB_PID"; sleep 37.25 ;;
   mkdirtimes) mkdir -p "$TIMES_TARGET"; echo "mkdirtimes: ok" ;;
   lockdir) chmod a-w "$LOCK_DIR"; echo "lockdir: ok" ;;
   killed) kill -KILL $PPID; sleep 5 ;;
-  *) echo "$n: ok" ;;
+  *) [ -z "$STUB_TICK" ] || echo "$n" >> "$STUB_TICK"; echo "$n: ok" ;;
 esac
 """
 
@@ -111,7 +112,7 @@ def build_tree(path, full, inject=False):
     """A tree the tools run in: the tools themselves, the justfile, and the
     stand-in tests (all that pass; with full also fail and killed)."""
     os.makedirs(os.path.join(path, "tools"))
-    for f in ("test.sh", "test_times.py", "toolproc.py", "profile.lua", "test-linux.sh", "test-linux.Dockerfile", "bodies-compare.sh"):
+    for f in ("test.sh", "test_times.py", "toolproc.py", "profile.lua", "test-linux.sh", "test-linux.Dockerfile"):
         if os.path.exists(os.path.join(TOOLS, f)):
             shutil.copy(os.path.join(TOOLS, f), os.path.join(path, "tools", f))
     shutil.copy(os.path.join(ROOT, "justfile"), os.path.join(path, "justfile"))
@@ -318,15 +319,6 @@ def linux_cells():
     cell("just", ["test-linux", "nosuch"], "refuse", tree="real", note="just test-linux with a test that does not exist", docker=True)
 
 
-# Rows for tools a branch adds (tools/bodies-compare.sh) are in
-# tests/tools_matrix_extra.py when that branch has it.
-def extra_cells():
-    path = os.path.join(ROOT, "tests", "tools_matrix_extra.py")
-    if os.path.exists(path):
-        scope = {"cell": cell, "CELLS": CELLS, "all_tests": all_tests}
-        exec(compile(read(path), path, "exec"), scope)  # noqa: S102
-
-
 def build_cells():
     test_sh_cells()
     test_times_cells()
@@ -334,7 +326,6 @@ def build_cells():
     just_cells()
     fault_cells()
     linux_cells()
-    extra_cells()
 
 
 # --- running a row -------------------------------------------------------
@@ -361,8 +352,6 @@ def command_for(c, tree, subst, shell):
         return ["texlua", os.path.join(tree, "tools", "profile.lua"), *args]
     if tool == "test-linux":
         return [*sh, os.path.join(tree, "tools", "test-linux.sh"), *args]
-    if tool == "bodies-compare":
-        return [*sh, os.path.join(tree, "tools", "bodies-compare.sh"), *args]
     if tool == "just":
         return ["just", *args]
     raise ValueError(tool)
@@ -676,6 +665,150 @@ def interrupted_slow(base, tool, args, sig):
     return interrupt_and_check(f"{tool} {' '.join(args)}", tree, argv, env, sig)
 
 
+STUB_DOCKER = """#!/bin/sh
+# A docker for test-linux.sh's interrupt rows: logs each call and marks the
+# phase it is in. The image is missing when STUB_BUILD is set.
+echo "docker $1" >> "$STUB_LOG"
+case "$1" in
+  info) [ "${2:-}" = --format ] && echo arm64; exit 0 ;;
+  image) [ -z "$STUB_BUILD" ]; exit $? ;;
+  build) touch "$STUB_MARK/build"; trap 'kill $!; exit 143' TERM; sleep 30 & wait ;;
+  run) echo "RUN STARTED" >> "$STUB_LOG"; touch "$STUB_MARK/run"; cat > /dev/null; trap 'kill $!; exit 143' TERM; sleep 30 & wait ;;
+  kill) exit 1 ;;
+esac
+"""
+
+STUB_GIT = """#!/bin/sh
+# A git whose ls-files takes a moment, marked, before the real git answers.
+case "$*" in *ls-files*) touch "$STUB_MARK/ls-files"; sleep 1 ;; esac
+exec "$REAL_GIT" "$@"
+"""
+
+
+def build_git_tree(path):
+    """The stand-in tree as a git repository with one commit."""
+    build_tree(path, False)
+    env = {**os.environ, "GIT_AUTHOR_NAME": "t", "GIT_AUTHOR_EMAIL": "t@t", "GIT_COMMITTER_NAME": "t", "GIT_COMMITTER_EMAIL": "t@t"}
+    for cmd in (["git", "init", "-q"], ["git", "add", "-A"], ["git", "commit", "-q", "-m", "tree"]):
+        toolproc.run(cmd, cwd=path, env=env, capture_output=True, check=True)
+
+
+def interrupted_linux(base, phase, sig):
+    """tools/test-linux.sh with a stand-in docker and git, signalled while
+    git lists the files, while the image builds or while the container
+    runs: it ends with 128 plus the signal, starts no container before the
+    signal, and leaves nothing running (this needs no docker, so it runs in
+    CI)."""
+    tree = os.path.join(base, f"linux-{phase}-{sig.name}")
+    build_git_tree(tree)
+    bindir, mark = os.path.join(tree, "bin"), os.path.join(tree, "mark")
+    os.makedirs(mark)
+    write(os.path.join(bindir, "docker"), STUB_DOCKER, 0o755)
+    write(os.path.join(bindir, "git"), STUB_GIT, 0o755)
+    log = os.path.join(tree, "docker.log")
+    env = {**os.environ, "PATH": bindir + os.pathsep + os.environ["PATH"], "STUB_LOG": log, "STUB_MARK": mark, "REAL_GIT": shutil.which("git") or "git"}
+    if phase == "build":
+        env["STUB_BUILD"] = "1"
+    sh = [os.environ["TEST_SH_SHELL"]] if os.environ.get("TEST_SH_SHELL") else []
+    problems = []
+    with open(os.path.join(tree, "out.txt"), "w") as out, toolproc.popen([*sh, os.path.join(tree, "tools", "test-linux.sh"), "core"], cwd=tree, env=env, stdout=out, stderr=subprocess.STDOUT) as p:
+        deadline = time.monotonic() + 30
+        while not os.path.exists(os.path.join(mark, phase)) and p.poll() is None and time.monotonic() < deadline:
+            time.sleep(0.02)
+        below = [pid for pid, _ in descendants(p.pid)]
+        os.kill(p.pid, sig)
+        try:
+            got = p.wait(timeout=30)
+        except subprocess.TimeoutExpired:
+            got = None
+            os.killpg(p.pid, signal.SIGKILL)
+        if got != 128 + sig:
+            problems.append(f"rc {got}, not {128 + sig}")
+        calls = read(log) if os.path.exists(log) else ""
+        if phase != "run" and "RUN STARTED" in calls:
+            problems.append("the container was started after the signal")
+        if "docker kill" not in calls:
+            problems.append("the container was not asked to stop")
+        deadline = time.monotonic() + 10
+        left = [pid for pid in below if alive(pid)]
+        while left and time.monotonic() < deadline:
+            time.sleep(0.2)
+            left = [pid for pid in left if alive(pid)]
+        if left:
+            problems.append(f"processes left running: {left}")
+    return [f"interrupt {sig.name} of tools/test-linux.sh during {phase}: {pr}" for pr in problems]
+
+
+def interrupted_between(base, sig):
+    """tools/test.sh one test at a time over sixty instant tests, signalled
+    at moments that include those between two tests: always 128 plus the
+    signal, never 1."""
+    stub = os.path.join(base, "stub-between")
+    write(os.path.join(stub, "texlua"), STUB_TEXLUA, 0o755)
+    tree = os.path.join(base, f"between-{sig.name}")
+    build_tree(tree, False)
+    names = [f"t{i:02d}" for i in range(60)]
+    for n in names:
+        write(os.path.join(tree, "tests", f"test_{n}.lua"), "-- stand-in\n")
+    env = {**os.environ, "PATH": stub + os.pathsep + os.environ["PATH"], "FLORA_PYTHON": sys.executable}
+    sh = [os.environ["TEST_SH_SHELL"]] if os.environ.get("TEST_SH_SHELL") else []
+    problems = []
+    for trial in range(10):
+        tick = os.path.join(tree, f"tick-{trial}")
+        with toolproc.popen([*sh, os.path.join(tree, "tools", "test.sh"), *names], cwd=tree, env={**env, "STUB_TICK": tick}, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL) as p:
+            # Once the first test has run, a little later each time.
+            deadline = time.monotonic() + 30
+            while not os.path.exists(tick) and p.poll() is None and time.monotonic() < deadline:
+                time.sleep(0.005)
+            time.sleep(0.011 * trial)
+            if p.poll() is None:
+                os.kill(p.pid, sig)
+            got = p.wait(timeout=30)
+            if got not in (128 + sig, 0):
+                problems.append(f"trial {trial}: rc {got}, not {128 + sig}")
+    return [f"interrupt {sig.name} of tools/test.sh one test at a time: {pr}" for pr in problems]
+
+
+def interrupted_stubborn(base, sig):
+    """tools/test.sh -j 2 with a test that ignores TERM, interrupted: the
+    run ends with 128 plus the signal only when the test is gone, killed
+    after the grace (TOOLPROC_GRACE)."""
+    stub = os.path.join(base, "stub-stubborn")
+    write(os.path.join(stub, "texlua"), STUB_TEXLUA, 0o755)
+    tree = os.path.join(base, f"stubborn-{sig.name}")
+    build_tree(tree, False)
+    write(os.path.join(tree, "tests", "test_stubborn.lua"), "-- stand-in\n")
+    pidfile = os.path.join(tree, "stubborn-pid")
+    env = {**os.environ, "PATH": stub + os.pathsep + os.environ["PATH"], "FLORA_PYTHON": sys.executable, "STUB_PID": pidfile, "TOOLPROC_GRACE": "2"}
+    sh = [os.environ["TEST_SH_SHELL"]] if os.environ.get("TEST_SH_SHELL") else []
+    problems = []
+    with toolproc.popen([*sh, os.path.join(tree, "tools", "test.sh"), "-j", "2", "stubborn"], cwd=tree, env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL) as p:
+        deadline = time.monotonic() + 30
+        while not (os.path.exists(pidfile) and read(pidfile).strip().isdigit()) and time.monotonic() < deadline:
+            time.sleep(0.05)
+        pid = int(read(pidfile)) if os.path.exists(pidfile) and read(pidfile).strip().isdigit() else None
+        below = [q for q, _ in descendants(p.pid)]
+        os.kill(p.pid, sig)
+        try:
+            got = p.wait(timeout=30)
+        except subprocess.TimeoutExpired:
+            got = None
+            os.killpg(p.pid, signal.SIGKILL)
+        if pid is None:
+            problems.append("the test did not start")
+        if got != 128 + sig:
+            problems.append(f"rc {got}, not {128 + sig}")
+        left = [q for q in below if alive(q)]
+        if left:
+            problems.append(f"the run ended with processes still running: {left}")
+            for q in left:
+                try:
+                    os.kill(q, signal.SIGKILL)
+                except ProcessLookupError:
+                    pass
+    return [f"interrupt {sig.name} of tools/test.sh -j 2 with a test that ignores TERM: {pr}" for pr in problems]
+
+
 def interrupted_container(base, sig):
     """tools/test-linux.sh running a long test in the container is sent sig:
     it ends with 128 plus the signal, and the container is gone."""
@@ -721,7 +854,7 @@ def test_recipes_have_rows():
     documentation names each."""
     just = read(os.path.join(ROOT, "justfile"))
     docs = read(os.path.join(ROOT, "docs", "testing.md"))
-    tool_files = ("tools/test.sh", "tools/test_times.py", "tools/profile.lua", "tools/test-linux.sh", "tools/bodies-compare.sh")
+    tool_files = ("tools/test.sh", "tools/test_times.py", "tools/profile.lua", "tools/test-linux.sh")
     recipes = {}
     current = None
     for line in just.splitlines():
@@ -738,8 +871,6 @@ def test_recipes_have_rows():
     covered = {c["args"][0] for c in CELLS if c["tool"] == "just"}
     for name in sorted(used - covered):
         check(False, f"just {name} calls a tool and has no row in the table of calls")
-    if os.path.exists(os.path.join(TOOLS, "bodies-compare.sh")):
-        check(any(c["tool"] == "bodies-compare" for c in CELLS), "tools/bodies-compare.sh has no row in the table of calls")
     for name in sorted(used):
         check(f"just {name}" in docs, f"docs/testing.md does not mention just {name}")
     for tool, token in (("test.sh", "tools/test.sh"), ("test_times", "test_times.py"), ("profile", "tools/profile.lua"), ("test-linux", "tools/test-linux.sh")):
@@ -803,11 +934,18 @@ def main():
         os.makedirs(os.path.join(base, "cells"))
         nest = os.path.join(base, "nested")
         os.makedirs(nest)
-        interrupts = concurrent.futures.ThreadPoolExecutor(max_workers=len(INTERRUPTS) + 5)
+        interrupts = concurrent.futures.ThreadPoolExecutor(max_workers=len(INTERRUPTS) + 14)
         interrupt_runs = [interrupts.submit(interrupted_run, nest, outer, sig) for outer, sig in INTERRUPTS]
         for sig in (signal.SIGINT, signal.SIGTERM):
             interrupt_runs.append(interrupts.submit(interrupted_slow, nest, "test.sh", ["slow"], sig))
             interrupt_runs.append(interrupts.submit(interrupted_slow, nest, "test_times", ["run", "2", "slow"], sig))
+        if shutil.which("git"):
+            for phase in ("ls-files", "build", "run"):
+                interrupt_runs.append(interrupts.submit(interrupted_linux, nest, phase, signal.SIGTERM))
+            interrupt_runs.append(interrupts.submit(interrupted_linux, nest, "ls-files", signal.SIGINT))
+        interrupt_runs.append(interrupts.submit(interrupted_between, nest, signal.SIGTERM))
+        interrupt_runs.append(interrupts.submit(interrupted_between, nest, signal.SIGINT))
+        interrupt_runs.append(interrupts.submit(interrupted_stubborn, nest, signal.SIGTERM))
         if have["docker"]:
             interrupt_runs.append(interrupts.submit(interrupted_container, nest, signal.SIGTERM))
         with concurrent.futures.ThreadPoolExecutor(max_workers=jobs) as pool:
