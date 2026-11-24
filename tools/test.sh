@@ -27,18 +27,21 @@ set -e
 cd "$(dirname "$0")/.."
 FAST="core grow leaf letters plant settings reserve prepare_spec render_page inline headpiece lint tools"
 
-# One test, by name.
+# One test, by name; "run NAME exec" replaces the shell that runs it with
+# the test, so that a signal sent to that process is the test's own.
 run() {
+  x=
+  [ "${2:-}" != exec ] || x="exec"
   if [ "$1" = bake ]; then
-    "${FLORA_PYTHON:-python3}" -I tests/test_bake.py
+    $x "${FLORA_PYTHON:-python3}" -I tests/test_bake.py
   elif [ "$1" = lint ]; then
-    "${FLORA_PYTHON:-python3}" -I tests/test_lint.py
+    $x "${FLORA_PYTHON:-python3}" -I tests/test_lint.py
   elif [ "$1" = tools ]; then
-    "${FLORA_PYTHON:-python3}" -I tests/test_tools.py
+    $x "${FLORA_PYTHON:-python3}" -I tests/test_tools.py
   elif [ "$1" = tools_matrix ]; then
-    "${FLORA_PYTHON:-python3}" -I tests/test_tools_matrix.py
+    $x "${FLORA_PYTHON:-python3}" -I tests/test_tools_matrix.py
   else
-    texlua "tests/test_$1.lua"
+    $x texlua "tests/test_$1.lua"
   fi
 }
 
@@ -103,8 +106,26 @@ for t in "$@"; do
 done
 
 # One at a time and untimed: stop at the first failure, as always.
+# A test runs in the background, waited for, so that a signal to this shell
+# is forwarded to it (a shell waiting on a foreground command acts on the
+# signal only when the command ends).
 if [ "$jobs" = 1 ] && [ -z "$times" ]; then
-  for t in "$@"; do run "$t"; done
+  child=
+  got=
+  trap 'got=130; kill -TERM "$child" 2> /dev/null' INT
+  trap 'got=143; kill -TERM "$child" 2> /dev/null' TERM
+  trap 'got=129; kill -TERM "$child" 2> /dev/null' HUP
+  for t in "$@"; do
+    (run "$t" exec) &
+    child=$!
+    rc=0
+    wait "$child" || rc=$?
+    # A signal ends the wait before the test: wait for the test, then
+    # leave with the signal's status.
+    while kill -0 "$child" 2> /dev/null; do wait "$child" 2> /dev/null || true; done
+    [ -z "$got" ] || exit "$got"
+    [ "$rc" -eq 0 ] || exit "$rc"
+  done
   exit 0
 fi
 
