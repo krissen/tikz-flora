@@ -12,6 +12,10 @@ on:
       - "tex/**"
       - "tests/**"
       - "tools/test.sh"
+      - "tools/test_times.py"
+      - "tools/profile.lua"
+      - "tools/test-linux.sh"
+      - "justfile"
       - "tools/tune_json.lua"
       - "tools/bake_tune.py"
       - ".github/workflows/test.yml"
@@ -49,6 +53,23 @@ jobs:
         run: |
           set -e
           for t in ${{ matrix.tests }}; do tools/test.sh $t; done
+
+  tools:
+    # Every call the measuring tools document (docs/testing.md); the rows
+    # for the container are skipped here (TOOLS_MATRIX_DOCKER=0): building its image takes minutes.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: texlua, time and just
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq --no-install-recommends texlive-binaries time pipx >/dev/null
+          pipx install rust-just==1.40.0
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+      - name: tools_matrix
+        env:
+          TOOLS_MATRIX_DOCKER: "0"
+        run: tools/test.sh tools_matrix
 
   progression-raster:
     runs-on: ubuntu-latest

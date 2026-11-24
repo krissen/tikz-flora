@@ -4,7 +4,7 @@
 
 `tools/test.sh` is the one list of the engine's tests: `just test` runs it, the pre-push hook runs `tools/test.sh fast` (`.pre-commit-config.yaml`), and CI runs named groups of it (`.github/workflows/test.yml`).
 
-- `tools/test.sh` runs every `tests/test_*.lua` under texlua, then `tests/test_bake.py` and `tests/test_lint.py`. One at a time it stops at the first failure.
+- `tools/test.sh` runs every `tests/test_*.lua` under texlua, then `tests/test_bake.py`, `tests/test_lint.py`, `tests/test_tools.py` and `tests/test_tools_matrix.py`. One at a time it stops at the first failure.
 - `tools/test.sh fast` runs the tests meant to finish in seconds; `tools/test.sh mix layout` runs the ones named (a name is the file's, without `test_` and `.lua`).
 - `-j` and `--times` need `/usr/bin/time` and Python (`FLORA_PYTHON`, else `python3`): the tests run in a process group of their own, which Python makes and stops, since a shell without a terminal cannot (dash, `/bin/sh` on Ubuntu, turns job control off).
 - When something goes wrong the runner says so rather than measuring wrongly: a bad option, a test named twice or a `--times` file that cannot be written stop it before any test starts (exit status 2); interrupted (Ctrl-C, TERM, HUP) it stops every test it started and writes no times (exit status 130, 143, 129).
@@ -13,7 +13,7 @@
 
 ## What runs where
 
-- `just test`: every `tests/test_*.lua`, then `test_bake.py`, `test_lint.py` and `test_tools.py` (the measuring tools' own test).
+- `just test`: every `tests/test_*.lua`, then `test_bake.py`, `test_lint.py`, `test_tools.py` and `test_tools_matrix.py` (the measuring tools' own tests; the second runs every call the tools document, and is not in `fast`).
 - Pre-push (`tools/test.sh fast`): core, grow, leaf, letters, plant, settings, reserve, prepare_spec, render_page, inline, headpiece, lint, tools and bake, each a second or two at most. header_mark and support take minutes and run in CI instead.
 - CI (`.github/workflows/test.yml`): four groups that name 30 of the 44 test files, header_mark in the first and support in the last.
 - Not in CI yet, a known gap: floret_passes, frame_matrix, pattern, pattern_colourways, pattern_ground, pattern_matrix, pattern_perimeter, pattern_protect, pattern_reach, pattern_values, pdf_form_cache, preview, progression_frame_resources and stem_taper. They run under `just test` only, so a green CI says nothing about the pattern engine.
@@ -26,13 +26,19 @@ The container gets the tree CI checks out, as it stands in the working tree: the
 
 It needs docker. The first run for an architecture builds its image (under a minute natively, several minutes emulated); `FLORA_LINUX_REBUILD=1` builds it again. Docker's virtual machine stops while the Mac sleeps, so a run's wall time across a sleep says nothing; time a run inside, with `--times`.
 
+## Every documented call
+
+The tools take their arguments in many forms, and each was once found wrong only in the call someone happened to make (`just test-times auto` lost its run; `tools/test.sh ""` ran every test; `--times` a directory moved the file into it). A call must either work or refuse in words, with a status other than 0, before it starts any test: none gives a traceback, fails silently, loses a measurement or ends with status 0 when it went wrong.
+
+`tests/test_tools_matrix.py` holds the calls as a table (the rows of `CELLS`) and runs each one against stand-in tests in a temporary tree: `tools/test.sh` with every form of `-j` (omitted, 1, a number, `auto`, 0, a word, empty), of `--times` (omitted, a file, an unwritable path, empty, a directory) and of the test names (none, one, two, `fast`, unknown, twice, empty, failing, mixed), `tools/test_times.py` `show` and `compare` with every form of the file and of `--jobs`, `tools/profile.lua` with every option in its good and bad forms, and the justfile's recipes that call these (`just test`, `test-times`, `profile`, `test-linux`), and `tools/test-linux.sh` in docker. A recipe in the justfile that calls a tool and has no row fails the test, and so does one this page does not mention, so the table and the documentation stay together. Rows needing docker or just are skipped, with a line saying so, where it is missing. `TOOLS_MATRIX_TABLE=1 python3 -I tests/test_tools_matrix.py` prints the table with each call's expected and actual outcome and status. It takes about 25 s (50 s of CPU) with the container's rows, so it is not in `fast`; CI runs it as its own job (`.github/workflows/test.yml`). Add a row when a tool gains an option; a branch that adds a tool puts its rows in `tests/tools_matrix_extra.py`.
+
 ## Two runs at once
 
 Several people, or several agents, run tests on one machine, so nothing the tools use may be shared between two runs. `tools/test.sh` keeps each run's files in a directory of its own (`mktemp -d`) and stops only the process group it made; `--times FILE` is written next to FILE under a name with the run's process id and moved over it at the end; `tools/test-linux.sh` sends a list from `mktemp` and starts an unnamed container. The one shared name is the image, built from the same recipe by whichever run finds it missing, and `build/test-times.tsv`, where the last finished run stays. A test of the tools finds the processes it started by the pid they record, never by their command line, and `tests/test_tools.py` runs two copies of the runner's tests at once beside an unrelated process that has the command line of its sleepers, and requires that both pass and that the process is left alone.
 
 ## Timing
 
-`tools/test.sh --times FILE` writes one tab-separated line per test: its name, exit status, and wall, user, sys and CPU (user + sys) seconds, most CPU first; the last line records the jobs, the time (UTC) and the machine's load average when the run ended. `just test-times [JOBS] [NAMES]` runs it (default 4 jobs, every test), shows its own file and keeps it as `build/test-times.tsv` (when two runs overlap the one that ends last stays; its own output goes to a file of its own, named when the run fails):
+`tools/test.sh --times FILE` writes one tab-separated line per test: its name, exit status, and wall, user, sys and CPU (user + sys) seconds, most CPU first; the last line records the jobs, the time (UTC) and the machine's load average when the run ended. `just test-times [JOBS] [NAMES]` (JOBS a number or `auto`) runs it (default 4 jobs, every test), shows its own file and keeps it as `build/test-times.tsv` (when two runs overlap the one that ends last stays; its own output goes to a file of its own, named when the run fails):
 
 ```
 python3 -I tools/test_times.py show build/test-times.tsv
