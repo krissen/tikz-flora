@@ -83,8 +83,13 @@ case "$f" in
     # slow: its sleeper's pid is recorded in $BODIES_PIDS.
     side=new
     case "$PWD" in */ref) side=ref ;; esac
-    [ "$BODIES_LATE" != "$side" ] || { trap 'kill $!' TERM INT HUP; sleep ${BODIES_LATE_FOR:-1.5} & echo $! >> "$BODIES_PIDS/$side"; wait; }
-    [ "$BODIES_FAIL" != "$side" ] || { echo "stand-in: the $side side failed" >&2; exit 3; }
+    # A late side that fails sleeps first; one that is only slow is a bare
+    # sleep, which TERM kills (as it kills a painting).
+    if [ "$BODIES_LATE" = "$side" ]; then
+      echo $$ >> "$BODIES_PIDS/$side"
+      case "$BODIES_FAIL" in "$side"|both) sleep ${BODIES_LATE_FOR:-1.5} ;; *) exec sleep ${BODIES_LATE_FOR:-1.5} ;; esac
+    fi
+    case "$BODIES_FAIL" in "$side"|both) echo "stand-in: the $side side failed" >&2; exit 3 ;; esac
     [ -z "$BODIES_HOLD" ] || { trap 'kill $!' TERM INT HUP; sleep 37.25 & wait; }
     [ "$1" != --fixtures ] || shift 2
     [ $# -gt 0 ] || exit 2
@@ -174,10 +179,10 @@ def all_tests(tree_full):
 CELLS = []
 
 
-def cell(tool, args, expect, tree="good", times=None, ran=None, note="", docker=False, prep=None, nonroot=False, says=None, env=None, within=None):
+def cell(tool, args, expect, tree="good", times=None, ran=None, note="", docker=False, prep=None, nonroot=False, says=None, env=None, within=None, not_says=None):
     """prep names a fault injected before the call (see PREPS); nonroot
     rows need a user a read-only directory stops."""
-    CELLS.append({"tool": tool, "args": args, "expect": expect, "tree": tree, "times": times, "ran": ran, "note": note, "docker": docker, "prep": prep, "nonroot": nonroot, "says": says, "env": env or {}, "within": within})
+    CELLS.append({"tool": tool, "args": args, "expect": expect, "tree": tree, "times": times, "ran": ran, "note": note, "docker": docker, "prep": prep, "nonroot": nonroot, "says": says, "env": env or {}, "within": within, "not_says": not_says})
 
 
 def test_sh_cells():
@@ -354,18 +359,25 @@ def linux_cells():
 
 def bodies_failures():
     """One side of the comparison fails and the other has already ended, or
-    is still painting: either way the comparison says which side failed and
-    where the pages are, ends non-zero and leaves nothing running."""
-    # The side still painting would go on for twenty seconds: the comparison
-    # must stop it when the other fails, and be done within a few.
+    is still painting (it would for twenty seconds): the comparison names
+    the side that failed and not the other (a side it stopped did not
+    fail), is done within a few seconds, says where the pages are, ends
+    non-zero and leaves nothing running; when both fail, both are named."""
+    ref_says, new_says = "HEAD failed to paint", "the working tree failed to paint"
     for fail, late, what in (("new", "new", "the working tree failed, the reference already done"),
                              ("new", "ref", "the working tree failed, the reference still painting"),
                              ("ref", "ref", "the reference failed, the working tree already done"),
                              ("ref", "new", "the reference failed, the working tree still painting")):
-        said = "the working tree failed to paint" if fail == "new" else "failed to paint"
         waits = late != fail
-        cell("bodies-compare", ["HEAD", "slides"], "fail", tree="git", times="kept-dir", says=said, within=8 if waits else None,
+        cell("bodies-compare", ["HEAD", "slides"], "fail", tree="git", times="kept-dir", within=8 if waits else None,
+             says=new_says if fail == "new" else ref_says, not_says=ref_says if fail == "new" else new_says,
              env={"BODIES_FAIL": fail, "BODIES_LATE": late, "BODIES_LATE_FOR": "20" if waits else "1.5"}, note=what)
+    cell("bodies-compare", ["HEAD", "slides"], "refuse", tree="git", prep="path:dirname,git", says="needs texlua", note="without texlua")
+    cell("bodies-compare", ["HEAD", "slides"], "refuse", tree="git", prep="path:dirname,texlua", says="needs git", note="without git")
+    cell("bodies-compare", ["HEAD", "slides"], "refuse", tree="git", env={"FLORA_PYTHON": "/nonexistent/python"}, says="needs /nonexistent/python", note="without python")
+    cell("bodies-compare", ["HEAD", "slides"], "fail", tree="git", env={"FLORA_PYTHON": shutil.which("false") or "/usr/bin/false"}, says="could not be run", note="the program that runs the paints fails")
+    cell("bodies-compare", ["HEAD", "slides"], "fail", tree="git", times="kept-dir", says=ref_says, env={"BODIES_FAIL": "both"}, note="both fail: both are named")
+    cell("bodies-compare", ["HEAD", "slides"], "fail", tree="git", times="kept-dir", says=new_says, env={"BODIES_FAIL": "both"}, note="both fail: the working tree is named")
 
 
 def bodies_cells():
@@ -454,6 +466,15 @@ def prepare(c, tree, work, env):
     build = os.path.join(tree, "build")
     if prep in ("shim-cp", "shim-mv"):
         env["PATH"] = make_shim(work, prep[5:]) + os.pathsep + env["PATH"]
+    elif prep.startswith("path:"):
+        # A PATH with only these programs (of those the call would find).
+        bindir = os.path.join(work, "only-bin")
+        os.makedirs(bindir)
+        for name in prep[5:].split(","):
+            found = shutil.which(name, path=env["PATH"])
+            if found:
+                os.symlink(found, os.path.join(bindir, name))
+        env["PATH"] = bindir
     elif prep == "old-file":
         write(os.path.join(work, "t.tsv"), "older\n")
     elif prep == "pointer-dir":
@@ -500,10 +521,10 @@ def run_cell(c, trees, stub, shell, results_dir, index):
     subst["PIDS"] = os.path.join(work, "pids")
     os.makedirs(subst["PIDS"])
     env["BODIES_PIDS"] = subst["PIDS"]
-    env.update(c.get("env") or {})
     env["LOCK_DIR"] = subst["LOCK"]
-    prepare(c, tree, work, env)
     env["FLORA_PYTHON"] = sys.executable
+    prepare(c, tree, work, env)
+    env.update(c.get("env") or {})
     env.pop("FLORA_IN_LINUX_CONTAINER", None) if c["tree"] != "real" else None
     if c["tree"] == "nodocker":
         tool_dir = os.path.join(work, "bin")
@@ -617,6 +638,8 @@ def judge(c, rc, out, err, tree, subst, elapsed=0.0):
         bad.append(f"it took {elapsed:.1f} s, not within {c['within']} s")
     if c.get("says") and c["says"] not in both:
         bad.append(f"it does not print {c['says']!r}")
+    if c.get("not_says") and c["not_says"] in both:
+        bad.append(f"it prints {c['not_says']!r}, which is not what failed")
     if c.get("prep") == "needs-dev-full" and not ("profile:" in err and "could not write" in err):
         bad.append("the report is not on stderr with the reason")
     if c["tool"] == "bodies-compare" or c["args"][:1] == ["bodies-compare"]:

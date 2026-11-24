@@ -576,20 +576,23 @@ def test_run_all():
     with tempfile.TemporaryDirectory() as d:
         quick = (["sh", "-c", "exit 0"], {})
         p, took = run([quick, (["sh", "-c", "sleep 0.3"], {})])
-        check(p.stdout.strip() == "[0, 0]", f"run_all, all succeed: {p.stdout.strip()!r} {p.stderr[-200:]!r}")
+        check(p.stdout.strip() == "[(0, 'ok'), (0, 'ok')]", f"run_all, all succeed: {p.stdout.strip()!r} {p.stderr[-200:]!r}")
         # One fails at once, the other would run for half a minute.
         a = os.path.join(d, "a")
         # (the failing command second: the first one still running must not hide it)
         p, took = run([(["sh", "-c", f"echo $$ > {a}; exec sleep 30"], {}), (["sh", "-c", "exit 3"], {})])
         codes = p.stdout.strip()
-        check(codes.endswith(", 3]") and codes != "[0, 3]" and codes != "[3, 0]", f"run_all, one fails: {codes!r}")
+        check(codes == "[(-15, 'stopped'), (3, 'failed')]", f"run_all, one fails: the one that failed is 'failed', the other 'stopped': {codes!r}")
         check(took < 8, f"run_all, one fails: took {took:.1f} s, the other was stopped only when its own time was up")
         check(gone(pids_of(a)), "run_all, one fails: the other is left running")
+        # Both fail at the same moment: both are 'failed', neither stopped.
+        p, took = run([(["sh", "-c", "exit 3"], {}), (["sh", "-c", "exit 4"], {})])
+        check(p.stdout.strip() == "[(3, 'failed'), (4, 'failed')]", f"run_all, both fail: {p.stdout.strip()!r}")
         # One fails while the other ignores TERM: stopped after the grace.
         b = os.path.join(d, "b")
         # (it fails only once the other has set its trap and said so)
         p, took = run([(["sh", "-c", f"while [ ! -s {b} ]; do sleep 0.05; done; exit 3"], {}), (["sh", "-c", f"trap '' TERM; echo $$ > {b}; sleep 30"], {})], grace=2)
-        check(p.stdout.strip().startswith("[3, "), f"run_all, one ignores TERM: {p.stdout.strip()!r}")
+        check(p.stdout.strip().startswith("[(3, 'failed'), (-9, 'stopped')]"), f"run_all, one ignores TERM: failed and stopped (by KILL): {p.stdout.strip()!r}")
         check(2 <= took < 12, f"run_all, one ignores TERM: took {took:.1f} s, not the grace of 2 s")
         check(gone(pids_of(b)), "run_all, one ignores TERM: it is left running after the grace")
         # An interrupt while they run stops them all.
