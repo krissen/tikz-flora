@@ -14,6 +14,10 @@ totals only the tests both runs timed and passed. tools/test-linux.sh:
 every file the tests and tools/test.sh name is among those it sends the
 container.
 
+TOOLS_TEST_HOLD, set, makes the interrupt checks wait for their runner
+instead of stopping it (tests/test_tools_matrix.py interrupts the test
+then, and requires that nothing it started is left).
+
 TOOLS_UNDER_TEST, a directory, takes the three tools from there instead
 of tools/ (to show this test fails on an earlier version). TEST_SH_SHELL
 runs tools/test.sh with that shell (e.g. dash, as /bin/sh is on Ubuntu)
@@ -22,6 +26,7 @@ instead of by its #!/bin/sh line.
     python3 -I tests/test_tools.py
 """
 
+import ast
 import glob
 import os
 import re
@@ -31,6 +36,9 @@ import subprocess
 import sys
 import tempfile
 import time
+
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "tools"))
+import toolproc
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 TOOLS = os.environ.get("TOOLS_UNDER_TEST") or os.path.join(ROOT, "tools")
@@ -139,7 +147,7 @@ def profile(cwd, *args):
     out = os.path.join(cwd, "report.txt")
     if os.path.exists(out):
         os.remove(out)
-    p = subprocess.run(["texlua", PROFILE, "--out", out, *args], cwd=cwd, capture_output=True, text=True, check=False)
+    p = toolproc.run(["texlua", PROFILE, "--out", out, *args], cwd=cwd, capture_output=True, text=True, check=False)
     report = ""
     if os.path.exists(out):
         with open(out) as f:
@@ -208,7 +216,7 @@ def test_profile(d):
             os.remove(os.path.join(d, "ran"))
         p, _ = profile(d, *args, "marker.lua")
         check(p.returncode == 2 and not os.path.exists(os.path.join(d, "ran")), f"{what}: rc {p.returncode}, the script ran: {os.path.exists(os.path.join(d, 'ran'))}")
-    p = subprocess.run(["texlua", PROFILE, "--out", os.path.join(d, "no", "such", "dir", "r.txt"), "marker.lua"], cwd=d, capture_output=True, text=True, check=False)
+    p = toolproc.run(["texlua", PROFILE, "--out", os.path.join(d, "no", "such", "dir", "r.txt"), "marker.lua"], cwd=d, capture_output=True, text=True, check=False)
     check(p.returncode == 2 and not os.path.exists(os.path.join(d, "ran")), f"--out that cannot be written: rc {p.returncode}")
 
 
@@ -246,17 +254,6 @@ def alive(pid):
 
 
 def test_runner(d):
-    # A test run by tools/test.sh -j starts with SIGINT ignored (the shell
-    # does that to a command it runs in the background), and so would
-    # the runner under test, which then could not be interrupted.
-    was = signal.signal(signal.SIGINT, signal.SIG_DFL)
-    try:
-        run_runner(d)
-    finally:
-        signal.signal(signal.SIGINT, was)
-
-
-def run_runner(d):
     os.makedirs(os.path.join(d, "tools"))
     shutil.copy(os.path.join(TOOLS, "test.sh"), os.path.join(d, "tools", "test.sh"))
     for name, text in FAKE_TESTS.items():
@@ -265,7 +262,7 @@ def run_runner(d):
     shell = os.environ.get("TEST_SH_SHELL")
     run_sh = [shell, sh] if shell else [sh]
 
-    p = subprocess.run([*run_sh, "-j", "3", "--times", "t.tsv", "ok", "fail", "killed"], cwd=d, capture_output=True, text=True, check=False)
+    p = toolproc.run([*run_sh, "-j", "3", "--times", "t.tsv", "ok", "fail", "killed"], cwd=d, capture_output=True, text=True, check=False)
     check(p.returncode == 1 and "failed: fail killed" in p.stderr, f"failing tests: rc {p.returncode}, {p.stderr[-200:]!r}")
     rows = {}
     if os.path.exists(os.path.join(d, "t.tsv")):
@@ -285,7 +282,7 @@ def run_runner(d):
                        (["-j", "2", "marker", "marker"], "a test named twice")):
         if os.path.exists(os.path.join(d, "marker-ran")):
             os.remove(os.path.join(d, "marker-ran"))
-        p = subprocess.run([*run_sh, *args], cwd=d, capture_output=True, text=True, check=False)
+        p = toolproc.run([*run_sh, *args], cwd=d, capture_output=True, text=True, check=False)
         check(p.returncode == 2 and not os.path.exists(os.path.join(d, "marker-ran")), f"{what}: rc {p.returncode}, a test ran: {os.path.exists(os.path.join(d, 'marker-ran'))}")
 
     # Interrupted: every test it started stops, and no times are written.
@@ -293,32 +290,39 @@ def run_runner(d):
         for f in ("i.tsv", "slow-pid"):
             if os.path.exists(os.path.join(d, f)):
                 os.remove(os.path.join(d, f))
-        p = subprocess.Popen([*run_sh, "-j", "2", "--times", "i.tsv", "ok", "slow"], cwd=d, start_new_session=True,
-                             stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, text=True)
-        sleeper = None
-        for _ in range(100):
-            sleeper = read_pid(os.path.join(d, "slow-pid"))
-            if sleeper:
-                break
-            time.sleep(0.05)
-        check(sleeper is not None, f"{sig.name}: the slow test did not start")
-        os.kill(p.pid, sig)
-        try:
-            got = p.wait(timeout=10)
-        except subprocess.TimeoutExpired:
-            os.killpg(p.pid, signal.SIGKILL)
-            got = None
-        # Only the process this run started: its recorded pid, never a
-        # search by name.
-        for _ in range(40):
-            if sleeper is None or not alive(sleeper):
-                break
-            time.sleep(0.05)
-        left = [sleeper] if sleeper is not None and alive(sleeper) else []
-        check(got == rc, f"{sig.name}: rc {got}, not {rc}")
-        check(not left, f"{sig.name}: tests left running: {left}")
-        for pid in left:
-            os.kill(pid, signal.SIGKILL)
+        with toolproc.popen([*run_sh, "-j", "2", "--times", "i.tsv", "ok", "slow"], cwd=d, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, text=True) as p:
+            sleeper = None
+            for _ in range(100):
+                sleeper = read_pid(os.path.join(d, "slow-pid"))
+                if sleeper:
+                    break
+                time.sleep(0.05)
+            check(sleeper is not None, f"{sig.name}: the slow test did not start")
+            if os.environ.get("TOOLS_TEST_HOLD"):
+                # For tests/test_tools_matrix.py, which interrupts this
+                # test while its runner is up: not stopped here, only
+                # waited for.
+                try:
+                    p.wait(timeout=120)
+                except subprocess.TimeoutExpired:
+                    pass
+            os.kill(p.pid, sig)
+            try:
+                got = p.wait(timeout=10)
+            except subprocess.TimeoutExpired:
+                os.killpg(p.pid, signal.SIGKILL)
+                got = None
+            # Only the process this run started: its recorded pid, never a
+            # search by name.
+            for _ in range(40):
+                if sleeper is None or not alive(sleeper):
+                    break
+                time.sleep(0.05)
+            left = [sleeper] if sleeper is not None and alive(sleeper) else []
+            check(got == rc, f"{sig.name}: rc {got}, not {rc}")
+            check(not left, f"{sig.name}: tests left running: {left}")
+            for pid in left:
+                os.kill(pid, signal.SIGKILL)
         leftovers = [f for f in os.listdir(d) if f.startswith("i.tsv")]
         check(not leftovers, f"{sig.name}: times written after an interrupt: {leftovers}")
 
@@ -330,7 +334,7 @@ def test_times_files(d):
     tt = os.path.join(TOOLS, "test_times.py")
 
     def run(*args):
-        return subprocess.run([sys.executable, "-I", tt, *args], cwd=d, capture_output=True, text=True, check=False)
+        return toolproc.run([sys.executable, "-I", tt, *args], cwd=d, capture_output=True, text=True, check=False)
 
     files = {
         "empty.tsv": "",
@@ -386,7 +390,7 @@ def test_linux_input():
         with open(given) as f:
             sent_text = f.read()
     else:
-        p = subprocess.run([os.path.join(TOOLS, "test-linux.sh"), "--list"], cwd=ROOT, capture_output=True, text=True, check=False)
+        p = toolproc.run([os.path.join(TOOLS, "test-linux.sh"), "--list"], cwd=ROOT, capture_output=True, text=True, check=False)
         check(p.returncode == 0, f"test-linux.sh --list: rc {p.returncode}: {p.stderr.strip()}")
         sent_text = p.stdout
     sent = {os.path.normpath(x) for x in sent_text.splitlines() if x}
@@ -404,22 +408,55 @@ def test_concurrent_runs():
     the other run's sleepers, and killed them)."""
     me = [sys.executable, "-I", os.path.abspath(__file__)]
     env = {**os.environ, "TOOLS_TEST_PART": "runner"}
-    with subprocess.Popen(["sleep", "37.25"]) as bystander:
+    with toolproc.popen(["sleep", "37.25"]) as bystander:
         try:
-            runs = [subprocess.Popen(me, env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True) for _ in range(2)]
+            runs = [toolproc.popen(me, env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True) for _ in range(2)]
             for i, run in enumerate(runs):
-                try:
-                    out, _ = run.communicate(timeout=300)
-                except subprocess.TimeoutExpired:
-                    run.kill()
-                    out, _ = run.communicate()
-                check(run.returncode == 0, f"concurrent run {i + 1}: rc {run.returncode}: {out.strip()[-300:]!r}")
+                with run:
+                    try:
+                        out, _ = run.communicate(timeout=300)
+                    except subprocess.TimeoutExpired:
+                        run.kill()
+                        out, _ = run.communicate()
+                    check(run.returncode == 0, f"concurrent run {i + 1}: rc {run.returncode}: {out.strip()[-300:]!r}")
             check(bystander.poll() is None, "a concurrent run killed an unrelated process")
         finally:
             bystander.kill()
 
 
+# What may start a process or a group of its own: only tools/toolproc.py.
+LOOSE_CALLS = {"run", "Popen", "call", "check_call", "check_output", "getoutput", "getstatusoutput"}
+LOOSE_OS = {"fork", "forkpty", "system", "popen", "setpgid", "setsid", "spawnv", "spawnvp", "posix_spawn", "execv", "execvp"}
+LOOSE_KEYWORDS = {"start_new_session", "preexec_fn", "process_group"}
+# The python programs of the tools and their tests that run others (the
+# older tools, tools/bake_tune.py and the tuner among them, are not the
+# measuring tools').
+LOOSE_CHECKED = [os.path.join("tests", n) for n in ("test_tools.py", "test_tools_matrix.py", "test_lint.py", "test_progression_raster.py")] + [os.path.join("tools", n) for n in ("lint.py", "test_times.py")]
+
+
+def test_no_loose_processes():
+    """The tools and their tests start every process through
+    tools/toolproc.py, which tracks it and stops it on INT, TERM and HUP:
+    none of the python programs in LOOSE_CHECKED calls subprocess or os for
+    a process or a group of its own."""
+    for name in LOOSE_CHECKED:
+        path = os.path.join(ROOT, name)
+        with open(path) as f:
+            tree = ast.parse(f.read(), path)
+        found = []
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Attribute) and isinstance(node.value, ast.Name) and (
+                (node.value.id == "subprocess" and node.attr in LOOSE_CALLS) or (node.value.id == "os" and node.attr in LOOSE_OS)
+            ):
+                found.append(f"{node.value.id}.{node.attr} at line {node.lineno}")
+            if isinstance(node, ast.keyword) and node.arg in LOOSE_KEYWORDS:
+                found.append(f"{node.arg} at line {node.lineno}")
+        check(not found, f"{name} starts processes outside tools/toolproc.py: {found}")
+    check(os.path.exists(os.path.join(ROOT, "tools", "toolproc.py")), "tools/toolproc.py is missing")
+
+
 def main():
+    toolproc.install()
     part = os.environ.get("TOOLS_TEST_PART")
     with tempfile.TemporaryDirectory() as d:
         if part != "runner":
@@ -429,6 +466,7 @@ def main():
             test_times_files(os.path.join(d, "times"))
     if part != "runner":
         test_linux_input()
+        test_no_loose_processes()
         test_concurrent_runs()
     if failures:
         print(f"tools: {len(failures)} failure(s)", file=sys.stderr)

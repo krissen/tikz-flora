@@ -30,9 +30,14 @@ import os
 import re
 import shlex
 import shutil
+import signal
 import subprocess
 import sys
 import tempfile
+import time
+
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "tools"))
+import toolproc
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 TOOLS = os.path.join(ROOT, "tools")
@@ -72,6 +77,7 @@ n=${f##*/test_}
 n=${n%.lua}
 case "$n" in
   fail) echo "fail: failing on purpose"; exit 3 ;;
+  slow) trap 'kill $!' TERM INT HUP; sleep 37.25 & wait ;;
   mkdirtimes) mkdir -p "$TIMES_TARGET"; echo "mkdirtimes: ok" ;;
   lockdir) chmod a-w "$LOCK_DIR"; echo "lockdir: ok" ;;
   killed) kill -KILL $PPID; sleep 5 ;;
@@ -105,7 +111,7 @@ def build_tree(path, full, inject=False):
     """A tree the tools run in: the tools themselves, the justfile, and the
     stand-in tests (all that pass; with full also fail and killed)."""
     os.makedirs(os.path.join(path, "tools"))
-    for f in ("test.sh", "test_times.py", "profile.lua", "test-linux.sh", "test-linux.Dockerfile", "bodies-compare.sh"):
+    for f in ("test.sh", "test_times.py", "toolproc.py", "profile.lua", "test-linux.sh", "test-linux.Dockerfile", "bodies-compare.sh"):
         if os.path.exists(os.path.join(TOOLS, f)):
             shutil.copy(os.path.join(TOOLS, f), os.path.join(path, "tools", f))
     shutil.copy(os.path.join(ROOT, "justfile"), os.path.join(path, "justfile"))
@@ -340,7 +346,7 @@ class Env:
 def docker_ready():
     if not shutil.which("docker") or os.environ.get("FLORA_IN_LINUX_CONTAINER") or os.environ.get("TOOLS_MATRIX_DOCKER") == "0":
         return False
-    p = subprocess.run(["docker", "info"], capture_output=True, check=False)
+    p = toolproc.run(["docker", "info"], capture_output=True, check=False)
     return p.returncode == 0
 
 
@@ -439,7 +445,7 @@ def run_cell(c, trees, stub, shell, results_dir, index):
     cwd = ROOT if c["tree"] == "real" else tree
     timeout = 600 if c.get("docker") else 120
     try:
-        p = subprocess.run(cmd, cwd=cwd, env=env, capture_output=True, text=True, timeout=timeout, check=False)
+        p = toolproc.run(cmd, cwd=cwd, env=env, capture_output=True, text=True, timeout=timeout, check=False)
         rc, out, err = p.returncode, p.stdout, p.stderr
     except subprocess.TimeoutExpired:
         rc, out, err = -999, "", "timed out"
@@ -563,6 +569,151 @@ def times_problem(path, names):
     return None
 
 
+# --- interrupting a run that runs the tools' tests ---------------------------
+
+def descendants(root):
+    """(pid, command) of every process below pid root."""
+    ps = toolproc.run(["ps", "-A", "-o", "pid=,ppid=,command="], capture_output=True, text=True)
+    below = {}
+    for line in ps.stdout.splitlines():
+        parts = line.split(None, 2)
+        if len(parts) >= 2 and parts[0].isdigit() and parts[1].isdigit():
+            below.setdefault(int(parts[1]), []).append((int(parts[0]), parts[2] if len(parts) > 2 else ""))
+    found, todo = [], [root]
+    while todo:
+        for pid, cmd in below.get(todo.pop(), []):
+            found.append((pid, cmd))
+            todo.append(pid)
+    return found
+
+
+def alive(pid):
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
+    return True
+
+
+def hold():
+    """What TOOLS_MATRIX_HOLD asks for: a run with a test that sleeps, held
+    until it is stopped, so that a run that is interrupted has something
+    to stop (interrupted_run)."""
+    with tempfile.TemporaryDirectory() as base:
+        stub = os.path.join(base, "stub")
+        write(os.path.join(stub, "texlua"), STUB_TEXLUA, 0o755)
+        tree = os.path.join(base, "hold")
+        build_tree(tree, False)
+        write(os.path.join(tree, "tests", "test_slow.lua"), "-- stand-in\n")
+        env = {**os.environ, "PATH": stub + os.pathsep + os.environ["PATH"], "FLORA_PYTHON": sys.executable}
+        toolproc.run([os.path.join(tree, "tools", "test.sh"), "-j", "2", "slow"], cwd=tree, env=env, timeout=120)
+
+
+def interrupt_and_check(label, tree, argv, env, sig):
+    """Start argv in tree; once a test below it is sleeping send it sig:
+    it ends with 128 plus the signal, and of the processes below it then
+    not one is left."""
+    problems = []
+    with open(os.path.join(tree, "out.txt"), "w") as log, toolproc.popen(argv, cwd=tree, env=env, stdout=log, stderr=subprocess.STDOUT) as p:
+        below = None
+        deadline = time.monotonic() + 120
+        while below is None and p.poll() is None and time.monotonic() < deadline:
+            seen = descendants(p.pid)
+            if any("sleep" in cmd and "37.25" in cmd for _, cmd in seen):
+                below = [pid for pid, _ in seen]
+            else:
+                time.sleep(0.2)
+        if below is None:
+            problems.append("the run never got to a sleeping test")
+            below = [pid for pid, _ in descendants(p.pid)]
+        os.kill(p.pid, sig)
+        try:
+            got = p.wait(timeout=40)
+        except subprocess.TimeoutExpired:
+            got = None
+            os.killpg(p.pid, signal.SIGKILL)
+        if got != 128 + sig:
+            problems.append(f"rc {got}, not {128 + sig}")
+        deadline = time.monotonic() + 10
+        left = [pid for pid in below if alive(pid)]
+        while left and time.monotonic() < deadline:
+            time.sleep(0.2)
+            left = [pid for pid in left if alive(pid)]
+        if left:
+            problems.append(f"processes left running: {left}")
+            for pid in left:
+                try:
+                    os.kill(pid, signal.SIGKILL)
+                except ProcessLookupError:
+                    pass
+    return [f"interrupt {sig.name} of {label}: {pr}" for pr in problems]
+
+
+def interrupted_run(base, outer, sig):
+    """tools/test.sh -j 2 OUTER, a run of the tools' own tests (which start
+    runs of their own), interrupted."""
+    tree = os.path.join(base, f"nested-{outer}-{sig.name}")
+    os.makedirs(tree)
+    for part in ("tools", "tests", "docs"):
+        shutil.copytree(os.path.join(ROOT, part), os.path.join(tree, part), symlinks=True)
+    shutil.copy(os.path.join(ROOT, "justfile"), tree)
+    env = {**os.environ, "TOOLS_MATRIX_HOLD": "1", "TOOLS_TEST_HOLD": "1", "TOOLS_MATRIX_DOCKER": "0", "FLORA_PYTHON": sys.executable}
+    return interrupt_and_check(f"test.sh -j 2 {outer}", tree, [os.path.join(tree, "tools", "test.sh"), "-j", "2", outer], env, sig)
+
+
+def interrupted_slow(base, tool, args, sig):
+    """A tool that runs a test that sleeps (the stand-in tree's slow),
+    interrupted."""
+    stub = os.path.join(base, "stub-" + tool)
+    write(os.path.join(stub, "texlua"), STUB_TEXLUA, 0o755)
+    tree = os.path.join(base, f"slow-{tool}-{sig.name}")
+    build_tree(tree, False)
+    write(os.path.join(tree, "tests", "test_slow.lua"), "-- stand-in\n")
+    env = {**os.environ, "PATH": stub + os.pathsep + os.environ["PATH"], "FLORA_PYTHON": sys.executable}
+    argv = [os.path.join(tree, "tools", "test.sh"), *args] if tool == "test.sh" else [sys.executable, "-I", os.path.join(tree, "tools", "test_times.py"), *args]
+    return interrupt_and_check(f"{tool} {' '.join(args)}", tree, argv, env, sig)
+
+
+def interrupted_container(base, sig):
+    """tools/test-linux.sh running a long test in the container is sent sig:
+    it ends with 128 plus the signal, and the container is gone."""
+    problems = []
+    name = None
+    with toolproc.popen([os.path.join(ROOT, "tools", "test-linux.sh"), "scene_ops"], cwd=ROOT, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL) as p:
+        name = f"tikz-flora-test-{p.pid}"
+
+        def containers():
+            found = toolproc.run(["docker", "ps", "-q", "--filter", f"name={name}"], capture_output=True, text=True)
+            return found.stdout.split()
+
+        deadline = time.monotonic() + 120
+        while not containers() and p.poll() is None and time.monotonic() < deadline:
+            time.sleep(0.5)
+        if not containers():
+            problems.append("the container never started")
+        os.kill(p.pid, sig)
+        try:
+            got = p.wait(timeout=60)
+        except subprocess.TimeoutExpired:
+            got = None
+            os.killpg(p.pid, signal.SIGKILL)
+        if got != 128 + sig:
+            problems.append(f"rc {got}, not {128 + sig}")
+        deadline = time.monotonic() + 20
+        while containers() and time.monotonic() < deadline:
+            time.sleep(0.5)
+        left = containers()
+        if left:
+            problems.append(f"the container is still running: {left}")
+            toolproc.run(["docker", "kill", name], capture_output=True)
+    return [f"interrupt {sig.name} of tools/test-linux.sh: {pr}" for pr in problems]
+
+
+INTERRUPTS = (("tools", signal.SIGINT), ("tools", signal.SIGTERM), ("tools", signal.SIGHUP), ("tools_matrix", signal.SIGTERM))
+
+
 # --- the whole table ------------------------------------------------------
 
 def test_recipes_have_rows():
@@ -597,6 +748,10 @@ def test_recipes_have_rows():
 
 
 def main():
+    toolproc.install()
+    if os.environ.get("TOOLS_MATRIX_HOLD"):
+        hold()
+        return 0
     build_cells()
     test_recipes_have_rows()
     shell = os.environ.get("TEST_SH_SHELL")
@@ -646,9 +801,22 @@ def main():
             return i, run_cell(c, trees, st, shell, os.path.join(base, "cells"), i)
 
         os.makedirs(os.path.join(base, "cells"))
+        nest = os.path.join(base, "nested")
+        os.makedirs(nest)
+        interrupts = concurrent.futures.ThreadPoolExecutor(max_workers=len(INTERRUPTS) + 5)
+        interrupt_runs = [interrupts.submit(interrupted_run, nest, outer, sig) for outer, sig in INTERRUPTS]
+        for sig in (signal.SIGINT, signal.SIGTERM):
+            interrupt_runs.append(interrupts.submit(interrupted_slow, nest, "test.sh", ["slow"], sig))
+            interrupt_runs.append(interrupts.submit(interrupted_slow, nest, "test_times", ["run", "2", "slow"], sig))
+        if have["docker"]:
+            interrupt_runs.append(interrupts.submit(interrupted_container, nest, signal.SIGTERM))
         with concurrent.futures.ThreadPoolExecutor(max_workers=jobs) as pool:
             for i, res in pool.map(one, runnable):
                 results[i] = res
+        for run in interrupt_runs:
+            for problem in run.result():
+                check(False, problem)
+        interrupts.shutdown()
         rows = []
         for i, c in runnable:
             bad, rc = results[i]
@@ -663,7 +831,7 @@ def main():
         print(f"{'call':64} {'expected':8} {'rc':>4}  outcome")
         for label, note, expect, outcome, rc in rows:
             print(f"{label[:64]:64} {expect:8} {rc:>4}  {outcome}")
-    ran_n = len(rows)
+    ran_n = len(rows) + len(interrupt_runs)
     if failures:
         print(f"tools matrix: {len(failures)} failure(s) in {ran_n} rows", file=sys.stderr)
         return 1
