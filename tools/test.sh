@@ -16,7 +16,9 @@
 #                 machine's load; tools/test_times.py shows and compares
 #                 such files. A test killed by a signal has status 128 + its
 #                 number; one with no times recorded has NA for them. FILE
-#                 is written whole when every test has ended, or not at all.
+#                 is written whole when every test has ended, or not at
+#                 all; when it cannot be, the run says where the whole
+#                 times are instead and exits 1.
 # A bad option, a name that is no test, a test named twice, fast with another
 # name or a --times FILE that cannot be written (or is a directory) stops
 # the run before any test starts (exit status 2). Interrupted (INT, TERM,
@@ -109,16 +111,19 @@ fi
 [ -x /usr/bin/time ] || usage "-j and --times need /usr/bin/time (the time package)"
 PY=${FLORA_PYTHON:-python3}
 command -v "$PY" > /dev/null || usage "-j and --times need $PY (FLORA_PYTHON) to stop the tests when interrupted"
-# The times file is written next to FILE and moved over it at the end:
-# found unwritable now, not after the run.
+# FILE is found unwritable now, not after the run. The times are made whole
+# in the run's own directory, then copied to FILE; that directory stays, and
+# is named, when the copy fails.
+tmp_times="$times.partial.$$"
 if [ -n "$times" ]; then
-  tmp_times="$times.partial.$$"
   [ ! -d "$times" ] || usage "--times: $times is a directory"
   # Not ":", whose failed redirection ends a POSIX shell (dash) silently.
   { true > "$tmp_times"; } 2>/dev/null || usage "--times: cannot write $times"
+  rm -f "$tmp_times"
 fi
 d=$(mktemp -d "${TMPDIR:-/tmp}/flora-test.XXXXXX")
-trap 'rm -rf "$d"; [ -z "$times" ] || rm -f "$tmp_times"' EXIT
+keep=
+trap '[ -n "$keep" ] || rm -rf "$d"' EXIT
 printf '%s\n' "$@" > "$d/names"
 # The tests in a process group of their own, stopped as one when the run
 # is interrupted. The shell cannot make one without a terminal (set -m is
@@ -151,6 +156,7 @@ trap 'stop 129' HUP
 wait "$xpid" || true
 trap - INT TERM HUP
 failed=
+saved=
 for t in "$@"; do
   [ "$(cat "$d/$t.status" 2>/dev/null)" = 0 ] || failed="$failed $t"
 done
@@ -169,10 +175,16 @@ if [ -n "$times" ]; then
     printf 'test\tstatus\twall\tuser\tsys\tcpu\n'
     cat "$d/times"
     echo "# jobs=$jobs $(date -u +%Y-%m-%dT%H:%M:%SZ) $(uptime | sed 's/.*load/load/')"
-  } > "$tmp_times"
-  mv "$tmp_times" "$times"
+  } > "$d/times.tsv"
+  if [ -d "$times" ] || ! cp "$d/times.tsv" "$tmp_times" 2> /dev/null || ! mv "$tmp_times" "$times" 2> /dev/null; then
+    rm -f "$tmp_times"
+    keep=1
+    echo "test.sh: could not write $times; the times are in $d/times.tsv" >&2
+    saved=no
+  fi
 fi
 if [ -n "$failed" ]; then
   echo "test.sh: failed:$failed" >&2
   exit 1
 fi
+[ -z "$saved" ] || exit 1
