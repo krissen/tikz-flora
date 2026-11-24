@@ -151,42 +151,57 @@ end
 
 local cpu0 = os.clock()
 local reported = false
+local write_failed = false
 -- `ended` says how the run ended: "completed", "ended by os.exit(...)" or
 -- "stopped by an error".
 local function report(ended)
   if reported then return end
   reported = true
   debug.sethook()
-  local f = out or io.stderr
-  f:write(string.format("profile: %s, %.2f s CPU, %s\n", target or "-e", os.clock() - cpu0, ended))
+  local buf = {}
+  local function w(...) buf[#buf + 1] = table.concat({ ... }) end
+  w(string.format("profile: %s, %.2f s CPU, %s\n", target or "-e", os.clock() - cpu0, ended))
   local function rows(title, tbl, n, of)
     local t = {}
     for k, v in pairs(tbl) do
       if type(v) == "table" then t[#t + 1] = { v.name, v.n } else t[#t + 1] = { k, v } end
     end
     table.sort(t, function(a, b) return a[2] > b[2] end)
-    f:write("\n== " .. title .. "\n")
-    for r = 1, math.min(n, #t) do f:write(string.format("%6.2f%%  %s\n", 100 * t[r][2] / of, t[r][1])) end
+    w("\n== " .. title .. "\n")
+    for r = 1, math.min(n, #t) do w(string.format("%6.2f%%  %s\n", 100 * t[r][2] / of, t[r][1])) end
   end
   if opts.sample and total > 0 then
-    f:write(string.format("%d samples, one every %d instructions\n", total, opts.period))
+    w(string.format("%d samples, one every %d instructions\n", total, opts.period))
     rows("self, by function", self_f, opts.top, total)
     rows("inclusive, by function", incl_f, opts.top, total)
     rows("self, by line", self_l, opts.top, total)
   end
   if #timed > 0 then
-    f:write("\n== timed (CPU seconds, callees included; calls)\n")
+    w("\n== timed (CPU seconds, callees included; calls)\n")
     table.sort(timed, function(a, b) return a.secs > b.secs end)
     for _, t in ipairs(timed) do
-      f:write(string.format("%9.3f s %10d  %s%s\n", t.secs, t.calls, t.name, t.errors > 0 and string.format(" (%d raised an error)", t.errors) or ""))
+      w(string.format("%9.3f s %10d  %s%s\n", t.secs, t.calls, t.name, t.errors > 0 and string.format(" (%d raised an error)", t.errors) or ""))
     end
   end
-  if f ~= io.stderr then f:close() end
+  -- Written whole at the end; a file that cannot take it does not lose the
+  -- report: it goes to stderr, with the reason.
+  local text = table.concat(buf)
+  if out then
+    local wrote, werr = out:write(text)
+    local closed, cerr = out:close()
+    if wrote and closed then return end
+    werr = werr or cerr
+    io.stderr:write(text, "profile: could not write ", opts.out, ": ", tostring(werr), "; the report is above\n")
+    write_failed = true
+  else
+    io.stderr:write(text)
+  end
 end
 
 local exit = os.exit
 os.exit = function(code_, ...)
   report("ended by os.exit(" .. tostring(code_ == nil and true or code_) .. ")")
+  if write_failed then return exit(2) end
   return exit(code_, ...)
 end
 
@@ -213,6 +228,7 @@ for k, v in ipairs(rest) do arg[k] = v end
 if opts.sample then debug.sethook(hook, "", opts.period) end
 local ok, err = xpcall(chunk --[[@as function]], debug.traceback, table.unpack(rest))
 report(ok and "completed" or "stopped by an error")
+if write_failed then exit(2) end
 if not ok then
   io.stderr:write(tostring(err), "\n")
   exit(1)
