@@ -71,9 +71,14 @@ child=$!
 wait "$child" || true
 while kill -0 "$child" 2> /dev/null; do wait "$child" 2> /dev/null || true; done
 [ -z "$got" ] || { keep=; exit "$got"; }
-read -r refrc newrc < "$out/status" || { echo "bodies-compare: the paints could not be run (see $out)"; exit 1; }
-[ "$refrc" = 0 ] || { echo "bodies-compare: $ref failed to paint (see $out)"; exit 1; }
-[ "$newrc" = 0 ] || { echo "bodies-compare: the working tree failed to paint (see $out)"; exit 1; }
+# One line each: the status and "ok", "failed" (it failed itself) or "stopped"
+# (it was stopped because the other failed, and did not fail).
+{ read -r _ refhow && read -r _ newhow; } < "$out/status" || { echo "bodies-compare: the paints could not be run (see $out)"; exit 1; }
+if [ "$refhow" = failed ] || [ "$newhow" = failed ]; then
+  [ "$refhow" != failed ] || echo "bodies-compare: $ref failed to paint (see $out)"
+  [ "$newhow" != failed ] || echo "bodies-compare: the working tree failed to paint (see $out)"
+  exit 1
+fi
 n=$(wc -l < "$out/new.txt" | tr -d ' ')
 if cmp -s "$out/ref.txt" "$out/new.txt"; then
   echo "bodies-compare: $n identical to $ref ($*)"
