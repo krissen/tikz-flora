@@ -4,12 +4,14 @@
 #
 #   tools/bodies-compare.sh REF [SUITE...]
 #
-# REF is a commit (b3fbda1, main, HEAD~1). Its tree is unpacked under
-# build/bodies/ref with git archive; the working tree is the other side,
-# uncommitted changes included. tools/bodies.lua and its slide fixtures
+# REF is a commit (b3fbda1, main, HEAD~1). Its tree is unpacked with git
+# archive into a directory of this run's own under build/; the working tree
+# is the other side, uncommitted changes included. tools/bodies.lua and its slide fixtures
 # are this tree's for both, so the two sides paint the same pages. Both
-# sides run at once. Writes build/bodies/ref.txt and build/bodies/new.txt,
-# prints the lines that differ and fails when any do. SUITE defaults to
+# sides run at once. Writes ref.txt and new.txt there, prints the lines that
+# differ and fails when any do; the directory (build/bodies.XXXXXX, one for
+# each run, so that two runs at once do not share it) is kept when they do,
+# or when a side failed to paint, and removed otherwise. SUITE defaults to
 # bands slides progression protect.
 #
 # It needs git, a git working tree (REF's tree comes from its history) and
@@ -27,8 +29,11 @@ git rev-parse --is-inside-work-tree > /dev/null 2>&1 || refuse "not in a git wor
 git rev-parse --verify --quiet "$ref^{commit}" > /dev/null || refuse "$ref is not a commit"
 [ $# -gt 0 ] || set -- bands slides progression protect
 root=$(pwd)
-out=build/bodies
-rm -rf "$out" && mkdir -p "$out/ref"
+mkdir -p build
+out=$(mktemp -d build/bodies.XXXXXX)
+keep=
+trap '[ -n "$keep" ] || rm -rf "$out"' EXIT
+mkdir "$out/ref"
 # Through a file, so that git archive failing is not hidden by the pipe.
 git archive -o "$out/ref.tar" "$ref"
 tar -x -C "$out/ref" -f "$out/ref.tar"
@@ -37,13 +42,15 @@ rm "$out/ref.tar"
 refpid=$!
 texlua tools/bodies.lua "$@" > "$out/new.txt" &
 newpid=$!
-wait "$refpid" || { echo "bodies-compare: $ref failed to paint"; exit 1; }
-wait "$newpid" || { echo "bodies-compare: the working tree failed to paint"; exit 1; }
+keep=1
+wait "$refpid" || { echo "bodies-compare: $ref failed to paint (see $out)"; exit 1; }
+wait "$newpid" || { echo "bodies-compare: the working tree failed to paint (see $out)"; exit 1; }
 n=$(wc -l < "$out/new.txt" | tr -d ' ')
 if cmp -s "$out/ref.txt" "$out/new.txt"; then
   echo "bodies-compare: $n identical to $ref ($*)"
+  keep=
 else
   diff "$out/ref.txt" "$out/new.txt" | head -40
-  echo "bodies-compare: $(diff "$out/ref.txt" "$out/new.txt" | grep -c '^>') of $n differ from $ref"
+  echo "bodies-compare: $(diff "$out/ref.txt" "$out/new.txt" | grep -c '^>') of $n differ from $ref (see $out)"
   exit 1
 fi
