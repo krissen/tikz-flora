@@ -17,9 +17,10 @@
 #                 such files. A test killed by a signal has status 128 + its
 #                 number; one with no times recorded has NA for them. FILE
 #                 is written whole when every test has ended, or not at all.
-# A bad option, a test named twice or a --times FILE that cannot be written
-# stops the run before any test starts (exit status 2). Interrupted (INT,
-# TERM, HUP), the run stops every test it started and writes no times.
+# A bad option, a name that is no test, a test named twice, fast with another
+# name or a --times FILE that cannot be written (or is a directory) stops
+# the run before any test starts (exit status 2). Interrupted (INT, TERM,
+# HUP), the run stops every test it started and writes no times.
 set -e
 cd "$(dirname "$0")/.."
 FAST="core grow leaf letters plant settings reserve prepare_spec render_page inline headpiece lint tools"
@@ -32,6 +33,8 @@ run() {
     "${FLORA_PYTHON:-python3}" -I tests/test_lint.py
   elif [ "$1" = tools ]; then
     "${FLORA_PYTHON:-python3}" -I tests/test_tools.py
+  elif [ "$1" = tools_matrix ]; then
+    "${FLORA_PYTHON:-python3}" -I tests/test_tools_matrix.py
   else
     texlua "tests/test_$1.lua"
   fi
@@ -75,14 +78,24 @@ case "$jobs" in ''|*[!0-9]*|0) usage "-j takes a positive whole number or auto, 
 
 # The test names are plain words; the lists are split on purpose.
 # shellcheck disable=SC2086,SC2046,SC2012
-case "${1:-}" in
-  fast) set -- $FAST bake ;;
-  "") set -- $(ls tests/test_*.lua | sed 's|tests/test_||; s|\.lua$||') bake lint tools ;;
-esac
+if [ $# -eq 0 ]; then
+  set -- $(ls tests/test_*.lua | sed 's|tests/test_||; s|\.lua$||') bake lint tools tools_matrix
+elif [ "$1" = fast ]; then
+  [ $# -eq 1 ] || usage "fast takes no other test names"
+  set -- $FAST bake
+fi
 
-# Each test once: two runs of one test would share its output files.
+# Each test once: two runs of one test would share its output files. And
+# each a test there is: a name that is not one stops the run before it
+# starts, as an empty name or an option in the wrong place would otherwise.
 seen=" "
 for t in "$@"; do
+  case "$t" in
+    "") usage "an empty test name" ;;
+    -*) usage "$t is not an option here (options come before the test names)" ;;
+    bake|lint|tools|tools_matrix) ;;
+    *) [ -f "tests/test_$t.lua" ] || usage "no test named $t (tests/test_$t.lua)" ;;
+  esac
   case "$seen" in *" $t "*) usage "$t is named twice" ;; esac
   seen="$seen$t "
 done
@@ -100,7 +113,9 @@ command -v "$PY" > /dev/null || usage "-j and --times need $PY (FLORA_PYTHON) to
 # found unwritable now, not after the run.
 if [ -n "$times" ]; then
   tmp_times="$times.partial.$$"
-  { : > "$tmp_times"; } 2>/dev/null || usage "--times: cannot write $times"
+  [ ! -d "$times" ] || usage "--times: $times is a directory"
+  # Not ":", whose failed redirection ends a POSIX shell (dash) silently.
+  { true > "$tmp_times"; } 2>/dev/null || usage "--times: cannot write $times"
 fi
 d=$(mktemp -d "${TMPDIR:-/tmp}/flora-test.XXXXXX")
 trap 'rm -rf "$d"; [ -z "$times" ] || rm -f "$tmp_times"' EXIT
