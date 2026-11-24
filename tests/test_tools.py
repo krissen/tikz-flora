@@ -216,12 +216,47 @@ FAKE_TESTS = {
     "ok": 'print("ok: ok")\n',
     "fail": 'print("fail: failing on purpose"); os.exit(3)\n',
     "killed": 'os.execute("kill -KILL $PPID")\n',
-    "slow": 'local f = io.open("slow-started", "w"); f:close(); os.execute("sleep 37.25")\n',
+    # Its sleeper's pid goes to slow-pid, so that a run finds the processes
+    # it started and no others (two runs may share the machine).
+    "slow": 'os.execute("sleep 37.25 & echo $! > slow-pid; wait")\n',
     "marker": 'local f = io.open("marker-ran", "w"); f:close()\n',
 }
 
 
+def read_pid(path):
+    """The pid a file holds once it is whole, else None."""
+    try:
+        with open(path) as f:
+            text = f.read()
+    except OSError:
+        return None
+    return int(text) if text.endswith("\n") and text.strip().isdigit() else None
+
+
+def alive(pid):
+    """Whether the process exists. A zombie does, until its parent reaps
+    it; the sleepers' parent is gone, and init reaps them."""
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
+    return True
+
+
 def test_runner(d):
+    # A test run by tools/test.sh -j starts with SIGINT ignored (the shell
+    # does that to a command it runs in the background), and so would
+    # the runner under test, which then could not be interrupted.
+    was = signal.signal(signal.SIGINT, signal.SIG_DFL)
+    try:
+        run_runner(d)
+    finally:
+        signal.signal(signal.SIGINT, was)
+
+
+def run_runner(d):
     os.makedirs(os.path.join(d, "tools"))
     shutil.copy(os.path.join(TOOLS, "test.sh"), os.path.join(d, "tools", "test.sh"))
     for name, text in FAKE_TESTS.items():
@@ -255,27 +290,35 @@ def test_runner(d):
 
     # Interrupted: every test it started stops, and no times are written.
     for sig, rc in ((signal.SIGINT, 130), (signal.SIGTERM, 143)):
-        for f in ("i.tsv", "slow-started"):
+        for f in ("i.tsv", "slow-pid"):
             if os.path.exists(os.path.join(d, f)):
                 os.remove(os.path.join(d, f))
         p = subprocess.Popen([*run_sh, "-j", "2", "--times", "i.tsv", "ok", "slow"], cwd=d, start_new_session=True,
                              stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, text=True)
+        sleeper = None
         for _ in range(100):
-            if os.path.exists(os.path.join(d, "slow-started")):
+            sleeper = read_pid(os.path.join(d, "slow-pid"))
+            if sleeper:
                 break
             time.sleep(0.05)
+        check(sleeper is not None, f"{sig.name}: the slow test did not start")
         os.kill(p.pid, sig)
         try:
             got = p.wait(timeout=10)
         except subprocess.TimeoutExpired:
             os.killpg(p.pid, signal.SIGKILL)
             got = None
-        time.sleep(0.2)
-        left = subprocess.run(["pgrep", "-f", "sleep 37.25"], capture_output=True, text=True, check=False).stdout.split()
+        # Only the process this run started: its recorded pid, never a
+        # search by name.
+        for _ in range(40):
+            if sleeper is None or not alive(sleeper):
+                break
+            time.sleep(0.05)
+        left = [sleeper] if sleeper is not None and alive(sleeper) else []
         check(got == rc, f"{sig.name}: rc {got}, not {rc}")
         check(not left, f"{sig.name}: tests left running: {left}")
         for pid in left:
-            os.kill(int(pid), signal.SIGKILL)
+            os.kill(pid, signal.SIGKILL)
         leftovers = [f for f in os.listdir(d) if f.startswith("i.tsv")]
         check(not leftovers, f"{sig.name}: times written after an interrupt: {leftovers}")
 
@@ -353,12 +396,40 @@ def test_linux_input():
     check(not missing, f"files the tests read that the Linux container does not get: {missing}")
 
 
+def test_concurrent_runs():
+    """Two runs of the runner's tests at once on one machine, with an
+    unrelated sleep 37.25 of the same command line as the tests' own
+    running beside them: both pass and the unrelated process is left
+    alone (a run that looked for leftovers by command line found it and
+    the other run's sleepers, and killed them)."""
+    me = [sys.executable, "-I", os.path.abspath(__file__)]
+    env = {**os.environ, "TOOLS_TEST_PART": "runner"}
+    with subprocess.Popen(["sleep", "37.25"]) as bystander:
+        try:
+            runs = [subprocess.Popen(me, env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True) for _ in range(2)]
+            for i, run in enumerate(runs):
+                try:
+                    out, _ = run.communicate(timeout=300)
+                except subprocess.TimeoutExpired:
+                    run.kill()
+                    out, _ = run.communicate()
+                check(run.returncode == 0, f"concurrent run {i + 1}: rc {run.returncode}: {out.strip()[-300:]!r}")
+            check(bystander.poll() is None, "a concurrent run killed an unrelated process")
+        finally:
+            bystander.kill()
+
+
 def main():
+    part = os.environ.get("TOOLS_TEST_PART")
     with tempfile.TemporaryDirectory() as d:
-        test_profile(os.path.join(d, "profile"))
+        if part != "runner":
+            test_profile(os.path.join(d, "profile"))
         test_runner(os.path.join(d, "runner"))
-        test_times_files(os.path.join(d, "times"))
-    test_linux_input()
+        if part != "runner":
+            test_times_files(os.path.join(d, "times"))
+    if part != "runner":
+        test_linux_input()
+        test_concurrent_runs()
     if failures:
         print(f"tools: {len(failures)} failure(s)", file=sys.stderr)
         return 1
