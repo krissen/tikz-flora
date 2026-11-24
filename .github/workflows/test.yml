@@ -11,13 +11,12 @@ on:
       - "lua/**"
       - "tex/**"
       - "tests/**"
-      - "tools/test.sh"
-      - "tools/test_times.py"
-      - "tools/profile.lua"
-      - "tools/test-linux.sh"
+      # The tools the tests run, and the files they read (tests/test_tools.py
+      # checks that none the tests name is missing here).
+      - "tools/**"
       - "justfile"
-      - "tools/tune_json.lua"
-      - "tools/bake_tune.py"
+      - "docs/testing.md"
+      - "site/src/lib/scene-ops.json"
       - ".github/workflows/test.yml"
   workflow_dispatch:
 
