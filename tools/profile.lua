@@ -58,6 +58,7 @@ while arg[i] do
   elseif a == "--top" then opts.top = count("--top", arg[i + 1]); i = i + 2
   elseif a == "--out" then opts.out = arg[i + 1] or usage_error("--out takes a file"); i = i + 2
   elseif a == "--time" then
+    opts.time_given = true
     for name in (arg[i + 1] or usage_error("--time takes a list")):gmatch("[^,]+") do opts.time[#opts.time + 1] = name end
     i = i + 2
   elseif a == "--no-sample" then opts.sample = false; i = i + 1
@@ -65,6 +66,8 @@ while arg[i] do
   else target = a; i = i + 1; break
   end
 end
+if opts.time_given and #opts.time == 0 then usage_error("--time takes a list of MODULE.FN, e.g. flora.pattern.clearance") end
+if not opts.sample and #opts.time == 0 then usage_error("--no-sample needs --time: with neither, nothing is measured") end
 if not target and not code then
   io.stderr:write("usage: texlua tools/profile.lua [--period N] [--top N] [--out FILE] [--time M.FN,...] [--no-sample] SCRIPT [ARGS] | -e CODE\n")
   os.exit(2)
