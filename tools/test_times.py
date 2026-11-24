@@ -3,6 +3,7 @@
     python3 -I tools/test_times.py show TIMES [--jobs N|auto]
     python3 -I tools/test_times.py compare OLD NEW
     python3 -I tools/test_times.py run JOBS [TEST...]
+    python3 -I tools/test_times.py groups TIMES N [--skip TEST,...]
 
 show prints the table, most CPU first, with totals, and the least wall
 time N jobs could take on the same CPU times (each test started on the
@@ -19,6 +20,13 @@ output is kept beside it as STAMP-PID.out and shown, with the path of the
 times, when the run did not succeed. build/test-times.tsv is a link to the
 latest run's file; when it cannot be made the run says so, names the real
 file, and exits non-zero.
+
+groups deals the tests out to N groups of about the same CPU time (the
+heaviest first, each to the lightest group so far) and prints a line for
+each, its CPU seconds and its tests: the groups of the test workflow
+(.github/workflows/test.yml) are made so from a run's times. --skip names
+tests left out (those a job of their own runs). It needs a run in which
+every test passed and was timed.
 
 A file that is empty, lacks its header or its closing line (a run that
 did not finish writing it), or has a line that is not a test's times is
@@ -232,6 +240,34 @@ def run_tests(jobs, names):
     return rc
 
 
+def groups(path, n, skip):
+    """The tests of a run dealt out to n groups of near equal CPU time."""
+    rows, _ = read(path)
+    bad = sorted(name for name, r in rows.items() if not counted(r) and name not in skip)
+    if bad:
+        raise TimesError(f"{path}: {', '.join(bad)} failed or have no times; groups need a run in which every test passed")
+    items = sorted(((cpu(r), name) for name, r in rows.items() if name not in skip), key=lambda x: (-x[0], x[1]))
+    if n > len(items):
+        raise TimesError(f"{n} groups for {len(items)} tests")
+    load, members = [0.0] * n, [[] for _ in range(n)]
+    for c, name in items:
+        i = min(range(n), key=lambda k: (load[k], k))
+        load[i] += c
+        members[i].append(name)
+    for i in sorted(range(n), key=lambda k: (-load[k], k)):
+        print(f"{load[i]:6.0f}  {' '.join(sorted(members[i]))}")
+
+
+def positive(text):
+    try:
+        n = int(text)
+    except ValueError:
+        n = 0
+    if n < 1:
+        raise argparse.ArgumentTypeError(f"takes a whole number of at least 1, not {text!r}")
+    return n
+
+
 def main():
     ap = argparse.ArgumentParser(description="Shows and compares the test times tools/test.sh --times writes.")
     sub = ap.add_subparsers(dest="cmd", required=True)
@@ -241,6 +277,10 @@ def main():
     r = sub.add_parser("run")
     r.add_argument("jobs")
     r.add_argument("names", nargs="*")
+    g = sub.add_parser("groups")
+    g.add_argument("times")
+    g.add_argument("n", type=positive)
+    g.add_argument("--skip", default="")
     c = sub.add_parser("compare")
     c.add_argument("old")
     c.add_argument("new")
@@ -251,6 +291,8 @@ def main():
         elif a.cmd == "run":
             toolproc.install()
             return run_tests(a.jobs, a.names)
+        elif a.cmd == "groups":
+            groups(a.times, a.n, set(filter(None, a.skip.split(","))))
         else:
             compare(a.old, a.new)
     except TimesError as e:
