@@ -776,7 +776,7 @@ def interrupted_run(base, outer, sig):
     tree = os.path.join(base, f"nested-{outer}-{sig.name}")
     os.makedirs(tree)
     for part in ("tools", "tests", "docs"):
-        shutil.copytree(os.path.join(ROOT, part), os.path.join(tree, part), symlinks=True)
+        shutil.copytree(os.path.join(ROOT, part), os.path.join(tree, part), symlinks=True, ignore=shutil.ignore_patterns("__pycache__"))
     shutil.copy(os.path.join(ROOT, "justfile"), tree)
     env = {**os.environ, "TOOLS_MATRIX_HOLD": "1", "TOOLS_TEST_HOLD": "1", "TOOLS_MATRIX_DOCKER": "0", "FLORA_PYTHON": sys.executable}
     return interrupt_and_check(f"test.sh -j 2 {outer}", tree, [os.path.join(tree, "tools", "test.sh"), "-j", "2", outer], env, sig)
@@ -815,12 +815,22 @@ exec "$REAL_GIT" "$@"
 """
 
 
-def build_git_tree(path):
-    """The stand-in tree as a git repository with one commit."""
+# Nothing in the background: git starts maintenance (git maintenance run
+# --auto --detach, or gc --auto --detach before git 2.29) after a commit,
+# and it takes objects/maintenance.lock for a moment, in the middle of
+# whatever then reads the tree.
+GIT_QUIET = ("maintenance.auto", "false"), ("gc.auto", "0"), ("gc.autoDetach", "false")
+
+
+def build_git_tree(path, extra=None):
+    """The stand-in tree as a git repository with one commit (and, for
+    extra, a file that the commit lacks)."""
     build_tree(path, False)
     env = {**os.environ, "GIT_AUTHOR_NAME": "t", "GIT_AUTHOR_EMAIL": "t@t", "GIT_COMMITTER_NAME": "t", "GIT_COMMITTER_EMAIL": "t@t"}
-    for cmd in (["git", "init", "-q"], ["git", "add", "-A"], ["git", "commit", "-q", "-m", "tree"]):
+    for cmd in (["git", "init", "-q"], *(["git", "config", key, value] for key, value in GIT_QUIET), ["git", "add", "-A"], ["git", "commit", "-q", "-m", "tree"]):
         toolproc.run(cmd, cwd=path, env=env, capture_output=True, check=True)
+    if extra:
+        write(os.path.join(path, extra), "")
 
 
 def interrupted_linux(base, phase, sig):
@@ -940,13 +950,13 @@ def interrupted_stubborn(base, sig):
 
 
 def build_git_trees(base, name):
-    """The stand-in tree as a git repository with one commit, and a copy
-    with a file the commit lacks (tools/bodies-compare.sh compares the
-    two; the stand-in bodies.lua paints something else for the file)."""
+    """The stand-in tree as a git repository with one commit, and another
+    with a file the commit lacks (tools/bodies-compare.sh compares the two;
+    the stand-in bodies.lua paints something else for the file). The second
+    is built the same way, not a copy of the first one's .git."""
     git_tree, changed = os.path.join(base, name), os.path.join(base, name + "-changed")
     build_git_tree(git_tree)
-    shutil.copytree(git_tree, changed, symlinks=True)
-    write(os.path.join(changed, "changed"), "")
+    build_git_tree(changed, extra="changed")
     return git_tree, changed
 
 
