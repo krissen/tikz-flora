@@ -83,7 +83,7 @@ case "$f" in
     # slow: its sleeper's pid is recorded in $BODIES_PIDS.
     side=new
     case "$PWD" in */ref) side=ref ;; esac
-    [ "$BODIES_LATE" != "$side" ] || { trap 'kill $!' TERM INT HUP; sleep 1.5 & echo $! >> "$BODIES_PIDS/$side"; wait; }
+    [ "$BODIES_LATE" != "$side" ] || { trap 'kill $!' TERM INT HUP; sleep ${BODIES_LATE_FOR:-1.5} & echo $! >> "$BODIES_PIDS/$side"; wait; }
     [ "$BODIES_FAIL" != "$side" ] || { echo "stand-in: the $side side failed" >&2; exit 3; }
     [ -z "$BODIES_HOLD" ] || { trap 'kill $!' TERM INT HUP; sleep 37.25 & wait; }
     [ "$1" != --fixtures ] || shift 2
@@ -174,10 +174,10 @@ def all_tests(tree_full):
 CELLS = []
 
 
-def cell(tool, args, expect, tree="good", times=None, ran=None, note="", docker=False, prep=None, nonroot=False, says=None, env=None):
+def cell(tool, args, expect, tree="good", times=None, ran=None, note="", docker=False, prep=None, nonroot=False, says=None, env=None, within=None):
     """prep names a fault injected before the call (see PREPS); nonroot
     rows need a user a read-only directory stops."""
-    CELLS.append({"tool": tool, "args": args, "expect": expect, "tree": tree, "times": times, "ran": ran, "note": note, "docker": docker, "prep": prep, "nonroot": nonroot, "says": says, "env": env or {}})
+    CELLS.append({"tool": tool, "args": args, "expect": expect, "tree": tree, "times": times, "ran": ran, "note": note, "docker": docker, "prep": prep, "nonroot": nonroot, "says": says, "env": env or {}, "within": within})
 
 
 def test_sh_cells():
@@ -356,12 +356,16 @@ def bodies_failures():
     """One side of the comparison fails and the other has already ended, or
     is still painting: either way the comparison says which side failed and
     where the pages are, ends non-zero and leaves nothing running."""
-    for fail, other, late, what in (("new", "ref", "new", "the working tree failed, the reference already done"),
-                                    ("new", "ref", "ref", "the working tree failed, the reference still painting"),
-                                    ("ref", "new", "ref", "the reference failed, the working tree already done"),
-                                    ("ref", "new", "new", "the reference failed, the working tree still painting")):
+    # The side still painting would go on for twenty seconds: the comparison
+    # must stop it when the other fails, and be done within a few.
+    for fail, late, what in (("new", "new", "the working tree failed, the reference already done"),
+                             ("new", "ref", "the working tree failed, the reference still painting"),
+                             ("ref", "ref", "the reference failed, the working tree already done"),
+                             ("ref", "new", "the reference failed, the working tree still painting")):
         said = "the working tree failed to paint" if fail == "new" else "failed to paint"
-        cell("bodies-compare", ["HEAD", "slides"], "fail", tree="git", times="kept-dir", says=said, env={"BODIES_FAIL": fail, "BODIES_LATE": late}, note=what)
+        waits = late != fail
+        cell("bodies-compare", ["HEAD", "slides"], "fail", tree="git", times="kept-dir", says=said, within=8 if waits else None,
+             env={"BODIES_FAIL": fail, "BODIES_LATE": late, "BODIES_LATE_FOR": "20" if waits else "1.5"}, note=what)
 
 
 def bodies_cells():
@@ -515,12 +519,14 @@ def run_cell(c, trees, stub, shell, results_dir, index):
         cmd = [cmd[0], "--justfile", os.path.join(tree, "justfile"), "--working-directory", tree, *cmd[1:]]
     cwd = ROOT if c["tree"] == "real" else tree
     timeout = 600 if c.get("docker") else 120
+    started = time.monotonic()
     try:
         p = toolproc.run(cmd, cwd=cwd, env=env, capture_output=True, text=True, timeout=timeout, check=False)
         rc, out, err = p.returncode, p.stdout, p.stderr
     except subprocess.TimeoutExpired:
         rc, out, err = -999, "", "timed out"
-    result = judge(c, rc, out, err, tree, subst)
+    elapsed = time.monotonic() - started
+    result = judge(c, rc, out, err, tree, subst, elapsed)
     unlock(work)
     return result
 
@@ -529,7 +535,7 @@ def ran_lines(out):
     return sorted(m.group(1) for m in re.finditer(r"^(\w+): ok$", out, re.MULTILINE))
 
 
-def judge(c, rc, out, err, tree, subst):
+def judge(c, rc, out, err, tree, subst, elapsed=0.0):
     """The problems with the way a call ended; none when it behaved."""
     bad = []
     both = out + err
@@ -607,6 +613,8 @@ def judge(c, rc, out, err, tree, subst):
         for pid in read(os.path.join(subst["PIDS"], name)).split():
             if alive(int(pid)):
                 bad.append(f"the {name} side's process {pid} is left running")
+    if c.get("within") and elapsed > c["within"]:
+        bad.append(f"it took {elapsed:.1f} s, not within {c['within']} s")
     if c.get("says") and c["says"] not in both:
         bad.append(f"it does not print {c['says']!r}")
     if c.get("prep") == "needs-dev-full" and not ("profile:" in err and "could not write" in err):
