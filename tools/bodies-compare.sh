@@ -64,7 +64,8 @@ newpid=$!
 keep=1
 refrc=0
 newrc=0
-wait "$refpid" || { refrc=$?; kill "$newpid" 2> /dev/null; }
+# The other paint may have ended already: that is no failure here.
+wait "$refpid" || { refrc=$?; kill "$newpid" 2> /dev/null || true; }
 wait "$newpid" || newrc=$?
 while kill -0 "$refpid" 2> /dev/null || kill -0 "$newpid" 2> /dev/null; do wait 2> /dev/null || true; done
 [ -z "$got" ] || { keep=; exit "$got"; }
