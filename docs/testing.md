@@ -14,9 +14,8 @@
 ## What runs where
 
 - `just test`: every `tests/test_*.lua`, then `test_bake.py`, `test_lint.py`, `test_tools.py` and `test_tools_matrix.py` (the measuring tools' own tests; the second runs every call the tools document, and is not in `fast`).
-- Pre-push (`tools/test.sh fast`): core, grow, leaf, letters, plant, settings, reserve, prepare_spec, render_page, inline, headpiece, row_phase, lint, tools and bake, each a few seconds at most. header_mark and support take minutes and run in CI instead.
-- CI (`.github/workflows/test.yml`): four groups that name 31 of the 45 test files, header_mark in the first and support in the last.
-- Not in CI yet, a known gap: floret_passes, frame_matrix, pattern, pattern_colourways, pattern_ground, pattern_matrix, pattern_perimeter, pattern_protect, pattern_reach, pattern_values, pdf_form_cache, preview, progression_frame_resources and stem_taper. They run under `just test` only, so a green CI says nothing about the pattern engine.
+- Pre-push (`tools/test.sh fast`): core, grow, leaf, letters, plant, settings, reserve, prepare_spec, render_page, inline, headpiece, row_phase, lint, tools and bake, each a few seconds at most. header_mark and support take minutes and run in CI instead (and under `just test`).
+- CI (`.github/workflows/test.yml`): every test file, in twelve groups of about five minutes each, and the table of calls and the raster test in jobs of their own. `tests/test_tools.py` fails when a `tests/test_*.lua` or `test_*.py` is run by no job, and when another file under `tests/` is neither one of the helpers and data it lists (with the reason) nor a test; a mutation of the workflow (a name taken out) is part of that test. The groups are dealt out from a run's times with `python3 -I tools/test_times.py groups build/test-times.tsv 12 --skip tools_matrix`; do it again, and paste the lines into the workflow, when the times change much.
 
 ## In Linux
 
@@ -36,6 +35,10 @@ The tools take their arguments in many forms, and each was once found wrong only
 
 A run ends in one of several ways (done, failed, an exception in a test, INT, TERM or HUP), and on none may a process it started stay running, those that the tools it started started in turn included. `tools/test.sh -j` and `--times` run the tests in a process group of their own and stop it as one, through `tools/toolproc.py stop-group` (TERM, a wait for the group to be gone, KILL for what is left, as everywhere else); a run of one test at a time runs it in the background and sends it the signal. Every trap in the shell tools ends with commands that cannot end the shell, so an interrupt always gives 128 plus the signal. `tools/test_times.py run`, `tools/lint.py` and the python tests of the tools start every program through `tools/toolproc.py`: it starts each in a session of its own, tracks it, and on INT, TERM or HUP (and atexit) sends the signal on to every one and to every other child of the process (listed with `/bin/ps`; where that cannot be run it stops the tracked groups, which needs no listing), waits up to 15 s (`TOOLPROC_GRACE`, in seconds, sets it) so that a supervisor like `tools/test.sh` can stop its tests, kills what did not obey, and ends with 128 plus the signal. `tools/test-linux.sh` names its container and kills it, and takes a signal during the file list and the image build too. A command run through the helper that outlives its timeout is stopped the same way, TERM first. `tests/test_tools.py` fails if one of those programs calls `subprocess` or starts a session or group of its own anywhere else. The table of calls interrupts a run of the tools' tests (which start runs of their own) with each signal, once a test below it sleeps, and requires the status 128 plus the signal and that none of the processes below it is left after ten seconds, and the same for `tools/test.sh` one test at a time, `tools/test_times.py run` and, with docker, `tools/test-linux.sh`. The older tools in `tools/` that are run by hand from a terminal (the `pattern-*.sh` and `edge*-sheets.sh` scripts, `grow.sh`, `bake_tune.py` and `tuner/server.py`) are stopped by the terminal's signal to their group, as before.
 
+## Heavy tests, split
+
+The three pattern matrices (the perimeter band's, the field reach's and the colour matrix's) were one file each and 636 to 947 CPU seconds, a floor under the wall time of any run with enough jobs. Each is now a suite (`tests/pattern_perimeter_suite.lua`, `pattern_reach_suite.lua`, `pattern_matrix_suite.lua`) that a few small files run in parts (`test_pattern_perimeter_1.lua` to `_4`, `test_pattern_reach_1` to `_3`, `test_pattern_matrix_1` to `_4`), each part with its share of the patterns and of the mutations (`tests/split.lua`: the items are dealt out by their weights in CPU seconds, heaviest first, to the lightest part; an item the plan does not weigh is an error, and a part says so when nothing in the suite asks for an item it was given). Every item runs in exactly one part, and a check that every part makes on its own share (the cells it swept) is counted once, in part 1, and reported by the others only when it fails: the parts together make the checks the whole made, which `FLORA_COUNT_CHECKS=1` shows (`H.checks` in `tests/helper.lua`), and `FLORA_SPLIT_LIST=1` names each item a part runs. When a pattern or a mutation is added to a suite, give it a weight there.
+
 ## Two runs at once
 
 Several people, or several agents, run tests on one machine, so nothing the tools use may be shared between two runs. `tools/test.sh` keeps each run's files in a directory of its own (`mktemp -d`) and stops only the process group it made; `--times FILE` is made whole in that directory and copied to FILE at the end, and the directory stays, and is named, when the copy fails; `tools/test-linux.sh` sends a list from `mktemp` and starts an unnamed container. The one shared name is the image, built from the same recipe by whichever run finds it missing, and the link `build/test-times.tsv`, which points at the last run to finish (each run's own file stays). A test of the tools finds the processes it started by the pid they record, never by their command line, and `tests/test_tools.py` runs two copies of the runner's tests at once beside an unrelated process that has the command line of its sleepers, and requires that both pass and that the process is left alone.
@@ -53,6 +56,8 @@ A test that failed has its exit status in the file (one killed by a signal 128 p
 
 `show` prints the table with each test's share of the CPU and the least wall time some numbers of jobs could take on those CPU times (longest test first on the first free job; never less than the longest test). `compare` prints each test's CPU seconds in two runs and the change, and totals only the tests both runs timed and passed, naming the ones it left out (only in one run, failed, untimed).
 
+`python3 -I tools/test_times.py groups build/test-times.tsv N [--skip TESTS]` deals the tests out to N groups of near equal CPU time (the heaviest first, each to the lightest group so far), one line a group; it needs a run in which every test passed. The test workflow's groups are made with it.
+
 Compare CPU time, not wall time. Wall time depends on what else the machine runs (the load average in the file says how much), and tests run side by side share the machine too. Even CPU time moves by some per cent with load (shared caches, clock speed), so a change of a few per cent needs repeated runs to be believed; a count that does not depend on the machine (pages painted, calls made, below) settles it better.
 
 ## Profiling
@@ -60,9 +65,9 @@ Compare CPU time, not wall time. Wall time depends on what else the machine runs
 `tools/profile.lua` runs a Lua script, or a chunk given with `-e`, and reports where it spent its time. `just profile ARGS` is `texlua tools/profile.lua ARGS`.
 
 ```
-texlua tools/profile.lua tests/test_pattern_perimeter.lua
+texlua tools/profile.lua tests/test_pattern_perimeter_1.lua
 texlua tools/profile.lua --period 50000 --top 40 --out build/prof.txt tests/test_pattern.lua
-texlua tools/profile.lua --time flora.pattern.clearance,flora.compose.page tests/test_pattern_matrix.lua
+texlua tools/profile.lua --time flora.pattern.clearance,flora.compose.page tests/test_pattern_matrix_1.lua
 texlua tools/profile.lua --no-sample --time flora.compose.page -e 'dofile("my_bench.lua")'
 ```
 

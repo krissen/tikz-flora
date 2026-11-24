@@ -461,6 +461,83 @@ def glob_regex(pattern):
     return re.compile("".join(".*" if part == "**" else "[^/]*" if part == "*" else re.escape(part) for part in re.split(r"(\*\*|\*)", pattern)) + "$")
 
 
+# Files under tests/ that are not tests of their own, and the one reason
+# each is not run by the test workflow. A test file (test_*.lua, test_*.py)
+# is never listed here: it is run, or the check fails.
+CI_EXEMPT = {
+    "tests/helper.lua": "shared setup the Lua tests load",
+    "tests/split.lua": "the plan by which a heavy test is split over files, loaded by those files",
+    "tests/parity.lua": "run by just test-lua54 against a second Lua, which CI does not install",
+    "tests/letters_check.lua": "run inside the TeX documents of just test-tex",
+    "tests/measure_check.lua": "run inside the TeX documents of just test-tex",
+    "tests/support-seed3.lua": "a spec test_support.lua reads",
+}
+CI_EXEMPT_PREFIXES = {
+    "tests/pattern_": "a sweep or its suite that the test files named after it load",
+    "tests/fixtures/": "data the tests read",
+    "tests/slides/": "data the tests read",
+}
+# The TeX documents of just test-tex (a full TeX Live; CI has texlive-binaries).
+CI_EXEMPT_SUFFIXES = {".tex": "compiled by just test-tex, which needs a full TeX installation"}
+
+
+def ci_named(text):
+    """The tests a workflow runs: the names in its matrix groups (tools/test.sh
+    NAME; `fast` stands for the pre-push set), the names after tools/test.sh in
+    its steps, and the test files it runs by path."""
+    with open(os.path.join(ROOT, "tools", "test.sh")) as f:
+        fast = re.search(r'^FAST="([^"]*)"', f.read(), re.MULTILINE)
+    fast_names = fast.group(1).split() + ["bake"] if fast else []
+    named = set()
+    for m in re.finditer(r"^\s+tests:\n((?:\s+-\s+[a-z0-9_ ]+\n)+)", text, re.MULTILINE):
+        for line in m.group(1).splitlines():
+            named.update(line.strip()[1:].split())
+    for m in re.finditer(r"tools/test\.sh ([a-z0-9_ ]+)", text):
+        named.update(m.group(1).split())
+    if "fast" in named:
+        named.discard("fast")
+        named.update(fast_names)
+    files = {f"tests/test_{n}.lua" for n in named} | {f"tests/test_{n}.py" for n in named}
+    files.update(m.group(0) for m in re.finditer(r"tests/test_[a-z0-9_]+\.(?:py|lua)", text))
+    return files
+
+
+def ci_unrun(text):
+    """The files under tests/ that the workflow does not run and that are not
+    listed as exempt, each with why it is named."""
+    ran = ci_named(text)
+    lost = []
+    for dirpath, dirs, names in os.walk(os.path.join(ROOT, "tests")):
+        dirs[:] = [d for d in dirs if d != "__pycache__"]
+        for name in names:
+            rel = os.path.relpath(os.path.join(dirpath, name), ROOT)
+            if re.match(r"test_[A-Za-z0-9_]+\.(lua|py)$", name):
+                if rel not in ran:
+                    lost.append(f"{rel} is run by no job of the test workflow")
+            elif not (rel in CI_EXEMPT or any(rel.startswith(p) for p in CI_EXEMPT_PREFIXES) or os.path.splitext(rel)[1] in CI_EXEMPT_SUFFIXES):
+                lost.append(f"{rel} is neither a test the workflow runs nor in CI_EXEMPT")
+    return sorted(lost)
+
+
+def test_ci_runs_every_test():
+    """No test file is left out of the test workflow: each test_*.lua and
+    test_*.py is named in one of its jobs, and each other file under tests/
+    says in CI_EXEMPT why it is not a test of its own. A mutation of the
+    workflow (a name taken out of its groups) is seen."""
+    with open(os.path.join(ROOT, ".github", "workflows", "test.yml")) as f:
+        text = f.read()
+    check(not ci_unrun(text), f"tests the test workflow does not run: {ci_unrun(text)}")
+    for name in ("compose", "pattern_perimeter_1", "tools_matrix"):
+        token = re.compile(rf"(?<![a-z0-9_]){name}(?![a-z0-9_]) ?")
+        lines, done = text.splitlines(keepends=True), False
+        for i, line in enumerate(lines):
+            if not done and not line.lstrip().startswith(("#", "- name:")) and token.search(line):
+                lines[i], done = token.sub("", line, count=1), True
+        if done:
+            mutated = [m for m in ci_unrun("".join(lines)) if name in m]
+            check(mutated, f"taking {name} out of the workflow's jobs is not seen")
+
+
 def test_ci_paths():
     """The test workflow runs when a file its tests use changes: every
     file the tests and tools/test.sh name, and the ones the table of calls
@@ -627,6 +704,7 @@ def main():
         test_linux_input()
         test_no_loose_processes()
         test_ci_paths()
+        test_ci_runs_every_test()
         test_toolproc()
         test_run_all()
         test_concurrent_runs()

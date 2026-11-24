@@ -1,9 +1,9 @@
 name: test
 
-# The engine's Lua tests, in groups of a few minutes each, only when the
-# engine or its tests change. The groups name 31 of the 45 test files; the
-# other 14 (the pattern tests among them) are not run here yet, and
-# docs/testing.md lists them. The seconds-fast tests also run before push
+# Every test file of tests/ runs here, in groups of about five minutes
+# each, only when the engine or its tests change (tests/test_tools.py checks
+# that none is left out, and says why for any file under tests/ that is not
+# a test). The seconds-fast tests also run before push
 # (.pre-commit-config.yaml).
 on:
   pull_request:
@@ -33,15 +33,26 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # Grouped by CPU seconds on a laptop (just test-times, 2026-11):
-        # mix 123, scene_ops 83, header_mark 140 | compose 186, ornaments
-        # 92, progression 42 | layout 117, clock 56, visitor 22 and the fast
-        # set | support 87, titles 34, backdrop 22, raster 12 and the rest.
+        # Dealt out by CPU seconds on a laptop (just test-times 4 on the
+        # tree of 2026-11-24, then python3 -I tools/test_times.py groups
+        # build/test-times.tsv 12 --skip tools_matrix): 291 to 328 s a group.
+        # A job ran 0.9 to 1.25 s of CI for each such second, plus about
+        # 25 s of setup, so a group takes five to seven minutes. The heavy
+        # pattern tests are split in parts (tests/split.lua) so that none is
+        # more than a group's share. tools_matrix has the job below.
         tests:
-          - mix scene_ops header_mark
-          - compose ornaments progression
-          - layout clock visitor fast page_cache cache_key
-          - support raster relief gilt_look backdrop catalog garden titles
+          - pattern_matrix_1 pattern_matrix_4
+          - header_mark pattern_protect
+          - pattern_perimeter_3 progression visitor
+          - pattern_perimeter_2 scene_ops
+          - backdrop pattern_perimeter_1 titles
+          - mix pattern_matrix_3 tools
+          - frame_matrix pattern_reach_3 support
+          - leaf ornaments pattern_reach_2 raster
+          - clock lint page_cache pattern_perimeter_4 plant progression_frame_resources render_page settings
+          - bake cache_key catalog headpiece pattern_ground pattern_reach_1 pattern_values prepare_spec relief stem_taper
+          - compose floret_passes garden gilt_look letters pattern reserve
+          - core grow inline layout pattern_colourways pattern_matrix_2 pdf_form_cache preview row_phase
     steps:
       - uses: actions/checkout@v4
       - name: texlua
