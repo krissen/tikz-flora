@@ -83,11 +83,14 @@ function run.bands()
       end
     end
   end
-  local F = dofile("tests/perimeter_flora.lua")
-  for _, paper in ipairs({ F.PAPERS[1], F.PAPERS[3] }) do
+  -- Flora in the band: the same pages without a pattern (built from
+  -- tests/pattern_perimeter.lua, which an older tree has too).
+  for _, paper in ipairs({ B.PAPERS[1], B.PAPERS[3] }) do
     for _, wmm in ipairs({ 8, 18 }) do
       for _, edge in ipairs({ false, "border" }) do
-        out("bands", string.format("flora %s %d %s", paper[1], wmm, tostring(edge)), page_text(F.spec(wmm, paper, true, "light", 1, edge or nil)))
+        local spec = B.spec(nil, wmm, paper, edge, "light")
+        spec.pattern, spec.seed = nil, 1
+        out("bands", string.format("flora %s %d %s", paper[1], wmm, tostring(edge)), page_text(spec))
       end
     end
   end
@@ -153,5 +156,9 @@ for _, s in ipairs(suites) do
     io.stderr:write("bodies: no suite " .. s .. "\n")
     os.exit(2)
   end
+  -- Each suite starts from no PDF resources, so that what one suite
+  -- registers (and a change to it) leaves the names the next one paints
+  -- with as they were.
+  Paint.reset_resources()
   run[s]()
 end
