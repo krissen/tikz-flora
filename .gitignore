@@ -3,6 +3,7 @@ tuner/node_modules/
 tune-local.lua
 tuner/dist/
 __pycache__/
+.venv/
 site/node_modules/
 site/dist/
 site/.wrangler/

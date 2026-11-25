@@ -1,7 +1,9 @@
 # tools/lint.py against stand-in tools: for each tool and each way it can
 # end (clean, findings in an exempt file, findings in another file, missing,
-# crash, unreadable output; pyright also skipped), what it says about the
-# exemptions and how it ends. The claim "is clean; remove it" must be made
+# crash, unreadable output), what it says about the exemptions and how it
+# ends; that ruff and pyright are taken from the tree's .venv before PATH,
+# pyright with .venv's Python; and that an argument it does not take stops
+# it. The claim "is clean; remove it" must be made
 # for a file only when every tool responsible for that file ran to the end
 # and found nothing in it. No network and none of the real tools.
 # Run from the repository root: python3 -I tests/test_lint.py
@@ -63,6 +65,13 @@ else:
 sys.exit(1 if found else 0)
 """
 
+# A clean ruff or pyright for a tree's .venv, which records its arguments.
+VENV_FAKE = """#!{exe}
+import json, os, sys
+open(os.path.join(os.path.dirname(sys.argv[0]), "args-{tool}"), "w").write(" ".join(sys.argv[1:]))
+print(json.dumps([] if "{tool}" == "ruff" else {{"generalDiagnostics": []}}))
+"""
+
 TOOLS = ["lua-language-server", "ruff", "shellcheck", "pyright"]
 # Exact exemptions, with the tools responsible for each. A glob is never
 # claimed clean; ignored/ is outside lua-language-server's workspace and e.md
@@ -113,13 +122,13 @@ def run(root, bindir, modes, args=()):
     return p.returncode, p.stdout.splitlines()
 
 
-def expect(label, modes, require_pyright=True):
+def expect(label, modes):
     """What lint.py must say for these outcomes, checked against what it says."""
     code, out = RUNS[label]
     # Tools that ran to the end (findings or not): the others are missing,
-    # crashed, gave unreadable output, or were skipped.
+    # crashed or gave unreadable output.
     ran = {t for t in TOOLS if modes[t] in ("clean", "findings", "findings_other")}
-    broken = {t for t in TOOLS if t not in ran and not (t == "pyright" and modes[t] == "missing" and not require_pyright)}
+    broken = {t for t in TOOLS if t not in ran}
     failing = {t for t in TOOLS if modes[t] == "findings_other"}
     clean = set()
     unchecked = set()
@@ -139,19 +148,21 @@ def expect(label, modes, require_pyright=True):
         check(want in out, f"{label}: missing {want!r}")
     check(any("not checked" in line for line in out) == bool(unchecked), f"{label}: the 'not checked' notice, want {bool(unchecked)}")
     exempt_lines = [line for line in out if "are exempt" in line]
-    incomplete = bool(broken) or (not require_pyright and modes["pyright"] == "missing")
     if exempt_lines:
-        check(("not counted" in exempt_lines[0]) == incomplete, f"{label}: the exempt count must say which tools it leaves out")
-    if "pyright" not in ran and not require_pyright:
-        check("lint: pyright skipped, not on PATH (pip install pyright)" in out, f"{label}: pyright skipped, aloud")
+        check(("not counted" in exempt_lines[0]) == bool(broken), f"{label}: the exempt count must say which tools it leaves out")
+    # A missing tool is named with how to get it; ruff and pyright from .venv.
+    for t in TOOLS:
+        if modes[t] == "missing":
+            how = "just venv" if t in ("ruff", "pyright") else "brew install"
+            check(any(line.startswith(f"lint: {t} not found (") and how in line for line in out), f"{label}: {t} missing, said with how to get it ({how})")
 
 
 RUNS = {}
 CASES = {}
 
 
-def case(label, modes, require_pyright=True):
-    CASES[label] = (modes, require_pyright)
+def case(label, modes):
+    CASES[label] = modes
 
 
 allclean = {t: "clean" for t in TOOLS}
@@ -159,16 +170,46 @@ case("all clean", allclean)
 for tool in TOOLS:
     for mode in ("findings", "findings_other", "missing", "crash", "garbage"):
         case(f"{tool} {mode}", {**allclean, tool: mode})
-case("pyright skipped locally", {**allclean, "pyright": "missing"}, require_pyright=False)
-case("pyright skipped, luals findings", {**allclean, "pyright": "missing", "lua-language-server": "findings"}, require_pyright=False)
+case("pyright missing, luals findings", {**allclean, "pyright": "missing", "lua-language-server": "findings"})
 case("everything dead", {t: "crash" for t in TOOLS})
 
 with tempfile.TemporaryDirectory() as base:
     root = make_tree(base)
-    for label, (modes, require_pyright) in CASES.items():
-        args = ["--require-pyright"] if require_pyright else []
-        RUNS[label] = run(root, make_bin(base, modes), modes, args)
-        expect(label, modes, require_pyright)
+    for label, modes in CASES.items():
+        RUNS[label] = run(root, make_bin(base, modes), modes)
+        expect(label, modes)
+
+    # An argument lint.py does not take (the old --require-pyright among
+    # them) stops it before any tool runs.
+    for args in (["--require-pyright"], ["x"]):
+        code, out = run(root, make_bin(base, allclean), allclean, args)
+        check(code == 2 and any(line.startswith("usage:") for line in out), f"lint.py {args}: exit {code}, want 2 with its usage")
+
+    # ruff and pyright in the tree's .venv are used before PATH's, which
+    # crash here; pyright is given .venv's Python.
+    venv = os.path.join(root, ".venv", "bin")
+    os.makedirs(venv)
+    for tool in ("ruff", "pyright"):
+        path = os.path.join(venv, tool)
+        with open(path, "w") as f:
+            f.write(VENV_FAKE.format(exe=sys.executable, tool=tool))
+        os.chmod(path, 0o755)
+    with open(os.path.join(venv, "python"), "w") as f:
+        f.write("#!/bin/sh\n")
+    os.chmod(os.path.join(venv, "python"), 0o755)
+    modes = {**allclean, "ruff": "crash", "pyright": "crash"}
+    code, out = run(root, make_bin(base, modes), modes)
+    check(code == 0, f".venv before PATH: exit {code}, want 0: {out}")
+    argv = []
+    if os.path.exists(os.path.join(venv, "args-pyright")):
+        with open(os.path.join(venv, "args-pyright")) as f:
+            argv = f.read().split()
+    check("--pythonpath" in argv and argv[argv.index("--pythonpath") + 1] == os.path.join(venv, "python"), f"pyright from .venv was not given .venv's Python: {argv}")
+    # Without pyright in .venv and on PATH, the run fails and says how.
+    os.remove(os.path.join(venv, "pyright"))
+    modes = {**allclean, "pyright": "missing"}
+    code, out = run(root, make_bin(base, modes), modes)
+    check(code != 0 and "lint: pyright not found (just venv makes .venv with it, from requirements-dev.txt)" in out, f"pyright nowhere: exit {code}: {out}")
 
 if failures:
     sys.stderr.write(f"{failures} failures\n")

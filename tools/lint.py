@@ -2,7 +2,7 @@
 # the editor's warnings, so what the editor shows is what CI fails on), its
 # Python with ruff and pyright, and its shell scripts with shellcheck.
 #
-#   python3 -I tools/lint.py [--require-pyright]
+#   python3 -I tools/lint.py
 #
 # Configuration: .luarc.json (Lua 5.3, the LuaTeX globals in
 # .luals/luatex.lua), ruff.toml, pyrightconfig.json; shellcheck runs on
@@ -11,10 +11,11 @@
 # it only shrinks. A file listed there that has become clean is reported, so
 # its line can go.
 #
-# A tool that is not installed fails the run and is named; nothing is
-# skipped quietly. The one exception is pyright, which is skipped, said
-# aloud, when it is not on PATH, unless --require-pyright is given (CI).
-# Locations: $LUA_LS for lua-language-server, otherwise PATH.
+# A tool that is not installed fails the run and is named, with how to get
+# it; nothing is skipped. Locations: $LUA_LS for lua-language-server; ruff
+# and pyright from the repository's .venv (`just venv` makes it from
+# requirements-dev.txt, the versions CI uses) before PATH, and pyright run
+# from .venv resolves imports with .venv's Python; otherwise PATH.
 import fnmatch
 import glob
 import json
@@ -33,10 +34,22 @@ ROOT = os.environ.get("LINT_ROOT") or os.path.dirname(os.path.dirname(os.path.ab
 
 INSTALL = {
     "lua-language-server": "brew install lua-language-server",
-    "ruff": "brew install ruff, or pip install ruff",
+    "ruff": "just venv makes .venv with it, from requirements-dev.txt",
     "shellcheck": "brew install shellcheck",
-    "pyright": "pip install pyright",
+    "pyright": "just venv makes .venv with it, from requirements-dev.txt",
 }
+
+# The repository's own environment for the Python tools (`just venv`).
+VENV = os.path.join(ROOT, ".venv", "bin")
+
+
+def find(name):
+    """The tool's path: .venv's for the Python tools, then PATH."""
+    if name in ("ruff", "pyright"):
+        own = os.path.join(VENV, name)
+        if os.path.isfile(own) and os.access(own, os.X_OK):
+            return own
+    return shutil.which(name)
 
 
 def exempt_patterns():
@@ -129,7 +142,11 @@ def shellcheck(exe):
 
 
 def pyright(exe):
-    proc = run([exe, "--outputjson"])
+    # Run from .venv, it resolves imports with .venv's Python, where
+    # requirements-dev.txt puts numpy and Pillow.
+    python = os.path.join(VENV, "python")
+    own = os.path.dirname(exe) == VENV and os.path.exists(python)
+    proc = run([exe, "--outputjson", *(["--pythonpath", python] if own else [])])
     if proc.returncode not in (0, 1):
         raise RuntimeError(proc.stdout + proc.stderr)
     found = []
@@ -144,25 +161,22 @@ def pyright(exe):
 
 def main():
     toolproc.install()
-    require_pyright = "--require-pyright" in sys.argv[1:]
+    if sys.argv[1:]:
+        print(f"lint: takes no arguments, got {' '.join(sys.argv[1:])}\nusage: python3 -I tools/lint.py")
+        sys.exit(2)
     patterns = exempt_patterns()
     tools = [
         ("lua-language-server", os.environ.get("LUA_LS") or shutil.which("lua-language-server"), lua),
-        ("ruff", shutil.which("ruff"), ruff),
+        ("ruff", find("ruff"), ruff),
         ("shellcheck", shutil.which("shellcheck"), shellcheck),
-        ("pyright", shutil.which("pyright"), pyright),
+        ("pyright", find("pyright"), pyright),
     ]
     failing = {}
     exempt = {}
     broken = []
     ran = set()
-    skipped = []
     for name, exe, check in tools:
         if not exe:
-            if name == "pyright" and not require_pyright:
-                print("lint: pyright skipped, not on PATH (pip install pyright)")
-                skipped.append(name)
-                continue
             print(f"lint: {name} not found ({INSTALL[name]})")
             broken.append(name)
             continue
@@ -200,7 +214,7 @@ def main():
         left = sorted({t for p in unchecked for t in owners(p) if t not in ran})
         print(f"lint: {len(unchecked)} exact exemptions not checked for cleanliness ({', '.join(left)} did not run)")
     if exempt:
-        left = sorted(set(broken + skipped))
+        left = sorted(set(broken))
         note = f"; not counted: {', '.join(left)} did not run" if left else ""
         print(f"lint: {sum(exempt.values())} findings in {len(exempt)} files are exempt (.lint-exempt{note})")
     bad = sorted(set(failing) | set(broken))

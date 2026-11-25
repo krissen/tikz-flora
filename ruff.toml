@@ -1,3 +1,4 @@
 # ruff's own rule set, unchanged: nothing here asks for more, and nothing in
-# the repo needed less. CI pins the version (.github/workflows/lint.yml).
+# the repo needed less. requirements-dev.txt pins the version that `just venv`
+# and CI install.
 required-version = ">=0.17"

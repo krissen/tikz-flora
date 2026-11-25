@@ -3,8 +3,9 @@ name: lint
 # tools/lint.py: lua-language-server over the Lua, ruff and pyright over the
 # Python, shellcheck over tools/*.sh (configuration in .luarc.json,
 # ruff.toml, pyrightconfig.json; .lint-exempt lists files not yet clean).
-# numpy and Pillow are installed only so pyright can resolve the imports of
-# the measuring tools. Every version is pinned.
+# ruff and pyright come from .venv, made from requirements-dev.txt as
+# `just venv` makes it locally (numpy and Pillow are in it only so pyright can
+# resolve the imports of the measuring tools). Every version is pinned.
 # The paths filter below skips the job on a pull request that touches none of
 # them; were the job ever a required status check, such a pull request would
 # wait for it for ever, so the filter must go first.
@@ -19,6 +20,7 @@ on:
       - ".lint-exempt"
       - "ruff.toml"
       - "pyrightconfig.json"
+      - "requirements-dev.txt"
       - "tools/lint.py"
       - ".github/workflows/lint.yml"
   workflow_dispatch:
@@ -62,8 +64,7 @@ jobs:
       - name: ruff and pyright
         run: |
           set -e
-          python3 -m venv "$RUNNER_TEMP/lintenv"
-          "$RUNNER_TEMP/lintenv/bin/pip" install -q ruff==0.17.3 pyright==1.1.414 numpy==2.5.4 pillow==13.0.0
-          echo "$RUNNER_TEMP/lintenv/bin" >> "$GITHUB_PATH"
+          python3 -m venv .venv
+          .venv/bin/pip install -q -r requirements-dev.txt
       - name: lint
-        run: python3 -I tools/lint.py --require-pyright
+        run: python3 -I tools/lint.py

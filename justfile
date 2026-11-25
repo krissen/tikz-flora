@@ -62,12 +62,20 @@ bodies-compare ref *suites:
 profile *args:
     texlua tools/profile.lua "$@"
 
-# Lint the Lua (lua-language-server, .luarc.json), the Python (ruff, and
-# pyright when installed) and tools/*.sh (shellcheck). .lint-exempt lists the
-# files not yet clean. Each tool must be installed; the run names a missing
-# one and fails.
+# Lint the Lua (lua-language-server, .luarc.json), the Python (ruff and
+# pyright) and tools/*.sh (shellcheck). .lint-exempt lists the files not yet
+# clean. Each tool must be installed; the run names a missing one, says how
+# to get it and fails. ruff and pyright are taken from .venv (just venv)
+# before PATH.
 lint:
     python3 -I tools/lint.py
+
+# .venv with the Python tools lint runs, at the versions CI uses
+# (requirements-dev.txt): ruff, pyright, and numpy and Pillow for pyright to
+# resolve the measuring tools' imports. Run again after the file changes.
+venv:
+    python3 -m venv .venv
+    .venv/bin/pip install -q -r requirements-dev.txt
 
 # The ornament gallery: every ornament kind, labelled, for three seeds
 # (tex/gallery.tex), to build/gallery.pdf and .png. ONLY limits it to some

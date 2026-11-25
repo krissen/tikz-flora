@@ -425,7 +425,8 @@ add the TinyTeX binaries to `PATH`:
 - `just dist`: build `build/tikzflora.zip`. `just test-dist` compiles the
   example from the unpacked zip alone.
 - `just test [JOBS]`: run the Lua and Python unit tests, JOBS at a time. `just test-times` times each test and `just profile` shows where a run spends its time; `docs/testing.md` explains them. `just test-tex` and `just test-preview` check against real compiles.
-- `just lint`: lua-language-server over the Lua, ruff and pyright over the Python, shellcheck over `tools/*.sh`; each must be installed (pyright is skipped, with a note, when it is missing). Files whose findings are not yet cleaned are listed in `.lint-exempt`; the list only shrinks, so clean a file and delete its line. The same check runs in CI.
+- `just venv`: make `.venv` with the Python tools lint runs (ruff, pyright, and numpy and Pillow for pyright), pinned in `requirements-dev.txt` as CI pins them. Run it again when the file changes.
+- `just lint`: lua-language-server over the Lua, ruff and pyright over the Python, shellcheck over `tools/*.sh`; each must be installed, and a missing one fails the run with a line saying how to get it. ruff and pyright are taken from `.venv` before `PATH`. Files whose findings are not yet cleaned are listed in `.lint-exempt`; the list only shrinks, so clean a file and delete its line. The same check runs in CI.
 - `just site-bake`, `just site-dev`, `just test-site`, `just site-deploy`:
   build, test and publish the site. `site/README.md` explains them.
 - `just tuner`: run a local web app with a slider for every setting in

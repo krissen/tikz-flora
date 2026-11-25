@@ -1,0 +1,8 @@
+# The Python tools tools/lint.py runs, and what pyright needs to resolve the
+# measuring tools' imports. `just venv` installs them into .venv, where
+# tools/lint.py looks first; CI installs the same file
+# (.github/workflows/lint.yml). ruff.toml asks for ruff 0.17 or later.
+ruff==0.17.3
+pyright==1.1.414
+numpy==2.5.4
+pillow==13.0.0
