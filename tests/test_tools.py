@@ -432,7 +432,7 @@ LOOSE_KEYWORDS = {"start_new_session", "preexec_fn", "process_group"}
 # The python programs of the tools and their tests that run others (the
 # older tools, tools/bake_tune.py and the tuner among them, are not the
 # measuring tools').
-LOOSE_CHECKED = [os.path.join("tests", n) for n in ("test_tools.py", "test_tools_matrix.py", "test_lint.py", "test_progression_raster.py")] + [os.path.join("tools", n) for n in ("lint.py", "test_times.py", "edge_measure.py", "form_measure.py")]
+LOOSE_CHECKED = [os.path.join("tests", n) for n in ("test_tools.py", "test_tools_matrix.py", "test_lint.py", "test_progression_raster.py")] + [os.path.join("tools", n) for n in ("lint.py", "test_times.py", "edge_measure.py", "form_measure.py", "frame_flora.py")]
 
 
 def test_no_loose_processes():

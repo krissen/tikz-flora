@@ -77,6 +77,17 @@ venv:
     python3 -m venv .venv
     .venv/bin/pip install -q -r requirements-dev.txt
 
+# Flora round the paper's edge (tools/frame_flora.lua and .py): SET is
+# measure (today's layout=perimeter and surround, three papers, three band
+# widths, with and without a title) or a sheet of the band prototypes
+# (alts, widths, papers, band, margins). Writes OUT/SET/: the pages,
+# measure.tsv and summary.md (where the ink lies on each side, in mm) and
+# sheet.png. SEEDS is a comma-separated list.
+frame-flora set="measure" out="build/frame-flora" seeds="11":
+    mkdir -p "{{out}}/{{set}}"
+    texlua tools/frame_flora.lua "{{out}}/{{set}}" "{{set}}" "{{seeds}}"
+    {{PYTHON}} -I tools/frame_flora.py "{{out}}/{{set}}" "{{set}}"
+
 # The ornament gallery: every ornament kind, labelled, for three seeds
 # (tex/gallery.tex), to build/gallery.pdf and .png. ONLY limits it to some
 # slots or kinds (comma-separated), e.g. `just gallery flourish,fan 6`.

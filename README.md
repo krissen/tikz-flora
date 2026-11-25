@@ -420,6 +420,7 @@ add the TinyTeX binaries to `PATH`:
 - `just grow NAME SEED PAGE`: build `build/grow-NAME-PAGE.mp4` and `.gif`
   of a page as it grows. It needs ffmpeg, poppler (`pdftocairo`) and
   ImageMagick.
+- `just frame-flora [SET] [OUT] [SEEDS]`: render flora round the paper's edge and measure it: `measure` gives, for layout=perimeter and surround, how far each side's ink lies from the paper's edge, how much of the side it covers and what reaches the text block (`summary.md`); the other sets are sheets of band prototypes (`tools/frame_flora.lua` names them).
 - `just gallery`: draw every ornament kind, labelled, to
   `build/gallery.pdf` (`tex/gallery.tex`).
 - `just dist`: build `build/tikzflora.zip`. `just test-dist` compiles the
