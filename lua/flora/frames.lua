@@ -502,9 +502,9 @@ M.VINE_BAND, M.VINE_SCALE, M.VINE_CORNER, M.VINE_TAPER = 70, { 0.4, 0.6 }, 0.5, 
 
 -- Vine: flora in the perimeter band, one vine round all four sides on the
 -- band's centre line (loop.lua), its corners rounded. It is two plants
--- rooted in the foot-left corner, their roots crossing there, each round
--- one half of the page to meet in the top-right corner, so the foot and
--- the top run unbroken. The band is pattern.lua's (M.band_width): as wide
+-- rooted in the foot-left corner, their roots crossing there and their
+-- stems narrowing to a point, each round one half of the page to meet in
+-- the top-right corner, so the foot and the top run unbroken. The band is pattern.lua's (M.band_width): as wide
 -- on every side, narrowed alike where a margin is narrower. The list's
 -- `band` holds that width, the width asked, the side that narrowed it, the
 -- inner rectangle, the form asked and, under Band.FLORA_NARROWEST mm,
@@ -532,11 +532,18 @@ function M.vine(spec)
     compose = { hero_min = math.min(28, 0.4 * vb), hero_max = math.min(80, 0.45 * vb) },
     plant = { end_taper = M.VINE_TAPER },
   }
+  -- No pendant: a plant's pendant hangs in its foot's corner, which on the
+  -- vine is the root, where the gilt would be bent round the band's corner.
+  local Orn = require("flora.ornaments")
+  local ornaments = {}
+  for kname, wt in pairs(spec.ornaments or {}) do ornaments[kname] = wt end
+  for _, kind in ipairs(Orn.of("pendant")) do ornaments[kind.name] = 0 end
   for i, dir in ipairs({ 1, -1 }) do
     local fn, inv = lp:maps(s0 - dir * cross, vb / 2, k, dir)
     local f = curved(spec, fn, inv, fw, h, { x0 = vb, y0 = 0, x1 = fw, y1 = h },
       { label = i == 1 and "left" or "right", seed = i == 2 and seed_of(spec, 2) or nil })
     f.spec.edge, f.spec.gutter, f.spec.header, f.spec.tune = edge, gutter, "margin", tune
+    f.spec.ornaments = ornaments
     fs[#fs + 1] = f
   end
   fs.loop = lp
