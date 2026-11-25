@@ -1089,14 +1089,11 @@ function C.frames(spec)
         { "l", w, ch }, { "l", w, h }, { "l", 0, h }, { "z" },
       })
     end
-    -- A frame may ask for less detail in its small shapes (wash.lua's pt.lod).
-    pt.lod = f.spec.lod
     if f.spec.tune then
       Tune._with(f.spec.tune, function() plant(f.spec, pt, prog:part(plants * (k - 1) / #frames, plants * k / #frames)) end)
     else
       plant(f.spec, pt, prog:part(plants * (k - 1) / #frames, plants * k / #frames))
     end
-    pt.lod = nil
     if cl then pt:clip_end() end
     cover = cover + pt.coverage / #frames
   end

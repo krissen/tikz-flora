@@ -305,23 +305,6 @@ end
 function W.wash(pt, poly, o)
   local rng = o.rng
   local size = o.size
-  -- A frame drawn at a reduced scale (frames.lua's vine) may paint its
-  -- small shapes with less detail: pt.lod = { scale = the frame's scale,
-  -- simple = below this size on the paper in pt a shape is painted simple,
-  -- grain = a factor on the grain's density }. Without it nothing changes.
-  local lod = pt.lod
-  if lod then
-    if lod.simple and size * lod.scale < lod.simple and not o.simple then
-      local c = {}
-      for key, v in pairs(o) do c[key] = v end
-      c.simple, o = true, c
-    end
-    if lod.grain and (o.grain or 0) > 0 then
-      local c = {}
-      for key, v in pairs(o) do c[key] = v end
-      c.grain, o = o.grain * lod.grain, c
-    end
-  end
   local s = o.strength or 1
   -- A part painted in a non-blue ink takes that ink for its fixed blue
   -- pigments too, so its bleed and pooled rim are not ultramarine.

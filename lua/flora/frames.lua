@@ -544,9 +544,6 @@ function M.vine(spec)
       { label = i == 1 and "left" or "right", seed = i == 2 and seed_of(spec, 2) or nil })
     f.spec.edge, f.spec.gutter, f.spec.header, f.spec.tune = edge, gutter, "margin", tune
     f.spec.ornaments = ornaments
-    if M.VINE_LOD then
-      f.spec.lod = { scale = k, simple = M.VINE_LOD.simple, grain = M.VINE_LOD.grain and M.VINE_LOD.grain(k) }
-    end
     fs[#fs + 1] = f
   end
   fs.loop = lp
