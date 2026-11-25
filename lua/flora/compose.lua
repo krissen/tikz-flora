@@ -970,18 +970,15 @@ end
 function C.flora_band(pt, spec, frames)
   local Band, Pattern = require("flora.band"), require("flora.pattern")
   local b = frames.band
-  local mm = b.w * 25.4 / 72
-  if b.w < b.asked - 1e-6 then
-    Pattern.warn(pt, string.format("%s=%g is wider than the %s margin allows; the band is %.1f mm on all four sides",
-      Band.WIDTH, b.asked * 25.4 / 72, b.side, mm))
-  end
+  local mm = Pattern.band_mm(b.w)
+  if b.w < b.asked - 1e-6 then Pattern.warn(pt, Pattern.narrowed(b.asked, b.side, b.w)) end
   if b.none then
-    Pattern.warn(pt, string.format("the perimeter band is %.1f mm, narrower than the %g mm flora is laid in; it has no flora",
+    Pattern.warn(pt, string.format("the perimeter band is %s mm, narrower than the %g mm flora is laid in; it has no flora",
       mm, Band.FLORA_NARROWEST))
     return nil
   end
   if b.density ~= b.density_asked then
-    Pattern.warn(pt, string.format("%s=%s needs a band of %g mm; the %.1f mm band is laid %s",
+    Pattern.warn(pt, string.format("%s=%s needs a band of %g mm; the %s mm band is laid %s",
       Band.FLORA_DENSITY, b.density_asked, Band.DENSITY_NARROWEST[b.density_asked], mm, b.density))
   end
   if not Band.FLORA_BUILT[b.form] then

@@ -66,6 +66,48 @@ if S.once("forms") then
   end
 end
 
+-- The log's band widths never cross the limit they are told against: a
+-- band just under a limit is written under it, one on it at it. The
+-- flora band's limits (6 mm, open's 7 and sparse's 9), the narrowing below
+-- the width asked, and the pattern band's 4 mm.
+if S.once("log widths") then
+  local function said(warnings, pattern)
+    for _, w in ipairs(warnings or {}) do
+      local n = w:match(pattern)
+      if n then return tonumber(n) end
+    end
+  end
+  for _, c in ipairs({ { 5.99, "dense", 6 }, { 6, "dense", nil }, { 6.99, "open", 7 }, { 7, "open", nil }, { 8.99, "sparse", 9 }, { 9, "sparse", nil } }) do
+    local spec = F.spec(c[1], F.PAPERS[1], false, "light", 1, nil)
+    spec.perimeter_density = c[2]
+    local pt = Paint.new({ backend = "pdf" })
+    Compose.flora_band(pt, spec, Frames.of(spec))
+    local n = said(pt.pattern_warnings, "the perimeter band is ([%d.]+) mm, narrower") or said(pt.pattern_warnings, "the ([%d.]+) mm band is laid")
+    if c[3] then
+      H.check(n and n < c[3], string.format("a %g mm band at %s is written as %s mm against %g mm", c[1], c[2], tostring(n), c[3]))
+    else
+      H.check(n == nil, string.format("a %g mm band at %s says it is too narrow (%s mm)", c[1], c[2], tostring(n)))
+    end
+  end
+  -- Narrowed by its margins to just under the 12 mm asked.
+  local B = dofile("tests/pattern_perimeter.lua")
+  local m = (11.99 * 72 / 25.4 + 9) * 25.4 / 72
+  local spec = F.spec(12, F.PAPERS[1], false, "light", 1, nil, { m, m, m, m })
+  local pt = Paint.new({ backend = "pdf" })
+  Compose.flora_band(pt, spec, Frames.of(spec))
+  local n = said(pt.pattern_warnings, "the band is ([%d.]+) mm on all four sides")
+  H.check(n and n < 12, "a band narrowed to 11.99 mm is written as " .. tostring(n) .. " mm, not under the 12 mm asked")
+  -- The pattern band's 4 mm: margins that leave 3.99 mm.
+  m = (3.99 * 72 / 25.4 + 9) * 25.4 / 72
+  local ps = B.spec("kikko", 12, B.PAPERS[1], false, "light", { m, m, m, m })
+  pt = Paint.new({ backend = "pdf" })
+  local kikko
+  for _, p in ipairs(require("flora.patterns").list) do if p.name == "kikko" then kikko = p end end
+  Pattern.perimeter_band(ps, kikko, pt)
+  n = said(pt.pattern_warnings, "room for no perimeter band %(([%d.]+) mm%)")
+  H.check(n and n < 4, "a 3.99 mm pattern band is written as " .. tostring(n) .. " mm against 4 mm")
+end
+
 -- The sweep.
 local verbose = os.getenv("FLORA_MATRIX_VERBOSE")
 local total = 0

@@ -1015,6 +1015,20 @@ function M.warn(pt, msg)
   if texio and texio.write_nl then texio.write_nl("log", "flora: " .. msg) end
 end
 
+-- A band's width of w pt as the log writes it: in mm to a tenth, rounded
+-- down, so that a band just under a limit (4 mm, 6 mm, the width asked) is
+-- never written as the limit it falls short of.
+function M.band_mm(w)
+  return string.format("%.1f", math.floor(w * 25.4 / 72 * 10 + 1e-6) / 10)
+end
+
+-- The line the log gives when a margin narrows the band: `asked` and `w`
+-- in pt, `side` the margin that narrowed it. Pattern and flora bands alike.
+function M.narrowed(asked, side, w)
+  return string.format("%s=%g is wider than the %s margin allows; the band is %s mm on all four sides",
+    Band.WIDTH, asked * 25.4 / 72, side, M.band_mm(w))
+end
+
 -- The perimeter band's width on spec's page in pt, as it is drawn: the
 -- width asked (band.lua's key, in mm, at most half the paper's either way),
 -- narrowed where a margin is narrower (M.band_inner). The one definition
@@ -1080,12 +1094,11 @@ function M.perimeter_band(spec, p, pt)
   -- narrow for a band at all, none is drawn.
   if w < asked - 1e-6 then
     if w < Band.WIDTH_MIN * 72 / 25.4 - 1e-6 then
-      M.warn(pt, string.format("%s=%g: the %s margin leaves room for no perimeter band (%.1f mm); none is drawn",
-        Band.WIDTH, asked * 25.4 / 72, side, w * 25.4 / 72))
+      M.warn(pt, string.format("%s=%g: the %s margin leaves room for no perimeter band (%s mm); none is drawn",
+        Band.WIDTH, asked * 25.4 / 72, side, M.band_mm(w)))
       return { none = true }
     end
-    M.warn(pt, string.format("%s=%g is wider than the %s margin allows; the band is %.1f mm on all four sides",
-      Band.WIDTH, asked * 25.4 / 72, side, w * 25.4 / 72))
+    M.warn(pt, M.narrowed(asked, side, w))
   end
   local mm = w * 25.4 / 72
   local narrowest = Band.NARROWEST[p.name]
