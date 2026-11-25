@@ -14,7 +14,12 @@ transparent where nothing is painted) and writes:
   band asked; beyond the share of the side's ink further in than the band
   asked. text_mm2 is the ink inside the text block (mm2), the frame title
   and the reservation included, and title_mm2 that inside the frame
-  title's box alone.
+  title's box alone. solid is the share of the ink outside the text block
+  that is at least SOLID_MM thick (what is left after an opening by a
+  square that size: leaves, blooms and stems, not dots and hairlines),
+  and solid_mm2_per_cm that ink in mm2 per cm of the paper's edge: a band
+  that has become a scatter of specks has little of it. secs is the CPU
+  time the page took to paint.
 - OUTDIR/summary.md, a table of the same, the seeds of one page taken
   together (the least near, the greatest far, the mean covers).
 - OUTDIR/sheet.png, the pages in the rows and columns pages.tsv names,
@@ -37,7 +42,11 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import toolproc
 
 DPI = 150
-PX = DPI / 72.0
+# Pixels per page unit. The engine's page units are written to the PDF as
+# TeX points (pdfout.lua scales by 72/72.27), so a pixel at DPI is
+# 72.27/DPI of them; their mm are the engine's, 72/25.4 to the mm.
+PX = DPI / 72.27
+PX_MM = 1 / PX / (72 / 25.4)  # mm per pixel, in the engine's mm
 MM = 72 / 25.4
 SIDES = ("left", "right", "foot", "top")
 FONT = "/System/Library/Fonts/Supplemental/Arial.ttf"
@@ -49,6 +58,15 @@ TITLES = {
     "papers": "(3) Each prototype on 4:3 and A4 (12 mm, frame title)",
     "band": "(4) Each prototype beside the pattern band (kikko), 12 mm, 16:9",
     "margins": "(5) Margins 25/10/8/12 mm, 12 mm asked: every band narrows to 4.8 mm all round",
+    "join": "Vine: how the ring closes (16:9, 12 mm), with where the plants meet enlarged",
+    "root": "Vine: the roots at the foot's centre, abutting or crossing (16:9, 12 mm)",
+    "scale": "Vine: scaled, fixed or clamped to the band, at 8, 12 and 18 mm, beside today's surround",
+    "corners": "Vine: corners rounded to the band, to half of it, mitred, and cut to the band, at 8 and 18 mm",
+    "mark": "Vine: without and with the running-head mark by the frame title (12 mm)",
+    "minwidth": "Vine: the narrowest bands, 4 to 8 mm, and margins 25/10/8/12, in each scale",
+    "vpapers": "Vine (clamped, pass, corner 0.5) on 16:9, 4:3 and A4, with and without a frame title",
+    "cfix": "C corners and vine: as in ORDER #1 and fixed (no runners, vine into the arms)",
+    "choice": "B vine as the default, and A, C and D at their best (16:9, 12 mm)",
 }
 
 
@@ -69,6 +87,37 @@ def ink_mask(png):
     return np.asarray(Image.open(png).convert("RGBA"))[:, :, 3] > 16
 
 
+SOLID_MM = 1.0  # mm: ink at least this thick reads as plant, not specks
+
+
+def opened(mask, n):
+    """The mask opened by an n x n square: what is left of the ink once
+    every part thinner than n pixels is taken away."""
+    def run(m, axis, op):
+        out = m.copy()
+        for k in range(1, n):
+            sh = np.roll(m, -k, axis=axis)
+            if axis == 0:
+                sh[-k:, :] = False
+            else:
+                sh[:, -k:] = False
+            out = op(out, sh)
+        return out
+    e = run(run(mask, 0, np.logical_and), 1, np.logical_and)
+    # Dilation back, shifting the other way.
+    def grow(m, axis):
+        out = m.copy()
+        for k in range(1, n):
+            sh = np.roll(m, k, axis=axis)
+            if axis == 0:
+                sh[:k, :] = False
+            else:
+                sh[:, :k] = False
+            out = out | sh
+        return out
+    return grow(grow(e, 0), 1)
+
+
 def measure(out, r):
     a = ink_mask(render(out, r["file"], DPI))
     h, w = a.shape
@@ -79,13 +128,20 @@ def measure(out, r):
     X, Y = np.meshgrid(xs, ys)
     t = [float(r[k]) for k in ("tx0", "ty0", "tx1", "ty1")]
     inside = (X > t[0]) & (X < t[2]) & (Y > t[1]) & (Y < t[3])
-    px_mm2 = (25.4 / DPI) ** 2
+    px_mm2 = PX_MM ** 2
     text_mm2 = float((a & inside).sum()) * px_mm2
     tb = box(r["title"])
     title_mm2 = 0.0
     if tb:
         tin = (X > tb[0]) & (X < tb[2]) & (Y > tb[1]) & (Y < tb[3])
         title_mm2 = float((a & tin).sum()) * px_mm2
+    # Plant against specks: the share of the ink outside the text block at
+    # least SOLID_MM thick (leaves, blooms and stems that read as such),
+    # and that solid ink in mm2 per cm of the paper's edge.
+    ink = a & ~inside
+    solid = opened(ink, max(2, round(SOLID_MM / PX_MM))) & ink
+    plant = float(solid.sum()) / max(1, int(ink.sum()))
+    solid_per_cm = float(solid.sum()) * PX_MM ** 2 / (2 * (W + H) / MM / 10)
     d = np.stack([X, W - X, Y, H - Y])
     side = np.argmin(d, axis=0)
     dist = np.min(d, axis=0)
@@ -109,7 +165,8 @@ def measure(out, r):
         rows.append({**{k2: r[k2] for k2 in ("file", "row", "col", "kind", "paper", "band_mm", "band_pt", "seed")},
                      "side": name, "near": f"{near:.1f}", "far": f"{far:.1f}", "cover": f"{cover:.2f}",
                      "cover_band": f"{cover_band:.2f}", "beyond": f"{beyond:.2f}",
-                     "text_mm2": f"{text_mm2:.1f}", "title_mm2": f"{title_mm2:.1f}"})
+                     "text_mm2": f"{text_mm2:.1f}", "title_mm2": f"{title_mm2:.1f}",
+                     "solid": f"{plant:.2f}", "solid_mm2_per_cm": f"{solid_per_cm:.1f}", "secs": r["secs"]})
     return rows
 
 
@@ -117,8 +174,8 @@ def summary(rows):
     groups = OrderedDict()
     for m in rows:
         groups.setdefault((m["row"], m["col"]), {}).setdefault(m["side"], []).append(m)
-    lines = ["| page | | " + " | ".join(f"{s} near-far mm, cover (in band) %, beyond %" for s in SIDES) + " | text mm2 (title) |",
-             "|---|---|" + "---|" * len(SIDES) + "---|"]
+    lines = ["| page | | " + " | ".join(f"{s} near-far mm, cover (in band) %, beyond %" for s in SIDES) + " | text mm2 (title) | solid %, solid mm2/cm | s |",
+             "|---|---|" + "---|" * len(SIDES) + "---|---|---|"]
     for (row, col), sides in groups.items():
         cells = []
         for s in SIDES:
@@ -136,7 +193,10 @@ def summary(rows):
         text = max(float(m["text_mm2"]) for m in ms)
         title = max(float(m["title_mm2"]) for m in ms)
         laid = float(ms[0]["band_pt"]) / MM
-        lines.append(f"| {row} | {col} (laid {laid:.1f}) | " + " | ".join(cells) + f" | {text:.1f} ({title:.1f}) |")
+        plant = np.mean([float(m["solid"]) for m in ms]) * 100
+        specks = np.mean([float(m["solid_mm2_per_cm"]) for m in ms])
+        secs = np.mean([float(m["secs"]) for m in ms])
+        lines.append(f"| {row} | {col} (laid {laid:.1f}) | " + " | ".join(cells) + f" | {text:.1f} ({title:.1f}) | {plant:.0f}, {specks:.1f} | {secs:.1f} |")
     return "\n".join(lines) + "\n"
 
 
@@ -148,11 +208,13 @@ def font(size):
 
 
 def tile(out, r, width):
+    """The page as a tile `width` px wide, or its crop box enlarged to it."""
     W, H = float(r["W"]), float(r["H"])
-    k = width / W
+    crop = box(r.get("crop", ""))
+    k = width / ((crop[2] - crop[0]) if crop else W)
     dpi = 72 * k
     im = Image.open(render(out, r["file"], f"{dpi:.2f}", transparent=False)).convert("RGB")
-    im = im.resize((width, round(H * k)))
+    im = im.resize((round(W * k), round(H * k)))
     base = Image.new("RGB", im.size, "white")
     dr = ImageDraw.Draw(base)
 
@@ -178,6 +240,9 @@ def tile(out, r, width):
             u0, u1 = i / n, min(1, (i + 1) / n)
             dr.line([((x0 + (x1 - x0) * u0) * k, (H - (y0 + (y1 - y0) * u0)) * k),
                      ((x0 + (x1 - x0) * u1) * k, (H - (y0 + (y1 - y0) * u1)) * k)], fill="#c0392b", width=1)
+    if crop:
+        base = base.crop((round(crop[0] * k), round((H - crop[3]) * k), round(crop[2] * k), round((H - crop[1]) * k)))
+        dr = ImageDraw.Draw(base)
     dr.rectangle([0, 0, base.width - 1, base.height - 1], outline="#9a968e")
     return base
 

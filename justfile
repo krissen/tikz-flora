@@ -80,9 +80,10 @@ venv:
 # Flora round the paper's edge (tools/frame_flora.lua and .py): SET is
 # measure (today's layout=perimeter and surround, three papers, three band
 # widths, with and without a title) or a sheet of the band prototypes
-# (alts, widths, papers, band, margins). Writes OUT/SET/: the pages,
-# measure.tsv and summary.md (where the ink lies on each side, in mm) and
-# sheet.png. SEEDS is a comma-separated list.
+# (tools/frame_flora.lua lists the sets). Writes OUT/SET/: the pages,
+# measure.tsv and summary.md (where the ink lies on each side, in mm, how
+# much of it is solid, the seconds) and sheet.png. SEEDS is a
+# comma-separated list.
 frame-flora set="measure" out="build/frame-flora" seeds="11":
     mkdir -p "{{out}}/{{set}}"
     texlua tools/frame_flora.lua "{{out}}/{{set}}" "{{set}}" "{{seeds}}"

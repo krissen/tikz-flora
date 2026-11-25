@@ -7,8 +7,10 @@
 --
 --   texlua tools/frame_flora.lua OUTDIR SET [SEEDS]
 --
--- SET is one of the sets in SETS (measure, alts, widths, papers, band,
--- margins). SEEDS (default 11) is a comma-separated list of seeds. Writes
+-- SET is one of the sets in SETS: measure (today's layouts), alts,
+-- widths, papers, band and margins (ORDER #1's prototypes), join, root,
+-- scale, corners, mark, minwidth, vpapers, cfix and choice (the running
+-- vine, refined). SEEDS (default 11) is a comma-separated list of seeds. Writes
 -- OUTDIR/<page>.pdf for each page and OUTDIR/pages.tsv, one line a page:
 -- its sheet row and column labels, the paper (pt), the text block, the
 -- frame title's and the reservation's boxes, the band asked (mm) and laid
@@ -87,7 +89,7 @@ local function base(spec, w, h, text, reserve, opts)
   s.width, s.height, s.text, s.lines, s.reserve = w, h, text, nil, reserve
   s.header, s.header_y, s.body_top, s.top_inset, s.frametitle = "margin", nil, nil, 0, nil
   s.layout, s.frame_only = nil, true
-  s.edge, s.gutter = opts.edge or EDGE, GUTTER
+  s.edge, s.gutter = opts.edge or EDGE, opts.gutter or GUTTER
   s.seed = opts.seed or spec.seed
   if opts.density then
     s.mix = copy(spec.mix or {})
@@ -208,24 +210,45 @@ function Loop:nearest(px, py)
 end
 
 -- Maps for a frame along the loop scaled by k: frame (x, y) lies at
--- arclength s0 + k y, k (x - xc) inward; mirrored about the loop's
--- vertical axis for the right-hand plant.
-function Loop:maps(s0, xc, k, mirror)
-  local mx = (self.x0 + self.x1) / 2
+-- arclength s0 + dir k y (dir 1 walks clockwise, -1 the other way, which
+-- mirrors the plant), k (x - xc) inward.
+function Loop:maps(s0, xc, k, dir)
+  local len = self.len
   local function fn(x, y)
-    local px, py, nx, ny = self:at(s0 + k * y)
+    local px, py, nx, ny = self:at(s0 + dir * k * y)
     local d = k * (x - xc)
-    px, py = px + nx * d, py + ny * d
-    if mirror then px = 2 * mx - px end
-    return px, py
+    return px + nx * d, py + ny * d
   end
   local function inv(px, py)
-    if mirror then px = 2 * mx - px end
     local s, d = self:nearest(px, py)
-    if s > self.len * 0.75 then s = s - self.len end
-    return xc + d / k, (s - s0) / k
+    local ds = (dir * (s - s0)) % len
+    if ds > len * 0.75 then ds = ds - len end
+    return xc + d / k, ds / k
   end
   return fn, inv
+end
+
+-- The arclength of the middle of the loop's corner `c` (1 foot-left,
+-- 2 top-left, 3 top-right, 4 foot-right).
+function Loop:corner(c)
+  local g = self.segs[2 * c]
+  return g.s0 + g.len / 2
+end
+
+-- The painter's paint cut to the band: the paper less the band's inner
+-- rectangle I, with a gold rule along I when `rule`.
+local function cut_to_band(pt, W, H, I, rule)
+  local q = Paint.new({ backend = "pdf" })
+  q:clip_begin({
+    { "m", 0, 0 }, { "l", W, 0 }, { "l", W, H }, { "l", 0, H }, { "z" },
+    { "m", I.x0, I.y0 }, { "l", I.x0, I.y1 }, { "l", I.x1, I.y1 }, { "l", I.x1, I.y0 }, { "z" },
+  })
+  table.insert(pt.out, 1, q.out[1])
+  pt.out[#pt.out + 1] = "Q"
+  if rule then
+    pt:stroke({ { "m", I.x0, I.y0 }, { "l", I.x1, I.y0 }, { "l", I.x1, I.y1 }, { "l", I.x0, I.y1 }, { "z" } },
+      Paint.palette.gold, 0.8, 1)
+  end
 end
 
 -- ------------------------------------------------------------------
@@ -276,30 +299,83 @@ function ALTS.wreath(spec, I, w)
   return pinwheel(spec, I, w, 1, { tune = { gesture = { edge = 0.42 } } })
 end
 
--- B: one vine round all four sides along the band's centre line, its
--- corners rounded: two plants rooted at the foot's centre, each round one
--- half to the top's centre, where their heroes meet.
-function ALTS.vine(spec, _, w)
+-- How the vine's plants are sized to a band w pt wide, by `scale`:
+--   scaled   grown in a frame where the band is V pt and shrunk to it, so
+--            the plant keeps its proportions at every width
+--   fixed    grown at the band's own size: blooms and leaves as large as
+--            in a margin, fewer of them in a narrow band
+--   clamped  scaled, but by no less than 0.4 and no more than 0.6
+-- Returns the scale k and the band's width in the frame.
+local function vine_scale(scale, w)
+  local k
+  if scale == "fixed" then k = 1
+  elseif scale == "clamped" then k = math.max(0.4, math.min(0.6, w / V))
+  else k = w / V end
+  return k, w / k
+end
+
+-- B: one vine round all four sides along the band's centre line. Options
+-- (opts, from the page's kind; tools/frame_flora.lua's SETS):
+--   scale   scaled (default), fixed or clamped (vine_scale)
+--   join    how the ring closes: meet (two plants from the foot's centre,
+--           heroes meeting at the top's centre), pass (they run on past
+--           each other), hero (one ends in its hero at the top's centre,
+--           the other short of it with a small bloom), corner (rooted in
+--           the foot-left corner, meeting in the top-right one), single
+--           (one plant round the whole ring)
+--   corner  the centre line's corner radius over the band's width
+--           (default 1; 0 a mitre)
+--   root    abut (default) or cross: how far the plants start back past
+--           their root's point, so the roots meet or run past each other
+function ALTS.vine(spec, _, w, opts)
+  opts = opts or {}
   local W, H = spec.width, spec.height
-  local k = w / V
+  local k, vb = vine_scale(opts.scale, w)
+  local u = vb / V
   local c = w / 2
-  local lp = loop(c, c, W - c, H - c, w)
-  local xc = V / 2
+  local rc = math.max(0.01, w * (tonumber(opts.corner) or 1))
+  local lp = loop(c, c, W - c, H - c, rc)
+  local xc = vb / 2
+  local edge = EDGE * u
+  local tune = { compose = { hero_min = math.min(28, 0.4 * vb), hero_max = math.min(80, 0.45 * vb) } }
+  local small = { compose = { hero_min = 0.18 * vb, hero_max = 0.22 * vb } }
+  -- How far each plant starts back past its root's point, so the two
+  -- roots (or the one plant's root and hero) overlap: as the wreath's
+  -- (root=abut, the default), or a band and a half (root=cross).
+  local cross = opts.root == "cross" and 1.5 * w or (edge + 10 * u) * k
+  local join = opts.join or "meet"
+  -- Each plant: { start, length along the ring, direction, tune }.
+  local plants
+  local half = lp.len / 2
+  if join == "single" then
+    plants = { { -cross, lp.len - 2 * w, 1, tune } }
+  elseif join == "pass" then
+    plants = { { -cross, half + 1.5 * w, 1, tune }, { -cross, half + 1.5 * w, -1, tune } }
+  elseif join == "hero" then
+    plants = { { -cross, half + cross, 1, tune }, { -cross, half + cross - 1.6 * w, -1, small } }
+  elseif join == "corner" then
+    local s0 = lp:corner(1)
+    plants = { { s0 - cross, half - 8 * k + cross, 1, tune }, { s0 + cross, half - 8 * k + cross, -1, tune } }
+  else
+    plants = { { -cross, half - 8 * k + cross, 1, tune }, { -cross, half - 8 * k + cross, -1, tune } }
+  end
   local fs = {}
-  local s0 = -(EDGE + 10) * k
-  local s1 = lp.len / 2 - 8 * k
-  for i, side in ipairs({ "left", "right" }) do
-    local fn, inv = lp:maps(s0, xc, k, side == "right")
-    fs[#fs + 1] = bare(spec, fn, inv, V + 40, (s1 - s0) / k, V,
-      { label = side, seed = i == 2 and seed_of(spec, 2) or nil, edge = EDGE })
+  for i, pl in ipairs(plants) do
+    local fn, inv = lp:maps(pl[1], xc, k, pl[3])
+    fs[#fs + 1] = bare(spec, fn, inv, vb + 40 * u, pl[2] / k, vb,
+      { label = "plant " .. i, seed = i == 2 and seed_of(spec, 2) or nil, edge = edge, gutter = GUTTER * u, tune = pl[4] })
   end
   return fs
 end
 
 -- C: a full plant in each corner, its two arms along the two sides, and a
 -- sparse vine with a small bloom between them; turned a quarter at each
--- corner, so the four go round as a pinwheel.
-function ALTS.corners(spec, I, w)
+-- corner, so the four go round as a pinwheel. With opts.fix=1 the corner
+-- plants grow no runners (whose curls reached into the text block), and
+-- each side's vine reaches a band's width into the corners' arms, so no
+-- gap is left between them.
+function ALTS.corners(spec, I, w, opts)
+  local fix = (opts or {}).fix == "1"
   local W, H = spec.width, spec.height
   local k = w / V
   local arm = 0.3
@@ -315,7 +391,8 @@ function ALTS.corners(spec, I, w)
   local block = { x0 = I.x0, y0 = I.y0, x1 = I.x1, y1 = I.y1 }
   for i, c in ipairs(corners) do
     local fw, fh = c.foot * arm / k, c.col * arm / k
-    local f = affine(spec, c.m, fw, fh, block, { label = "corner " .. i, seed = seed_of(spec, i) })
+    local f = affine(spec, c.m, fw, fh, block, { label = "corner " .. i, seed = seed_of(spec, i),
+      tune = fix and { compose = { runners = 0 } } or nil })
     if f then fs[#fs + 1] = f end
   end
   -- The vine along each side's middle, between the corners' arms.
@@ -327,7 +404,8 @@ function ALTS.corners(spec, I, w)
   }
   local small = { compose = { hero_min = 9, hero_max = 12 } }
   for i, r in ipairs(rails) do
-    if r.to - r.from > 2 * w then
+    if fix then r.from, r.to = r.from - w, r.to + w end
+    if fix or r.to - r.from > 2 * w then
       local m = r.m
       local y0 = r.from / k
       local h = (r.to - r.from) / k
@@ -335,7 +413,7 @@ function ALTS.corners(spec, I, w)
       local inv = invert(mm)
       fs[#fs + 1] = bare(spec, function(x, y) return Frames.apply(mm, x, y) end,
         function(x, y) return Frames.apply(inv, x, y) end, V + 40, h, V,
-        { label = "rail " .. i, seed = seed_of(spec, 10 + i), density = 0.35, tune = small })
+        { label = "rail " .. i, seed = seed_of(spec, 10 + i), density = fix and 0.5 or 0.35, tune = small })
     end
   end
   return fs
@@ -346,19 +424,7 @@ end
 -- band's inner edge, with a rule there, as a pattern band's edge=border.
 function ALTS.cut(spec, I, w)
   local fs = pinwheel(spec, I, w, 1.5, { edge = 0.5, density = 1.6, tune = { gesture = { edge = 0.3 } } })
-  local W, H = spec.width, spec.height
-  local function finish(pt)
-    local q = Paint.new({ backend = "pdf" })
-    q:clip_begin({
-      { "m", 0, 0 }, { "l", W, 0 }, { "l", W, H }, { "l", 0, H }, { "z" },
-      { "m", I.x0, I.y0 }, { "l", I.x0, I.y1 }, { "l", I.x1, I.y1 }, { "l", I.x1, I.y0 }, { "z" },
-    })
-    table.insert(pt.out, 1, q.out[1])
-    pt.out[#pt.out + 1] = "Q"
-    pt:stroke({ { "m", I.x0, I.y0 }, { "l", I.x1, I.y0 }, { "l", I.x1, I.y1 }, { "l", I.x0, I.y1 }, { "z" } },
-      Paint.palette.gold or { 0.7, 0.55, 0.2 }, 0.8, 1)
-  end
-  return fs, finish
+  return fs, function(pt) cut_to_band(pt, spec.width, spec.height, I, true) end
 end
 
 -- Sets t[k] to v and returns what it was: the prototypes stand in for a
@@ -369,12 +435,44 @@ local function swap(t, k, v)
   return was
 end
 
--- Paints `spec` with alternative `name`: Frames.of gives the prototype's
--- frames while the page is painted.
-local function paint_alt(spec, name)
+-- The options of a kind's alternative, "name:key=value,key=value".
+local function parse_alt(s)
+  local name, rest = s:match("^([^:]+):?(.*)$")
+  local opts = {}
+  for k, v in rest:gmatch("([%w_]+)=([^,]+)") do opts[k] = v end
+  return name, opts
+end
+
+-- The running-head mark beside the frame title (compose.lua's mark,
+-- painted through spec.marks_only): its size and where it goes, the
+-- title moved right to make room for it.
+local MARK = 22
+local function mark_place(spec)
+  local l = spec.lines and spec.lines[1]
+  if not l then return nil end
+  l.x0 = l.x0 + MARK - 2
+  local hx, hy, r = spec.text.x0 - 6, (l.y0 + l.y1) / 2, MARK / 2
+  return { x0 = hx - r - 3, y0 = hy - r - 3, x1 = hx + r + 3, y1 = hy + r + 3, y = hy }
+end
+
+-- Paints `spec` with alternative `kind` ("name:options", parse_alt):
+-- Frames.of gives the prototype's frames while the page is painted.
+-- Options every alternative takes: clip=1 cuts the paint to the band;
+-- mark=1 paints the running-head mark by the frame title, and the band
+-- keeps clear of it.
+local function paint_alt(spec, kind)
+  local name, opts = parse_alt(kind)
   local _, w = B.inner(spec, (spec.perimeter_width or 12) * MM)
-  local I = { x0 = w, y0 = w, x1 = spec.width - w, y1 = spec.height - w }
-  local fs, finish = ALTS[name](spec, I, w)
+  local W, H = spec.width, spec.height
+  local I = { x0 = w, y0 = w, x1 = W - w, y1 = H - w }
+  local mark = opts.mark == "1" and mark_place(spec)
+  local plain
+  if mark then
+    plain = copy(spec)
+    spec.reserve = { table.unpack(spec.reserve or {}) }
+    spec.reserve[#spec.reserve + 1] = { mark.x0, mark.y0, mark.x1, mark.y1 }
+  end
+  local fs, finish = ALTS[name](spec, I, w, opts)
   -- As a pattern's band (compose.lua's banded pages): the band runs to the
   -- paper's top, past the top inset and the header clip; the frame title
   -- lies in the text block, which the band keeps clear of.
@@ -384,6 +482,13 @@ local function paint_alt(spec, name)
   swap(Frames, "of", of)
   if not ok then error(pt, 0) end
   if finish then finish(pt) end
+  if opts.clip == "1" then cut_to_band(pt, W, H, I, false) end
+  if mark then
+    plain.layout, plain.ornaments = "surround", nil
+    plain.marks_only = { { frame = 1, y = mark.y, size = MARK } }
+    local mp = Compose.page(plain)
+    for _, o in ipairs(mp.out) do pt.out[#pt.out + 1] = o end
+  end
   return pt, w
 end
 
@@ -392,8 +497,22 @@ end
 
 -- A page to render: { row, col, paper, wmm, titled, margins, kind } where
 -- kind is a layout (perimeter, surround), "band:<pattern>" or "alt:<name>".
-local function item(row, col, paper, wmm, titled, kind, margins)
-  return { row = row, col = col, paper = paper_of(paper), wmm = wmm, titled = titled, kind = kind, margins = margins }
+local function item(row, col, paper, wmm, titled, kind, margins, crop)
+  return { row = row, col = col, paper = paper_of(paper), wmm = wmm, titled = titled, kind = kind, margins = margins, crop = crop }
+end
+
+-- A part of the page to show enlarged: the top's or the foot's centre, or
+-- the top-left, top-right or foot-left corner, or the frame title's left
+-- end, as a box in pt.
+local function crop_box(name, W, H)
+  local a = 0.17 * W
+  if name == "top" then return { W / 2 - a, H - a * 0.55, W / 2 + a, H }
+  elseif name == "foot" then return { W / 2 - a, 0, W / 2 + a, a * 0.55 }
+  elseif name == "corner" then return { 0, H - a * 0.55, a, H }
+  elseif name == "topright" then return { W - a, H - a * 0.55, W, H }
+  elseif name == "footleft" then return { 0, 0, a, a * 0.55 }
+  elseif name == "titleleft" then return { 0, H - a * 0.8, a * 1.45, H } end
+  return nil
 end
 
 local SETS = {}
@@ -466,6 +585,119 @@ function SETS.margins()
   return out
 end
 
+-- ORDER #2: the running vine (B) refined. VINE is its default kind,
+-- VINE_BEST the scale and join the sheets judged strongest.
+local VINE = "alt:vine"
+local VINE_BEST = "alt:vine:scale=clamped,join=pass,corner=0.5"
+local JOINS = { "meet", "pass", "hero", "corner", "single" }
+local SCALES = { "scaled", "fixed", "clamped" }
+
+-- How the ring closes: each join, the page and where its plants may meet
+-- enlarged: the top's and foot's centres, the foot-left and top-right
+-- corners.
+function SETS.join()
+  local out = {}
+  for _, j in ipairs(JOINS) do
+    for _, c in ipairs({ { "page" }, { "top centre", "top" }, { "foot centre", "foot" }, { "foot-left corner", "footleft" }, { "top-right corner", "topright" } }) do
+      out[#out + 1] = item("join=" .. j, c[1], "16:9", 12, true, VINE .. ":join=" .. j, nil, c[2])
+    end
+  end
+  return out
+end
+
+-- The roots at the foot's centre: abutting or crossing, for the joins
+-- rooted there, the foot's centre enlarged.
+function SETS.root()
+  local out = {}
+  for _, j in ipairs({ "meet", "pass", "single" }) do
+    for _, r in ipairs({ "abut", "cross" }) do
+      out[#out + 1] = item("join=" .. j, "root=" .. r .. ", page", "16:9", 12, true, VINE .. ":join=" .. j .. ",root=" .. r)
+      out[#out + 1] = item("join=" .. j, "root=" .. r .. ", foot centre", "16:9", 12, true, VINE .. ":join=" .. j .. ",root=" .. r, nil, "foot")
+    end
+  end
+  return out
+end
+
+-- How the plant is sized to the band, at 8, 12 and 18 mm, beside today's
+-- surround (whose time the others are measured against).
+function SETS.scale()
+  local out = {}
+  for _, wmm in ipairs(B.WIDTHS) do
+    out[#out + 1] = item(wmm .. " mm", "today (surround)", "16:9", wmm, true, "surround")
+    for _, sc in ipairs(SCALES) do out[#out + 1] = item(wmm .. " mm", "scale=" .. sc, "16:9", wmm, true, VINE .. ":scale=" .. sc) end
+  end
+  return out
+end
+
+-- The corners: rounded to the band's width, half of it, a mitre, and
+-- rounded and cut to the band, each whole and its top-left corner enlarged.
+function SETS.corners()
+  local out = {}
+  for _, wmm in ipairs({ 8, 18 }) do
+    for _, crop in ipairs({ false, "corner" }) do
+      for _, c in ipairs({ { "corner=1", "corner=1" }, { "corner=0.5", "corner=0.5" }, { "mitre", "corner=0" }, { "corner=1, cut to band", "corner=1,clip=1" } }) do
+        out[#out + 1] = item(wmm .. " mm" .. (crop and ", top-left corner" or ""), c[1], "16:9", wmm, true, VINE .. ":" .. c[2], nil, crop or nil)
+      end
+    end
+  end
+  return out
+end
+
+-- The running-head mark by the frame title, without and with, 12 mm.
+function SETS.mark()
+  local out = {}
+  for _, p in ipairs({ "16:9", "4:3" }) do
+    out[#out + 1] = item(p, "no mark", p, 12, true, VINE)
+    out[#out + 1] = item(p, "mark", p, 12, true, VINE .. ":mark=1")
+    out[#out + 1] = item(p, "mark, title's left end enlarged", p, 12, true, VINE .. ":mark=1", nil, "titleleft")
+  end
+  return out
+end
+
+-- The narrowest bands, 4 to 8 mm, in each scale; and the margins
+-- 25/10/8/12, where a 12 mm band narrows to 4.8 mm.
+function SETS.minwidth()
+  local out = {}
+  for _, sc in ipairs(SCALES) do
+    for _, wmm in ipairs({ 4, 5, 6, 7, 8 }) do
+      out[#out + 1] = item("scale=" .. sc, wmm .. " mm", "16:9", wmm, true, VINE .. ":scale=" .. sc)
+    end
+    out[#out + 1] = item("scale=" .. sc, "margins 25/10/8/12", "16:9", 12, true, VINE .. ":scale=" .. sc, { 25, 10, 8, 12 })
+  end
+  return out
+end
+
+-- VINE_BEST on every paper, with and without a frame title.
+function SETS.vpapers()
+  local out = {}
+  for _, p in ipairs({ "16:9", "4:3", "A4" }) do
+    for _, titled in ipairs({ true, false }) do
+      out[#out + 1] = item(p, titled and "frame title" or "no title", p, 12, titled, VINE_BEST)
+    end
+  end
+  return out
+end
+
+-- C before and after its fix, at 12 and 18 mm.
+function SETS.cfix()
+  local out = {}
+  for _, wmm in ipairs({ 12, 18 }) do
+    out[#out + 1] = item(wmm .. " mm", "C as in ORDER #1", "16:9", wmm, true, "alt:corners")
+    out[#out + 1] = item(wmm .. " mm", "C fixed", "16:9", wmm, true, "alt:corners:fix=1")
+  end
+  return out
+end
+
+-- The default (VINE_BEST) and the three others at their best, 12 mm.
+function SETS.choice()
+  return {
+    item("16:9, 12 mm, frame title", "B vine (default)", "16:9", 12, true, VINE_BEST),
+    item("16:9, 12 mm, frame title", "A wreath", "16:9", 12, true, "alt:wreath"),
+    item("16:9, 12 mm, frame title", "C corners", "16:9", 12, true, "alt:corners:fix=1"),
+    item("16:9, 12 mm, frame title", "D cut", "16:9", 12, true, "alt:cut"),
+  }
+end
+
 -- ------------------------------------------------------------------
 
 local outdir, setname, seeds_arg = arg[1], arg[2], arg[3]
@@ -480,7 +712,7 @@ local seeds = {}
 for s in (seeds_arg or "11"):gmatch("[^,]+") do seeds[#seeds + 1] = assert(tonumber(s), "a seed must be a number: " .. s) end
 
 local tsv = assert(io.open(outdir .. "/pages.tsv", "w"))
-local cols = { "file", "row", "col", "kind", "paper", "W", "H", "tx0", "ty0", "tx1", "ty1", "title", "reserve", "band_mm", "band_pt", "seed", "md5", "secs" }
+local cols = { "file", "row", "col", "kind", "paper", "W", "H", "tx0", "ty0", "tx1", "ty1", "title", "reserve", "band_mm", "band_pt", "seed", "md5", "secs", "crop" }
 tsv:write(table.concat(cols, "\t"), "\n")
 local function box(b) return b and string.format("%.2f,%.2f,%.2f,%.2f", b[1], b[2], b[3], b[4]) or "" end
 local n = 0
@@ -517,7 +749,8 @@ for _, it in ipairs(SETS[setname]()) do
     tsv:write(table.concat({ file, it.row, it.col, it.kind, it.paper[1], string.format("%.3f", spec.width), string.format("%.3f", spec.height),
       string.format("%.3f", t[1]), string.format("%.3f", t[2]), string.format("%.3f", t[3]), string.format("%.3f", t[4]),
       title and box({ title.x0, title.y0, title.x1, title.y1 }) or "", box(reserve), tostring(it.wmm), string.format("%.3f", laid),
-      tostring(seed), md5.sumhexa(pt:body()), string.format("%.2f", secs) }, "\t"), "\n")
+      tostring(seed), md5.sumhexa(pt:body()), string.format("%.2f", secs),
+      box(crop_box(it.crop, spec.width, spec.height)) }, "\t"), "\n")
     io.stderr:write(string.format("frame_flora: %s %s | %s | seed %d: %.1f s\n", file, it.row, it.col, seed, secs))
   end
 end
