@@ -35,7 +35,6 @@ local Paint = require("flora.paint")
 local Pdf = require("flora.pdfout")
 
 local MM = 72 / 25.4
-local LODS
 -- LuaTeX's md5 library, a global there (.luals/luatex.lua declares it).
 local md5 = rawget(_G, "md5")
 
@@ -480,31 +479,49 @@ function SETS.timing()
   return out
 end
 
--- Less detail in the vine's small shapes (frames.lua's VINE_LOD, wash.lua's
--- pt.lod), by name: grain at the density it has on paper at scale 1 (k^2
--- of the frame's), shapes under 8 or 12 pt on paper painted simple, and
--- both. Kinds "vine:lod=NAME".
-LODS = {
-  grain = { grain = function(k) return k * k end },
-  simple8 = { simple = 8 },
-  simple12 = { simple = 12 },
-  both = { simple = 8, grain = function(k) return k * k end },
-}
-
--- The vine with each detail level, 16:9 at 6, 12 and 18 mm with a title,
--- beside it as drawn: for timing and for tools/page_diff.py.
-function SETS.lod()
+-- The vine at each density (band.lua's DENSITIES) on 16:9 at 6, 12 and
+-- 18 mm, light and dark, and at 12 mm with edge=border and on 4:3 and A4.
+-- Kinds "vine:density=NAME[,stem=scale]" (stem=scale lets the main stem
+-- grow with the plant, frames.lua's VINE_STEM).
+local DENSITIES = { "dense", "open", "sparse" }
+function SETS.density()
   local out = {}
-  for _, wmm in ipairs({ 6, 12, 18 }) do
-    out[#out + 1] = item(wmm .. " mm", "as drawn", "16:9", wmm, true, "vine")
-    for _, name in ipairs({ "grain", "simple8", "simple12", "both" }) do
-      out[#out + 1] = item(wmm .. " mm", "lod=" .. name, "16:9", wmm, true, "vine:lod=" .. name)
+  for _, d in ipairs(DENSITIES) do
+    local kind = "vine:density=" .. d
+    for _, bd in ipairs({ "light", "dark" }) do
+      for _, wmm in ipairs({ 6, 12, 18 }) do
+        out[#out + 1] = item(d .. ", 16:9, " .. bd, wmm .. " mm", "16:9", wmm, true, kind, nil, nil, nil, bd)
+      end
     end
+    out[#out + 1] = item(d .. ", 12 mm", "16:9, edge=border", "16:9", 12, true, kind, nil, nil, "border")
+    out[#out + 1] = item(d .. ", 12 mm", "4:3", "4:3", 12, true, kind)
+    out[#out + 1] = item(d .. ", 12 mm", "A4", "A4", 12, true, kind)
   end
-  -- The 12 mm page's foot-left corner enlarged, at about 200 %.
-  out[#out + 1] = item("12 mm, foot-left corner", "as drawn", "16:9", 12, true, "vine", nil, "footleft")
-  for _, name in ipairs({ "grain", "simple8", "simple12", "both" }) do
-    out[#out + 1] = item("12 mm, foot-left corner", "lod=" .. name, "16:9", 12, true, "vine:lod=" .. name, nil, "footleft")
+  return out
+end
+
+-- The narrowest bands at each density, 6 to 10 mm on 16:9, for the share
+-- of solid ink (summary.md) that sets the narrowest band flora takes.
+function SETS.densitywidth()
+  local out = {}
+  for _, d in ipairs(DENSITIES) do
+    for _, wmm in ipairs({ 6, 7, 8, 9, 10 }) do out[#out + 1] = item(d, wmm .. " mm", "16:9", wmm, true, "vine:density=" .. d) end
+  end
+  return out
+end
+
+-- The stem at the sparser densities: as wide on the paper as at the
+-- default (as drawn), or grown with the plant, 16:9 at 6, 12 and 18 mm,
+-- each with its foot-left corner enlarged.
+function SETS.stem()
+  local out = {}
+  for _, d in ipairs({ "open", "sparse" }) do
+    for _, stem in ipairs({ "keep", "scale" }) do
+      local kind = "vine:density=" .. d .. (stem == "scale" and ",stem=scale" or "")
+      local row = d .. ", stem " .. (stem == "keep" and "as at dense" or "grown with the plant")
+      for _, wmm in ipairs({ 6, 12, 18 }) do out[#out + 1] = item(row, wmm .. " mm", "16:9", wmm, true, kind) end
+      out[#out + 1] = item(row, "12 mm, foot-left corner", "16:9", 12, true, kind, nil, "footleft")
+    end
   end
   return out
 end
@@ -549,15 +566,16 @@ for _, it in ipairs(SETS[setname]()) do
     if alt then
       pt, laid = paint_alt(spec, alt)
     else
-      local lod = it.kind:match("^vine:lod=(.+)$")
-      if it.kind == "vine" or lod then
+      local vopts = it.kind:match("^vine:(.+)$")
+      if it.kind == "vine" or vopts then
         spec.layout, spec.perimeter_flora = "perimeter", "vine"
-        Frames.VINE_LOD = LODS[lod]
+        spec.perimeter_density = vopts and vopts:match("density=(%w+)") or nil
+        Frames.VINE_STEM = vopts and vopts:match("stem=(%w+)") or nil
       elseif not pattern then
         spec.layout = it.kind
       end
       pt = Compose.page(spec)
-      Frames.VINE_LOD = nil
+      Frames.VINE_STEM = nil
       local _, w = B.inner(spec, it.wmm * MM)
       laid = w
     end

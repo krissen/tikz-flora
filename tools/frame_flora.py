@@ -23,6 +23,7 @@ transparent where nothing is painted) and writes:
 - OUTDIR/summary.md, a table of the same, the seeds of one page taken
   together (the least near, the greatest far, the mean covers).
 - OUTDIR/sheet.png, the pages in the rows and columns pages.tsv names,
+  each labelled with them and the CPU seconds it took to paint,
   each with its text block in grey, the frame title darker, and the band
   as laid as a dashed line (narrower than asked where a margin is),
   under TITLE.
@@ -63,7 +64,9 @@ TITLES = {
     "vine-A4": "perimeterflora=vine on A4: 6, 8, 12 and 18 mm, frame title or not, edge=cell or border, light or dark, beside kikko",
     "vineroot": "perimeterflora=vine: the root in the foot-left corner and the meeting in the top-right one, enlarged",
     "timing": "The vine and surround on each paper at 6, 12 and 18 mm, for timing",
-    "lod": "The vine with less detail in small shapes (grain at paper density, simple washes under 8 or 12 pt, both) beside it as drawn",
+    "density": "perimeterdensity: dense, open and sparse at 6, 12 and 18 mm, light and dark, edge=border, 4:3 and A4 (seconds per page in each label)",
+    "densitywidth": "perimeterdensity at 6 to 10 mm: where each density stops reading as a plant",
+    "stem": "The stem at open and sparse: as wide on the paper as at dense, or grown with the plant",
     "vinewidth": "perimeterflora=vine: 5 to 8 mm, and 12 mm in margins 25/10/8/12 (4.8 mm): none under 6 mm",
     "cfix": "C corners and vine (prototype): as first drawn and fixed (no runners, vine into the arms)",
     "choice": "The vine as the engine draws it, and the prototypes A, C and D at their best (16:9, 12 mm)",
@@ -269,9 +272,9 @@ def sheet(out, pages, title, width=520):
     dr.text((pad, 10), title, fill="black", font=font(20))
     y = head
     for ri, (rname, cols) in enumerate(rows.items()):
-        for ci, (cname, _) in enumerate(cols.items()):
+        for ci, (cname, r) in enumerate(cols.items()):
             x = pad + ci * (width + pad)
-            dr.text((x, y + 2), f"{rname}  |  {cname}", fill="black", font=font(14))
+            dr.text((x, y + 2), f"{rname}  |  {cname}  |  {float(r['secs']):.1f} s", fill="black", font=font(14))
             S.paste(tiles[(ri, ci)], (x, y + lab))
         y += heights[ri] + lab + pad
     S.save(out / "sheet.png")
