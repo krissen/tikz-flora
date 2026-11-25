@@ -772,11 +772,6 @@ local function end_header_clip(pt)
   pt:frame(fn)
 end
 
--- Whether spec's page is a pattern laid as a perimeter band (band.lua).
-local function banded(spec)
-  return spec.layout == require("flora.band").LAYOUT and spec.pattern ~= nil and require("flora.pattern").applies(spec)
-end
-
 -- Whether spec's page is a perimeter band (band.lua) of a pattern or of
 -- flora (frames.lua's M.vine). Either keeps clear of the whole text
 -- block, frame title included, and runs to the paper's top: neither the
