@@ -8,7 +8,7 @@ local function spec(layout)
     layout=layout or 'left', mix={gyps=0,cyme=0,umbel=0,ghost=0},
     tune={compose={sprays=0,leaves=2,small_blooms=1,curls=0,no_leaflets=true}}}
 end
-for _,layout in ipairs({'left','centered','surround','title','flank','wreath','bouquet','scrollwork'}) do
+for _,layout in ipairs({'left','centered','surround','title','flank','wreath','bouquet','scrollwork','perimeter'}) do
   local s=spec(layout); local saved=Serial.encode(s)
   Paint.reset_resources(); local ordinary=Compose.page(s):body()
   s=spec(layout)

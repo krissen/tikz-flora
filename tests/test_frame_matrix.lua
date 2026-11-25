@@ -64,7 +64,9 @@ end
 -- Frames each layout asks for.
 local COUNT = { left = 1, right = 1, centered = 2, split = 1, title = 2, surround = 2,
   flank = 2, wreath = 2, bouquet = 2, scrollwork = 2 }
--- The perimeter band's flora is laid out as surround.
+-- The perimeter band's flora is a vine of two plants (frames.lua's
+-- M.vine), or none at all where the band is too narrow for flora, which
+-- the list says (its band's `none`).
 COUNT[require("flora.band").LAYOUT] = COUNT.surround
 
 local cells, dropped_cells, painted = 0, 0, 0
@@ -86,14 +88,15 @@ for _, lay in ipairs(Frames.order) do
           if ok then
             local dropped = fs.dropped or 0
             if dropped > 0 then dropped_cells = dropped_cells + 1 end
-            H.check(#fs + dropped == COUNT[lay], string.format("%s: %d frames kept and %d dropped of %d",
-              cell, #fs, dropped, COUNT[lay]))
+            local none = fs.band and fs.band.none
+            H.check(#fs + dropped == (none and 0 or COUNT[lay]), string.format("%s: %d frames kept and %d dropped of %d",
+              cell, #fs, dropped, none and 0 or COUNT[lay]))
             for k, f in ipairs(fs) do
               local s, t = f.spec, f.spec.text
               H.check(t and t.x0 >= 0 and t.y0 >= 0 and t.x1 <= s.width + 1e-6 and t.y1 <= s.height + 1e-6
                 and t.x1 > t.x0 and t.y1 > t.y0, string.format("%s: frame %d's text block is not inside it", cell, k))
             end
-            if dropped > 0 and inset == 0 then
+            if (dropped > 0 or none) and inset == 0 then
               Paint.reset_resources()
               local good, err = pcall(Compose.page, spec())
               H.check(good, cell .. ": painting failed: " .. tostring(err))

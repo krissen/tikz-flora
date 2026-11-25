@@ -52,7 +52,9 @@ test-linux *args:
 
 # E.g. `just bodies-compare main` or `just bodies-compare HEAD~1 bands`
 # (tools/bodies-compare.sh, docs/testing.md): whether the working tree
-# paints byte for byte what REF painted, page by page.
+# paints byte for byte what REF painted, page by page; with
+# `--expect FILE` first, whether exactly the pages FILE's patterns name
+# differ.
 bodies-compare ref *suites:
     tools/bodies-compare.sh "$@"
 
@@ -76,6 +78,25 @@ lint:
 venv:
     python3 -m venv .venv
     .venv/bin/pip install -q -r requirements-dev.txt
+
+# Flora round the paper's edge (tools/frame_flora.lua and .py): SET is
+# measure (today's layout=perimeter and surround, three papers, three band
+# widths, with and without a title) or a sheet of the band prototypes
+# (tools/frame_flora.lua lists the sets). Writes OUT/SET/: the pages,
+# measure.tsv and summary.md (where the ink lies on each side, in mm, how
+# much of it is solid, the seconds) and sheet.png. SEEDS is a
+# comma-separated list.
+frame-flora set="measure" out="build/frame-flora" seeds="11":
+    mkdir -p "{{out}}/{{set}}"
+    texlua tools/frame_flora.lua "{{out}}/{{set}}" "{{set}}" "{{seeds}}"
+    {{PYTHON}} -I tools/frame_flora.py "{{out}}/{{set}}" "{{set}}"
+
+# E.g. `just lint-hint lua/flora/loop.lua tests/perimeter_flora.lua`
+# (tools/lint_hint.py, docs/testing.md): lua-language-server's findings in
+# those files down to the level Hint, as the editor shows them; just lint
+# fails from Warning up.
+lint-hint *files:
+    python3 -I tools/lint_hint.py "$@"
 
 # The ornament gallery: every ornament kind, labelled, for three seeds
 # (tex/gallery.tex), to build/gallery.pdf and .png. ONLY limits it to some

@@ -432,7 +432,7 @@ LOOSE_KEYWORDS = {"start_new_session", "preexec_fn", "process_group"}
 # The python programs of the tools and their tests that run others (the
 # older tools, tools/bake_tune.py and the tuner among them, are not the
 # measuring tools').
-LOOSE_CHECKED = [os.path.join("tests", n) for n in ("test_tools.py", "test_tools_matrix.py", "test_lint.py", "test_progression_raster.py")] + [os.path.join("tools", n) for n in ("lint.py", "test_times.py", "edge_measure.py", "form_measure.py")]
+LOOSE_CHECKED = [os.path.join("tests", n) for n in ("test_tools.py", "test_tools_matrix.py", "test_lint.py", "test_progression_raster.py")] + [os.path.join("tools", n) for n in ("lint.py", "test_times.py", "edge_measure.py", "form_measure.py", "frame_flora.py", "lint_hint.py", "page_diff.py")]
 
 
 def test_no_loose_processes():
@@ -474,6 +474,7 @@ CI_EXEMPT = {
 }
 CI_EXEMPT_PREFIXES = {
     "tests/pattern_": "a sweep or its suite that the test files named after it load",
+    "tests/perimeter_flora": "the flora band's sweep and its suite, which the test files named after it load",
     "tests/fixtures/": "data the tests read",
     "tests/slides/": "data the tests read",
 }

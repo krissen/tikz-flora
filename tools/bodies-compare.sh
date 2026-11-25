@@ -2,7 +2,7 @@
 # Whether the engine paints byte for byte what REF painted
 # (tools/bodies.lua; docs/testing.md).
 #
-#   tools/bodies-compare.sh REF [SUITE...]
+#   tools/bodies-compare.sh [--expect FILE] REF [SUITE...]
 #
 # REF is a commit (b3fbda1, main, HEAD~1). Its tree is unpacked with git
 # archive into a directory of this run's own under build/; the working tree
@@ -18,10 +18,26 @@
 # texlua; without them, or when REF is not a commit, it says so and stops
 # (exit status 2) before painting anything. In tools/test-linux.sh's
 # container, which has neither git nor the history, it refuses so.
+#
+# With --expect FILE a change that is meant to paint some pages anew is
+# compared: each line of FILE (but blank ones and those starting with #)
+# is an extended regular expression for the pages expected to differ,
+# matched against "SUITE NAME" (the line's first two fields, a space
+# between). It ends with status 0 when exactly the pages some line matches
+# differ and every other page is identical, and with 1 when a page differs
+# that no line matches or one that a line matches is identical, naming
+# them; the directory is kept then.
 set -eu
-cd "$(dirname "$0")/.."
 refuse() { echo "bodies-compare: $1" >&2; exit 2; }
-[ $# -ge 1 ] && [ -n "$1" ] || refuse "usage: tools/bodies-compare.sh REF [SUITE...]"
+expect=
+if [ "${1-}" = --expect ]; then
+  [ $# -ge 2 ] && [ -n "$2" ] || refuse "--expect needs a file"
+  case $2 in /*) expect=$2 ;; *) expect=$(pwd)/$2 ;; esac
+  [ -f "$expect" ] && [ -r "$expect" ] || refuse "--expect: no file $2"
+  shift 2
+fi
+cd "$(dirname "$0")/.."
+[ $# -ge 1 ] && [ -n "$1" ] || refuse "usage: tools/bodies-compare.sh [--expect FILE] REF [SUITE...]"
 ref=$1
 shift
 command -v git > /dev/null || refuse "needs git, to unpack $ref's tree"
@@ -80,7 +96,27 @@ if [ "$refhow" = failed ] || [ "$newhow" = failed ]; then
   exit 1
 fi
 n=$(wc -l < "$out/new.txt" | tr -d ' ')
-if cmp -s "$out/ref.txt" "$out/new.txt"; then
+if [ -n "$expect" ]; then
+  # Page by page: the two sides paint the same pages in the same order.
+  # Prints every page that breaks the expectation, then the counts.
+  if paste "$out/ref.txt" "$out/new.txt" | awk -F '\t' -v want="$expect" '
+    BEGIN { while ((getline l < want) > 0) if (l !~ /^[ \t]*(#|$)/) pat[++np] = l }
+    {
+      if ($1 != $4 || $2 != $5) { print "bodies-compare: page " NR " is " $1 " " $2 " in one tree and " $4 " " $5 " in the other"; bad++; next }
+      page = $1 " " $2; meant = 0
+      for (i = 1; i <= np; i++) if (page ~ pat[i]) { meant = 1; break }
+      if ($3 != $6 && !meant) { print "bodies-compare: differs, not expected: " page; bad++ }
+      else if ($3 == $6 && meant) { print "bodies-compare: expected to differ, identical: " page; bad++ }
+      else if (meant) diff++; else same++
+    }
+    END { printf "bodies-compare: %d identical, %d differ as expected", same, diff; if (bad) printf ", %d against the expectation", bad; print ""; exit bad ? 1 : 0 }'; then
+    echo "bodies-compare: $n pages against $ref ($*): as expected"
+    keep=
+  else
+    echo "bodies-compare: not as expected (see $out)"
+    exit 1
+  fi
+elif cmp -s "$out/ref.txt" "$out/new.txt"; then
   echo "bodies-compare: $n identical to $ref ($*)"
   keep=
 else

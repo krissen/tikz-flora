@@ -772,19 +772,23 @@ local function end_header_clip(pt)
   pt:frame(fn)
 end
 
--- Whether spec's page is a pattern laid as a perimeter band (band.lua).
-local function banded(spec)
-  return spec.layout == require("flora.band").LAYOUT and spec.pattern ~= nil and require("flora.pattern").applies(spec)
+-- Whether spec's page is a perimeter band (band.lua) of a pattern or of
+-- flora (frames.lua's M.vine). Either keeps clear of the whole text
+-- block, frame title included, and runs to the paper's top: neither the
+-- top inset nor the header clip applies. (On C so a test can break it.)
+function C.perimeter_page(spec)
+  return spec.layout == require("flora.band").LAYOUT
 end
 
 -- The page's frames (frames.lua), after its top inset is applied to its
 -- text block, each told the page's foot runs; and that inset. C.frames and
 -- C.header_marks lay a page out alike.
 local function page_frames(spec)
-  -- A pattern's perimeter band (pattern.lua's M.perimeter_band) keeps clear of the
-  -- whole text block, the frame title in it included, and runs to the
-  -- paper's top: the block is not cut down to the inset.
-  if banded(spec) then return Frames.of(spec), 0 end
+  -- A perimeter band, a pattern's (pattern.lua's M.perimeter_band) or
+  -- flora's (frames.lua's M.vine), keeps clear of the whole text block,
+  -- the frame title in it included, and runs to the paper's top: the block
+  -- is not cut down to the inset.
+  if C.perimeter_page(spec) then return Frames.of(spec), 0 end
   -- The wreath frames the text below the running head, not the head itself.
   if spec.header == "body" and spec.body_top then
     spec.top_inset = math.max(spec.height - spec.body_top, Tune.gesture.top_inset or 0)
@@ -955,6 +959,62 @@ local function paint_marks(pt, spec, frames, clip)
   if clip and clip.through then pt:clip_end() end
 end
 
+-- Flora in a perimeter band (frames.lua's M.vine, whose list `frames`
+-- holds the band): what the log says of it, and nil when the band is too
+-- narrow for flora; else the band's clip is begun on `pt` and the function
+-- returned ends it. The plants are cut to the band, the paper less its
+-- inner rectangle: softly, or under edge=border along a rule (band.lua).
+-- A probe or keep_bounds sees them uncut, as it sees every other clip.
+-- pt.perimeter_flora records the band, `first` and `last`, the span of
+-- pt.out the cut holds (the clip and its end), and `rule_at`, the rule's.
+function C.flora_band(pt, spec, frames)
+  local Band, Pattern = require("flora.band"), require("flora.pattern")
+  local b = frames.band
+  local mm = b.w * 25.4 / 72
+  if b.w < b.asked - 1e-6 then
+    Pattern.warn(pt, string.format("%s=%g is wider than the %s margin allows; the band is %.1f mm on all four sides",
+      Band.WIDTH, b.asked * 25.4 / 72, b.side, mm))
+  end
+  if b.none then
+    Pattern.warn(pt, string.format("the perimeter band is %.1f mm, narrower than the %g mm flora is laid in; it has no flora",
+      mm, Band.FLORA_NARROWEST))
+    return nil
+  end
+  if b.density ~= b.density_asked then
+    Pattern.warn(pt, string.format("%s=%s needs a band of %g mm; the %.1f mm band is laid %s",
+      Band.FLORA_DENSITY, b.density_asked, Band.DENSITY_NARROWEST[b.density_asked], mm, b.density))
+  end
+  if not Band.FLORA_BUILT[b.form] then
+    Pattern.warn(pt, string.format("%s=%s is not drawn yet; the band is laid as %s", Band.FLORA, b.form, Band.FLORAS[1]))
+  end
+  pt.perimeter_flora = b
+  local I = b.I
+  local W, H = spec.width, spec.height
+  local inner = { { "m", I[1], I[2] }, { "l", I[3], I[2] }, { "l", I[3], I[4] }, { "l", I[1], I[4] }, { "z" } }
+  local cut = not (spec.probe or spec.keep_bounds)
+  if cut then
+    b.first = #pt.out + 1
+    -- The paper with the inner rectangle reversed: the nonzero clip is the band.
+    pt:clip_begin({
+      { "m", 0, 0 }, { "l", W, 0 }, { "l", W, H }, { "l", 0, H }, { "z" },
+      { "m", I[1], I[2] }, { "l", I[1], I[4] }, { "l", I[3], I[4] }, { "l", I[3], I[2] }, { "z" },
+    })
+  end
+  b.rule = spec[require("flora.settings").SPEC.edge] == Band.FLORA_RULE
+  return function()
+    if cut then
+      pt:clip_end()
+      b.last = #pt.out
+    end
+    if b.rule then
+      pt:begin_group("ornaments")
+      pt:stroke(inner, pal.gold, 0.8, 1)
+      b.rule_at = #pt.out
+      pt:end_group()
+    end
+  end
+end
+
 -- C.page, after the page's palette is in place.
 function C.frames(spec)
   local frames, inset = page_frames(spec)
@@ -980,7 +1040,7 @@ function C.frames(spec)
     })
   end
   -- A perimeter band runs to the paper's top, past the header clip.
-  local clip = not banded(spec) and header_clip(pt, spec) or nil
+  local clip = not C.perimeter_page(spec) and header_clip(pt, spec) or nil
   if spec.marks_only then
     paint_marks(pt, spec, frames, clip)
     for _ in ipairs(spec.reserve or {}) do pt:clip_end() end
@@ -1005,6 +1065,10 @@ function C.frames(spec)
     return pt
   end
   local cover = 0
+  -- Flora in a perimeter band (frames.lua's M.vine): its plants, cut to
+  -- the band.
+  local band = frames.band and C.flora_band(pt, spec, frames)
+  if frames.band and not band then frames = { dropped = 0 } end
   -- What a layout paints under its plants (the scrollwork's band).
   if frames.before then
     pt:begin_group("under")
@@ -1038,6 +1102,7 @@ function C.frames(spec)
     cover = cover + pt.coverage / #frames
   end
   pt:frame(nil)
+  if band then band() end
   if clip and not clip.through then end_header_clip(pt) end
   -- Title furniture paints over the finished crowns, in page coordinates;
   -- while the page grows it waits for the plants. It stays inside the body

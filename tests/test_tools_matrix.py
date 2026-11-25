@@ -410,6 +410,18 @@ def bodies_cells():
     cell("bodies-compare", ["HEAD", ""], "refuse", tree="git", note="an empty suite")
     cell("bodies-compare", ["HEAD", "slides"], "fail", tree="gitchanged", times="kept-dir", note="a working tree that paints something else: the pages stay, named")
     cell("bodies-compare", ["HEAD", "slides"], "refuse", tree="git", prep="build-readonly", nonroot=True, note="build/ is read-only: nothing is painted")
+    cell("bodies-compare", ["--expect", "expect-slides", "HEAD", "slides"], "ok", tree="gitchanged", says="0 identical, 1 differ as expected",
+         note="--expect: exactly the pages expected differ")
+    cell("bodies-compare", ["--expect", "expect-other", "HEAD", "slides"], "fail", tree="gitchanged", times="kept-dir",
+         says="differs, not expected: slides page", note="--expect: a page differs that no line expects")
+    cell("bodies-compare", ["--expect", "expect-slides", "HEAD", "slides"], "fail", tree="git", times="kept-dir",
+         says="expected to differ, identical: slides page", note="--expect: a page expected to differ is identical")
+    cell("bodies-compare", ["--expect", "expect-slides", "HEAD", "protect"], "ok", tree="git", says="1 identical, 0 differ as expected",
+         note="--expect: no page expected, none differs")
+    cell("bodies-compare", ["--expect", "nosuchfile", "HEAD", "slides"], "refuse", tree="git", says="--expect: no file nosuchfile", note="--expect a file that does not exist")
+    cell("bodies-compare", ["--expect"], "refuse", tree="git", says="--expect needs a file", note="--expect without a file")
+    cell("bodies-compare", ["--expect", "", "HEAD"], "refuse", tree="git", says="--expect needs a file", note="--expect with an empty file name")
+    cell("just", ["bodies-compare", "--expect", "expect-slides", "HEAD", "slides"], "ok", tree="gitchanged", note="just bodies-compare --expect")
     cell("just", ["bodies-compare", "HEAD", "slides"], "ok", tree="git", note="just bodies-compare")
     cell("just", ["bodies-compare", "HEAD"], "ok", tree="git", note="just bodies-compare with the default suites")
     cell("just", ["bodies-compare", "HEAD", "slides"], "fail", tree="gitchanged", note="just bodies-compare, trees that differ")
@@ -654,8 +666,11 @@ def judge(c, rc, out, err, tree, subst, elapsed=0.0):
     if c.get("prep") == "needs-dev-full" and not ("profile:" in err and "could not write" in err):
         bad.append("the report is not on stderr with the reason")
     if c["tool"] == "bodies-compare" or c["args"][:1] == ["bodies-compare"]:
-        if expect == "ok" and "identical to" not in out:
+        expecting = "--expect" in c["args"]
+        if expect == "ok" and not expecting and "identical to" not in out:
             bad.append("it does not say the trees are identical")
+        if expect == "ok" and expecting and ": as expected" not in out:
+            bad.append("it does not say the trees differ as expected")
         if expect == "fail" and "differ from" not in out and not c.get("says"):
             bad.append("it does not say how many pages differ")
     if c["tool"] == "profile" and expect == "ok" and c["args"][:1] != ["-e"]:
@@ -842,6 +857,10 @@ def build_git_tree(path, extra=None):
         toolproc.run(cmd, cwd=path, env=env, capture_output=True, check=True)
     if extra:
         write(os.path.join(path, extra), "")
+    # Expectations for bodies-compare --expect, beside the commit: the
+    # stand-in's slides page, and a page no suite paints.
+    write(os.path.join(path, "expect-slides"), "# the page a change paints anew\n\n^slides page$\n")
+    write(os.path.join(path, "expect-other"), "^protect page$\n")
 
 
 def interrupted_linux(base, phase, sig):
