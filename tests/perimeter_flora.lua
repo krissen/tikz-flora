@@ -21,6 +21,8 @@
 --           reservations' clips cuts the band
 --   rule    edge=border draws a rule along the inner rectangle; no other
 --           edge does
+--   density each density is laid as asked, or in a band too narrow for it
+--           as the next denser one the band holds, said once in the log
 --   mark    no frame of the page carries a running head, so it has no mark
 --
 -- Sizes are as users give them: papers and bands in mm.
@@ -45,6 +47,11 @@ M.PAPERS = B.PAPERS
 M.WIDTHS = { 6, 8, 12, 18 }
 M.SEEDS = { 1, 2, 3 }
 M.EDGES = { false, "border" }
+-- The densities (band.lua's perimeterdensity) and, the test's own numbers,
+-- the narrowest band in mm each is laid in; a narrower band takes the
+-- next denser one.
+M.DENSITIES = { "dense", "open", "sparse" }
+M.DENSITY_NARROWEST = { dense = 6, open = 7, sparse = 9 }
 M.BACKDROPS = { "light", "dark" }
 -- Pages whose band is too narrow for flora: 5 mm asked, and 12 mm asked in
 -- a slide theme's margins (25/10/8/12 mm), which narrow it to 4.8 mm.
@@ -189,6 +196,17 @@ function M.check(spec, wmm)
   local ruled = b.rule_at ~= nil and paints(pt.out[b.rule_at]) and pt.out[b.rule_at]:find(corner, 1, true) ~= nil
   if border and not ruled then fail("rule", "edge=border draws no rule along the inner rectangle") end
   if not border and ruled then fail("rule", "a rule is drawn without edge=border") end
+  -- density: the one asked, or in a band too narrow for it the next
+  -- denser one that the band holds, said once in the log.
+  local asked = spec.perimeter_density or "dense"
+  local want = asked
+  for i = #M.DENSITIES, 2, -1 do
+    if want == M.DENSITIES[i] and we < M.DENSITY_NARROWEST[want] * MM - 1e-6 then want = M.DENSITIES[i - 1] end
+  end
+  if b.density ~= want then fail("density", string.format("%s in a %.1f mm band is laid %s, not %s", asked, we / MM, tostring(b.density), want)) end
+  local said = 0
+  for _, w in ipairs(pt.pattern_warnings or {}) do if w:find("perimeterdensity=" .. asked .. " needs", 1, true) then said = said + 1 end end
+  if said ~= (want ~= asked and 1 or 0) then fail("density", string.format("%s in a %.1f mm band says %d times it is laid denser", asked, we / MM, said)) end
   -- mark
   for _, f in ipairs(frames) do
     if f.spec and f.spec.header_y then fail("mark", "a frame of the band carries a running head") break end
@@ -198,7 +216,8 @@ function M.check(spec, wmm)
 end
 
 -- The sweep: opts.papers, widths, titles and backdrops (default all), each
--- cell with its own seed and edge, dealt in turn from M.SEEDS and M.EDGES
+-- cell with its own seed, edge and density, dealt in turn from M.SEEDS,
+-- M.EDGES and M.DENSITIES (opts.density sets one for every cell)
 -- so that the sweep holds several of each, in opts.margins (mm) if given;
 -- and opts.narrow (default true).
 -- Returns the cells swept and every failure as { invariant, cell, text }.
@@ -217,11 +236,14 @@ function M.run(opts)
           n = n + 1
           local seed = M.SEEDS[(n - 1) % #M.SEEDS + 1]
           local edge = M.EDGES[(n - 1) // #M.SEEDS % #M.EDGES + 1]
+          local density = M.DENSITIES[(n - 1) // 2 % #M.DENSITIES + 1]
           local want = (not opts.papers or opts.papers[paper[1]]) and (not opts.widths or opts.widths[wmm])
             and (not opts.titles or opts.titles[titled]) and (not opts.backdrops or opts.backdrops[bd])
           if want then
             local name = string.format("%s %g mm %s %s seed %d edge %s", paper[1], wmm, titled and "title" or "no title", bd, seed, tostring(edge))
-            one(name, M.spec(wmm, paper, titled, bd, seed, edge or nil, opts.margins), wmm)
+            local spec = M.spec(wmm, paper, titled, bd, seed, edge or nil, opts.margins)
+            spec.perimeter_density = opts.density or density
+            one(name .. " " .. density, spec, wmm)
           end
         end
       end

@@ -19,12 +19,12 @@ local Loop = require("flora.loop")
 -- paper and band width's share of the sweep (its four cells), and each
 -- mutation.
 local WEIGHTS = {
-  { "sweep:16:9 6", 35 }, { "sweep:16:9 8", 49 }, { "sweep:16:9 12", 50 }, { "sweep:16:9 18", 44 },
-  { "sweep:4:3 6", 31 }, { "sweep:4:3 8", 46 }, { "sweep:4:3 12", 45 }, { "sweep:4:3 18", 42 },
-  { "sweep:A4 6", 62 }, { "sweep:A4 8", 86 }, { "sweep:A4 12", 76 }, { "sweep:A4 18", 71 },
+  { "sweep:16:9 6", 46 }, { "sweep:16:9 8", 50 }, { "sweep:16:9 12", 35 }, { "sweep:16:9 18", 42 },
+  { "sweep:4:3 6", 40 }, { "sweep:4:3 8", 38 }, { "sweep:4:3 12", 45 }, { "sweep:4:3 18", 34 },
+  { "sweep:A4 6", 77 }, { "sweep:A4 8", 82 }, { "sweep:A4 12", 58 }, { "sweep:A4 18", 51 },
   { "mutant:not cut", 12 }, { "mutant:own width", 12 }, { "mutant:one plant", 8 }, { "mutant:narrow allowed", 10 },
   { "mutant:no rule", 12 }, { "mutant:header clip", 12 }, { "mutant:running head", 12 }, { "mutant:reservation drawn over", 12 },
-  { "mutant:inner gap", 12 },
+  { "mutant:inner gap", 12 }, { "mutant:density too narrow", 6 },
 }
 
 return function(part, parts)
@@ -126,6 +126,14 @@ mutant("narrow allowed", "narrow", Band, "FLORA_NARROWEST", function() return 4 
 -- edge=border without its rule.
 mutant("no rule", "rule", Band, "FLORA_RULE", function() return "nothing" end,
   { papers = { ["16:9"] = true }, widths = { [12] = true }, titles = { [false] = true }, backdrops = { light = true }, narrow = false })
+-- sparse laid in bands down to 6 mm: an 8 mm band keeps it.
+mutant("density too narrow", "density", Band, "DENSITY_NARROWEST", function(orig)
+  local t = {}
+  for k, v in pairs(orig) do t[k] = v end
+  t.sparse = 6
+  return t
+end, { papers = { ["16:9"] = true }, widths = { [8] = true }, titles = { [true] = true }, backdrops = { light = true }, narrow = false,
+  density = "sparse" })
 -- The page clipped under its running head and top inset, as surround is.
 mutant("header clip", "sides", Compose, "perimeter_page", function() return function() return false end end)
 -- The vine's frames given the page's running head.
