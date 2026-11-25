@@ -466,6 +466,20 @@ function SETS.vinewidth()
   return out
 end
 
+-- The vine and surround on each paper at 6, 12 and 18 mm, with a title,
+-- for timing (pages.tsv's secs; give SEEDS as 11,11,11 to time each page
+-- three times).
+function SETS.timing()
+  local out = {}
+  for _, p in ipairs({ "16:9", "4:3", "A4" }) do
+    for _, wmm in ipairs({ 6, 12, 18 }) do
+      out[#out + 1] = item(p .. " " .. wmm .. " mm", "vine", p, wmm, true, "vine")
+      out[#out + 1] = item(p .. " " .. wmm .. " mm", "surround", p, wmm, true, "surround")
+    end
+  end
+  return out
+end
+
 -- Less detail in the vine's small shapes (frames.lua's VINE_LOD, wash.lua's
 -- pt.lod), by name: grain at the density it has on paper at scale 1 (k^2
 -- of the frame's), shapes under 8 or 12 pt on paper painted simple, and

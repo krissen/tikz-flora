@@ -21,6 +21,10 @@
 
 `just lint` (`python3 -I tools/lint.py`) runs lua-language-server, ruff, shellcheck and pyright, as CI does (`.github/workflows/lint.yml`). ruff and pyright are taken from the repository's `.venv` before `PATH`; `just venv` makes it from `requirements-dev.txt`, which pins the versions CI installs, and pyright run from `.venv` resolves imports with `.venv`'s Python, where numpy and Pillow are. A tool that is missing fails the run with a line saying how to get it: pyright is no longer skipped locally. `tests/test_lint.py` runs `tools/lint.py` against stand-in tools for every way each can end, a tool in `.venv` before one on `PATH`, and an argument it does not take.
 
+## Pages against pages
+
+`python3 -I tools/page_diff.py A.pdf B.pdf [DPI] [OUT.png]` tells how far two renderings of a page differ: the share of pixels that change at all, the share that changes by more than 8 of 255 (what a reader might see), and the largest change, at DPI (300 by default); OUT.png shows where. It is the check for a change meant to leave a page looking as it did, where `just bodies-compare` asks for the same bytes. `just frame-flora timing OUT 11,11,11` times the vine and `surround` on each paper three times over (`pages.tsv`'s secs), and `just frame-flora lod` renders the vine at each detail level for `page_diff.py`.
+
 ## Hints
 
 `just lint` fails on lua-language-server's findings from Warning up; the editor also shows Information and Hint (`.luarc.json` puts `duplicate-set-field` there). `just lint-hint FILE...` (`python3 -I tools/lint_hint.py FILE...`) runs the checker over the repository at the level Hint and prints the findings in the files named, a count for each and exit status 1 when there is any. Run it over the Lua files a change adds or edits; a test that replaces a module's field for a mutation does it through a helper with the field's name as a value (`t[key] = v`), which the checker does not take for a second definition.
