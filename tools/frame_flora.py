@@ -52,21 +52,19 @@ SIDES = ("left", "right", "foot", "top")
 FONT = "/System/Library/Fonts/Supplemental/Arial.ttf"
 # The sheet's title for each of tools/frame_flora.lua's sets.
 TITLES = {
-    "measure": "Today: layout=perimeter and surround with flora (band asked and laid dashed)",
+    "measure": "layout=perimeter (flora: the vine) and surround (band as laid dashed)",
     "alts": "(1) The prototypes side by side: 16:9, frame title, 12 mm band",
     "widths": "(2) Each prototype at 8, 12 and 18 mm (16:9, frame title)",
     "papers": "(3) Each prototype on 4:3 and A4 (12 mm, frame title)",
     "band": "(4) Each prototype beside the pattern band (kikko), 12 mm, 16:9",
     "margins": "(5) Margins 25/10/8/12 mm, 12 mm asked: every band narrows to 4.8 mm all round",
-    "join": "Vine: how the ring closes (16:9, 12 mm), with where the plants meet enlarged",
-    "root": "Vine: the roots at the foot's centre, abutting or crossing (16:9, 12 mm)",
-    "scale": "Vine: scaled, fixed or clamped to the band, at 8, 12 and 18 mm, beside today's surround",
-    "corners": "Vine: corners rounded to the band, to half of it, mitred, and cut to the band, at 8 and 18 mm",
-    "mark": "Vine: without and with the running-head mark by the frame title (12 mm)",
-    "minwidth": "Vine: the narrowest bands, 4 to 8 mm, and margins 25/10/8/12, in each scale",
-    "vpapers": "Vine (clamped, pass, corner 0.5) on 16:9, 4:3 and A4, with and without a frame title",
-    "cfix": "C corners and vine: as in ORDER #1 and fixed (no runners, vine into the arms)",
-    "choice": "B vine as the default, and A, C and D at their best (16:9, 12 mm)",
+    "vine-16:9": "perimeterflora=vine on 16:9: 6, 8, 12 and 18 mm, frame title or not, edge=cell or border, light or dark, beside kikko",
+    "vine-4:3": "perimeterflora=vine on 4:3: 6, 8, 12 and 18 mm, frame title or not, edge=cell or border, light or dark, beside kikko",
+    "vine-A4": "perimeterflora=vine on A4: 6, 8, 12 and 18 mm, frame title or not, edge=cell or border, light or dark, beside kikko",
+    "vineroot": "perimeterflora=vine: the root in the foot-left corner and the meeting in the top-right one, enlarged",
+    "vinewidth": "perimeterflora=vine: 5 to 8 mm, and 12 mm in margins 25/10/8/12 (4.8 mm): none under 6 mm",
+    "cfix": "C corners and vine (prototype): as first drawn and fixed (no runners, vine into the arms)",
+    "choice": "The vine as the engine draws it, and the prototypes A, C and D at their best (16:9, 12 mm)",
 }
 
 
@@ -213,23 +211,25 @@ def tile(out, r, width):
     crop = box(r.get("crop", ""))
     k = width / ((crop[2] - crop[0]) if crop else W)
     dpi = 72 * k
-    im = Image.open(render(out, r["file"], f"{dpi:.2f}", transparent=False)).convert("RGB")
+    im = Image.open(render(out, r["file"], f"{dpi:.2f}")).convert("RGBA")
     im = im.resize((round(W * k), round(H * k)))
-    base = Image.new("RGB", im.size, "white")
+    # The paper: white, or the dark backdrop the page was painted for.
+    dark = r.get("backdrop") == "dark"
+    base = Image.new("RGBA", im.size, "#0a1014" if dark else "white")
     dr = ImageDraw.Draw(base)
 
     def rect(b, **kw):
         dr.rectangle([b[0] * k, (H - b[3]) * k, b[2] * k, (H - b[1]) * k], **kw)
 
     t = [float(r[c]) for c in ("tx0", "ty0", "tx1", "ty1")]
-    rect(t, fill="#ecebe7")
+    rect(t, fill="#1c2329" if dark else "#ecebe7")
     tb = box(r["title"])
     if tb:
-        rect(tb, fill="#c9c6bf")
+        rect(tb, fill="#3a4148" if dark else "#c9c6bf")
     rb = box(r["reserve"])
     if rb:
         rect(rb, outline="#d08a8a")
-    base = Image.composite(im, base, Image.eval(im.convert("L"), lambda v: 255 if v < 250 else 0))
+    base = Image.alpha_composite(base, im).convert("RGB")
     dr = ImageDraw.Draw(base)
     # The band as laid (the asked width, or less where a margin is narrower), dashed.
     b = float(r["band_pt"])
