@@ -90,13 +90,15 @@ if S.once("narrow") then
 end
 
 -- Each invariant fails when the engine is broken as it guards against, on
--- the one page that shows it: `orig` is the thing replaced, set back after.
+-- the one page that shows it: field `key` of table `t` is replaced by what
+-- `make` returns for it while the sweep runs, and set back after.
 local ONE = { papers = { ["16:9"] = true }, widths = { [12] = true }, titles = { [true] = true }, backdrops = { light = true }, narrow = false }
-local function mutant(name, invariant, set, unset, opts)
+local function mutant(name, invariant, t, key, make, opts)
   if not S.mine("mutant:" .. name) then return end
-  set()
+  local orig = t[key]
+  t[key] = make(orig)
   local ok, cells, fails = pcall(F.run, opts or ONE)
-  unset()
+  t[key] = orig
   H.check(ok, string.format("mutation %s: the sweep stopped: %s", name, tostring(cells)))
   local n = 0
   for _, f in ipairs(ok and fails or {}) do if f[1] == invariant then n = n + 1 end end
@@ -104,75 +106,56 @@ local function mutant(name, invariant, set, unset, opts)
 end
 
 -- The plants left uncut.
-local orig_band = Compose.flora_band
-mutant("not cut", "band", function()
-  Compose.flora_band = function(pt, spec, frames)
-    local s = setmetatable({ keep_bounds = true }, { __index = spec })
-    return orig_band(pt, s, frames)
-  end
-end, function() Compose.flora_band = orig_band end)
+mutant("not cut", "band", Compose, "flora_band", function(orig) return function(pt, spec, frames)
+  return orig(pt, setmetatable({ keep_bounds = true }, { __index = spec }), frames)
+end end)
 -- The band 3 pt wider than the pattern band's.
-local orig_width = Pattern.band_width
-mutant("own width", "width", function()
-  Pattern.band_width = function(spec)
-    local w, asked, side, I = orig_width(spec)
-    if not (w and I) then return nil end
-    return w + 3, asked, side, { I[1] + 3, I[2] + 3, I[3] - 3, I[4] - 3 }
-  end
-end, function() Pattern.band_width = orig_width end)
+mutant("own width", "width", Pattern, "band_width", function(orig) return function(spec)
+  local w, asked, side, I = orig(spec)
+  if not (w and I) then return nil end
+  return w + 3, asked, side, { I[1] + 3, I[2] + 3, I[3] - 3, I[4] - 3 }
+end end)
 -- The second plant, round the foot and up the right, left out.
-local orig_vine = Frames.vine
-mutant("one plant", "sides", function()
-  Frames.vine = function(spec)
-    local fs = orig_vine(spec)
-    fs[2] = nil
-    return fs
-  end
-end, function() Frames.vine = orig_vine end)
+mutant("one plant", "sides", Frames, "vine", function(orig) return function(spec)
+  local fs = orig(spec)
+  fs[2] = nil
+  return fs
+end end)
 -- Flora laid in bands down to 4 mm.
-local narrowest = Band.FLORA_NARROWEST
-mutant("narrow allowed", "narrow", function() Band.FLORA_NARROWEST = 4 end, function() Band.FLORA_NARROWEST = narrowest end,
-  { papers = {}, narrow = true })
+mutant("narrow allowed", "narrow", Band, "FLORA_NARROWEST", function() return 4 end, { papers = {}, narrow = true })
 -- edge=border without its rule.
-local rule = Band.FLORA_RULE
-mutant("no rule", "rule", function() Band.FLORA_RULE = "nothing" end, function() Band.FLORA_RULE = rule end,
+mutant("no rule", "rule", Band, "FLORA_RULE", function() return "nothing" end,
   { papers = { ["16:9"] = true }, widths = { [12] = true }, titles = { [false] = true }, backdrops = { light = true }, narrow = false })
 -- The page clipped under its running head and top inset, as surround is.
-local orig_page = Compose.perimeter_page
-mutant("header clip", "sides", function() Compose.perimeter_page = function() return false end end,
-  function() Compose.perimeter_page = orig_page end)
+mutant("header clip", "sides", Compose, "perimeter_page", function() return function() return false end end)
 -- The vine's frames given the page's running head.
-mutant("running head", "mark", function()
-  Frames.vine = function(spec)
-    local fs = orig_vine(spec)
-    for i = 1, #fs do fs[i].spec.header_y = spec.header_y end
-    return fs
-  end
-end, function() Frames.vine = orig_vine end)
--- A reservation's clip left out: the band paints over it.
-local P = getmetatable(Paint.new({ backend = "pdf" })).__index
-local orig_clip = P.clip_begin
-mutant("reservation drawn over", "text", function()
-  P.clip_begin = function(self, cmds)
-    -- The reservation's clip is the paper with a box in its right half cut
-    -- out; the band's is cut out from its left edge.
-    if cmds[7] and cmds[7][2] > 200 then self.clips = (self.clips or 0) + 1; self.out[#self.out + 1] = "q"; return end
-    return orig_clip(self, cmds)
-  end
-end, function() P.clip_begin = orig_clip end)
+mutant("running head", "mark", Frames, "vine", function(orig) return function(spec)
+  local fs = orig(spec)
+  for i = 1, #fs do fs[i].spec.header_y = spec.header_y end
+  return fs
+end end)
+-- A reservation's clip left out: the band paints over it. The
+-- reservation's clip is the paper with a box in its right half cut out;
+-- the band's is cut out from its left edge.
+mutant("reservation drawn over", "text", getmetatable(Paint.new({ backend = "pdf" })).__index, "clip_begin",
+  function(orig) return function(self, cmds)
+    if cmds[7] and cmds[7][2] > 200 then
+      self.clips = (self.clips or 0) + 1
+      self.out[#self.out + 1] = "q"
+      return
+    end
+    return orig(self, cmds)
+  end end)
 -- The text block's gap left out of the band's narrowing (pattern.lua's
 -- band_inner): a band to the margin's full width, on a page whose 14 mm
 -- margins hold a 12 mm band only less the gap.
-local orig_inner = Pattern.band_inner
-mutant("inner gap", "text", function()
-  Pattern.band_inner = function(spec, w)
-    local W, Ht, t = spec.width, spec.height, spec.text
-    local m = math.min(w, t.x0, t.y0, W - t.x1, Ht - t.y1)
-    return { m, m, W - m, Ht - m }, ""
-  end
-end, function() Pattern.band_inner = orig_inner end,
-  { papers = { ["16:9"] = true }, widths = { [12] = true }, titles = { [true] = true }, backdrops = { light = true }, narrow = false,
-    margins = { 14, 14, 14, 14 } })
+mutant("inner gap", "text", Pattern, "band_inner", function() return function(spec, w)
+  local W, Ht, t = spec.width, spec.height, spec.text
+  local m = math.min(w, t.x0, t.y0, W - t.x1, Ht - t.y1)
+  return { m, m, W - m, Ht - m }, ""
+end end, { papers = { ["16:9"] = true }, widths = { [12] = true }, titles = { [true] = true }, backdrops = { light = true },
+  narrow = false, margins = { 14, 14, 14, 14 } })
+
 -- The band's keys change nothing on a page of another layout.
 if S.once("other layouts") then
   local function page(extra)
