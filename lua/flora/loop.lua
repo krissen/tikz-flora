@@ -110,10 +110,41 @@ end
 -- The maps between a frame laid along the line and the page (see the top
 -- of this file). The inverse returns frame y in (-len/4, 3 len/4] / k, so
 -- a point behind the frame's foot comes back below it.
+--
+-- The forward map runs for every point a plant paints, so it is L:at
+-- unrolled over arrays of the segments' numbers: the same arithmetic in the
+-- same order, so the same points to the last bit, without the table
+-- lookups and calls.
 function L:maps(s0, xc, k, dir)
-  local len = self.len
+  local len, rc, segs = self.len, self.rc, self.segs
+  local n = #segs
+  local S0, E, AX, AY, TX, TY, CX, CY, A0 = {}, {}, {}, {}, {}, {}, {}, {}, {}
+  for i, g in ipairs(segs) do
+    S0[i], E[i] = g.s0, g.s0 + g.len
+    if g.cx then CX[i], CY[i], A0[i] = g.cx, g.cy, g.a0
+    else AX[i], AY[i], TX[i], TY[i] = g.ax, g.ay, g.tx, g.ty end
+  end
   local function fn(x, y)
-    local px, py, nx, ny = at(self, s0 + dir * k * y)
+    local s = (s0 + dir * k * y) % len
+    local i = self.hint or 1
+    if s < S0[i] or s > E[i] then
+      i = n
+      for j = 1, n do
+        if s <= E[j] then i = j; break end
+      end
+      self.hint = i
+    end
+    local u = s - S0[i]
+    local px, py, nx, ny
+    local cx = CX[i]
+    if cx then
+      local a = A0[i] - u / rc
+      local c, sn = cos(a), sin(a)
+      px, py, nx, ny = cx + rc * c, CY[i] + rc * sn, -c, -sn
+    else
+      local tx, ty = TX[i], TY[i]
+      px, py, nx, ny = AX[i] + tx * u, AY[i] + ty * u, ty, -tx
+    end
     local d = k * (x - xc)
     return px + nx * d, py + ny * d
   end
