@@ -42,6 +42,21 @@ M.EDGE = "border"
 -- repeat, and a band shows only fragments of it).
 M.NARROWEST = { penrose_rhombs = math.huge, khatam = 12, hexagram_lattice = 12 }
 
+-- Flora in a perimeter band (frames.lua's M.vine): the key choosing its
+-- form and the forms it names, the first the default. vine is one vine
+-- round all four sides; pinwheel and corners are named for later and laid
+-- as vine for now, which the log says.
+M.FLORA = "perimeterflora"
+M.FLORAS = { "vine", "pinwheel", "corners" }
+M.FLORA_BUILT = { vine = true }
+-- The narrowest band in mm flora is laid in: under it the band has no
+-- flora, and the log says so.
+M.FLORA_NARROWEST = 6
+-- How flora meets the band's inner edge, by the edge key: border cuts it
+-- along the edge with a rule there; any other value, or none, cuts it
+-- there softly, without a rule.
+M.FLORA_RULE = "border"
+
 -- Pattern `name`'s edge in a band when the page sets none.
 function M.default_edge(name)
   return M.DEFAULT_EDGE[name] or M.EDGE

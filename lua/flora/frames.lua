@@ -31,6 +31,7 @@ local Title = require("flora.orn_title")
 local Oval = require("flora.oval")
 local Ribbon = require("flora.orn_ribbon")
 local Scrollwork = require("flora.orn_scrollwork")
+local Loop = require("flora.loop")
 
 local Band = require("flora.band")
 
@@ -48,7 +49,7 @@ M.about = {
   split = "The outer margin of a two-sided document: on the right of odd pages and the left of even ones.",
   title = "A crown over a title. Wrap the title in the floratitle environment; without it the first block of lines on the page is crowned.",
   surround = "A wreath round the text block, for title pages and contents.",
-  [Band.LAYOUT] = "A band of a pattern round the paper's edge, the same width on all four sides (" .. Band.WIDTH .. "), clear of the whole text block. Flora under it is laid out as surround.",
+  [Band.LAYOUT] = "A band round the paper's edge, the same width on all four sides (" .. Band.WIDTH .. "), clear of the whole text block: of a pattern, or of flora as one vine round all four sides (" .. Band.FLORA .. ").",
   flank = "A title page: a plant up each side of its contents, their roots meeting at the foot round a crest.",
   wreath = "A title page: an open oval garland round the title, tied at its foot.",
   bouquet = "A title page: one upright bouquet tied with a bow, behind the title, each title line on a ribbon.",
@@ -276,8 +277,12 @@ local function layout_frames(spec)
   if layout == "split" then
     layout = (spec.page or 1) % 2 == 1 and "right" or "left"
   end
-  -- The perimeter band is a pattern's (pattern.lua); flora is laid out as surround.
-  if layout == Band.LAYOUT then layout = "surround" end
+  -- The perimeter band: a pattern's is pattern.lua's, and its frames are
+  -- surround's; flora's is a vine round the band (M.vine).
+  if layout == Band.LAYOUT then
+    if M.flora_band(spec) then return M.vine(spec) end
+    layout = "surround"
+  end
   if layout == "left" then
     return { { spec = spec } }
   elseif layout == "right" then
@@ -477,6 +482,64 @@ local function along(spec, ov, mw, xc, s0, s1, density)
     fs[i] = curved(spec, fn, inv, w, h, text, { label = side, seed = i == 2 and seed_of(spec, 2) or nil, density = density })
   end
   fs.oval = ov
+  return fs
+end
+
+-- Whether spec's page lays flora in a perimeter band: layout=perimeter on a
+-- page no pattern fills.
+function M.flora_band(spec)
+  return spec.layout == Band.LAYOUT and not (spec.pattern ~= nil and require("flora.pattern").applies(spec))
+end
+
+-- The vine's plants are grown in frames in which the band is VINE_BAND pt
+-- wide, as a margin is, scaled down to the band by k, held between
+-- VINE_SCALE[1] and [2]: in a narrow band the plant is drawn finer, in a
+-- wide one larger, but neither as far as the band alone would take it.
+-- The line it follows turns each corner on a radius of VINE_CORNER times
+-- the band's width, and the stems narrow to a point over VINE_TAPER of
+-- their length at each end.
+M.VINE_BAND, M.VINE_SCALE, M.VINE_CORNER, M.VINE_TAPER = 70, { 0.4, 0.6 }, 0.5, 0.03
+
+-- Vine: flora in the perimeter band, one vine round all four sides on the
+-- band's centre line (loop.lua), its corners rounded. It is two plants
+-- rooted in the foot-left corner, their roots crossing there, each round
+-- one half of the page to meet in the top-right corner, so the foot and
+-- the top run unbroken. The band is pattern.lua's (M.band_width): as wide
+-- on every side, narrowed alike where a margin is narrower. The list's
+-- `band` holds that width, the width asked, the side that narrowed it, the
+-- inner rectangle, the form asked and, under Band.FLORA_NARROWEST mm,
+-- none = true and no frames.
+function M.vine(spec)
+  local w, asked, side, I = require("flora.pattern").band_width(spec)
+  local form = spec.perimeter_flora or Band.FLORAS[1]
+  local fs = { dropped = 0, band = { w = w, asked = asked, side = side, I = I, form = form } }
+  if w < Band.FLORA_NARROWEST * 72 / 25.4 - 1e-6 then
+    fs.band.none = true
+    return fs
+  end
+  local W, H = spec.width, spec.height
+  local k = G.clamp(w / M.VINE_BAND, M.VINE_SCALE[1], M.VINE_SCALE[2])
+  local vb = w / k
+  local u = vb / M.VINE_BAND
+  local lp = Loop.new(w / 2, w / 2, W - w / 2, H - w / 2, w * M.VINE_CORNER)
+  local edge, gutter = 6 * u, 4 * u
+  -- Each plant starts this far behind the corner, so the roots cross.
+  local cross = (edge + 10 * u) * k
+  local s0 = lp:corner(1)
+  local h = (lp.len / 2 - 8 * k + cross) / k
+  local fw = vb + 40 * u
+  local tune = {
+    compose = { hero_min = math.min(28, 0.4 * vb), hero_max = math.min(80, 0.45 * vb) },
+    plant = { end_taper = M.VINE_TAPER },
+  }
+  for i, dir in ipairs({ 1, -1 }) do
+    local fn, inv = lp:maps(s0 - dir * cross, vb / 2, k, dir)
+    local f = curved(spec, fn, inv, fw, h, { x0 = vb, y0 = 0, x1 = fw, y1 = h },
+      { label = i == 1 and "left" or "right", seed = i == 2 and seed_of(spec, 2) or nil })
+    f.spec.edge, f.spec.gutter, f.spec.header, f.spec.tune = edge, gutter, "margin", tune
+    fs[#fs + 1] = f
+  end
+  fs.loop = lp
   return fs
 end
 

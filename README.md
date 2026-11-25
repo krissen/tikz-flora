@@ -92,8 +92,9 @@ compile with a message naming the key.
 | `giltlook` | `{key=value, ...}` | Changes keys of that look, e.g. `giltlook={horizon=0.1, grain=0}`: light, horizon, sky, ground, highlight, grain, sparkle, shadow and more (`lua/flora/gilt_look.lua` lists every key and its range) |
 | `backdrop` | `light` (default), `dark`, or a dark `#rrggbb` | What the flora is painted over. On `dark` every ink is painted light, as if lit, and gold stays gold; set the page to match, e.g. `\pagecolor[HTML]{0A1014}` |
 | `pattern` | a pattern or group name, `{name=weight, ...}`, or `none` | Fills the page with a geometric pattern instead of flora (see Patterns) |
-| `edge` | `dissolve` (default), `cell`, `fade`, `border`, `guilloche`; in a perimeter band also `rows` | How a pattern meets the text |
-| `perimeterwidth` | 4 to 40 (mm) | The width of a pattern's perimeter band (`layout=perimeter`), 12 by default |
+| `edge` | `dissolve` (default), `cell`, `fade`, `border`, `guilloche`; in a perimeter band also `rows` | How a pattern meets the text; for flora in a perimeter band, `border` cuts it along a rule and any other value softly |
+| `perimeterwidth` | 4 to 40 (mm) | The width of the perimeter band (`layout=perimeter`), of flora or of a pattern, 12 by default |
+| `perimeterflora` | `vine` (default), `pinwheel`, `corners` | The form of flora in the perimeter band; `pinwheel` and `corners` are not drawn yet and are laid as `vine` |
 | `hero` | `rosette`, `phyllotaxis`, `rose`, `guilloche`, `turned_circles`, `circle_disc`, `none` (default) | One large radial motif at a top corner of a pattern page |
 | `outer` | `bleed` (default), `margin` | How a pattern meets the paper's edge |
 | `scale` | 0.25 to 4 | The size of a pattern's cells, as a factor of their size for the field |
@@ -164,9 +165,13 @@ holds it to its box.
   `\begin{floratitle} ... \end{floratitle}`; without it the first block
   of lines is crowned.
 - `surround`: a wreath round the text block, for title pages and contents.
-- `perimeter`: for a pattern, a band round the paper's edge, the same width on
-  all four sides (see The perimeter band under Patterns). Flora under it is
-  laid out as `surround`.
+- `perimeter`: a band round the paper's edge, the same width on all four
+  sides: of flora, one vine round the page (see Flora in the perimeter band
+  below), or of a pattern (see The perimeter band under Patterns).
+
+#### Flora in the perimeter band
+
+`layout=perimeter` without a pattern lays flora as a band round the paper's edge: one vine round all four sides (`perimeterflora=vine`, the default), on the band's centre line with its corners rounded. It is two plants rooted in the foot-left corner, their roots crossing there, each growing round one half of the page to meet the other in the top-right corner, so the foot and the top run unbroken. The band is the pattern band's: `perimeterwidth` mm wide (12 by default), narrowed alike on all four sides to what the narrowest margin holds, clear of the whole text block, its frame title included, and of every `\florareserve` rectangle, and running to the paper's top past the top inset and the header clip; a page of it has no running-head mark. The plant is drawn in proportion to the band, finer in a narrow one and larger in a wide one, within limits. The flora is cut softly along the band's inner edge, or under `edge=border` along a rule there; other `edge` values cut it softly. A band narrower than 6 mm has no flora, and the log says so once per page. `pinwheel` and `corners` are named for later forms; for now they are laid as `vine`, and the log says so. Before this, flora under `layout=perimeter` was laid out as `surround`; `surround` itself is unchanged.
 
 Four more layouts are for title pages, after engraved and hand-coloured
 flower books of the nineteenth century. Each frames the lines in
@@ -384,10 +389,10 @@ without these settings every page is drawn as before.
 - `\florareserve{x0}{y0}{x1}{y1}` keeps the flora out of a rectangle on the
   following pages, and `\floraclearreserve` clears them. Coordinates start
   at the paper's lower-left corner and may be TeX dimension expressions.
-  A pattern's perimeter band (`layout=perimeter`) runs past the top inset and the
-  header clip to the paper's top, so a theme that draws in its top margin
-  outside the text block reserves that rectangle, or the band paints over
-  it.
+  The perimeter band (`layout=perimeter`), of flora or of a pattern, runs past
+  the top inset and the header clip to the paper's top, so a theme that draws
+  in its top margin outside the text block reserves that rectangle, or the
+  band paints over it.
 - `\florabackground[top]{color}{height}` paints a band under the flora at
   the top (or `bottom`) of the page; height `0pt` removes it.
 - `\floratextblockx{left}{right}` gives the text block's horizontal limits,

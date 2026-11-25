@@ -40,7 +40,7 @@ M.about = {
   { "pattern", "a pattern or group name, {name=weight, ...} with weights 0 to 10, or none",
     "Fills the page with a geometric pattern instead of flora: one picked per page by weight. A group name (such as japanese or girih) weighs every pattern in it, except the emblem patterns (hexagram_lattice, khatam, greek_crosses), which only their own name or the group symbol picks. Each setting replaces the last; none grows flora again." },
   { "edge", "dissolve, cell, fade, border, guilloche",
-    "How a pattern meets the text: cells falling away (the default), whole cells to a hard edge, cells paling into the paper, a ruled frame round the text, or a guilloche band round it. In a perimeter band (layout=" .. Band.LAYOUT .. ") it is how the band ends toward the text: border a straight edge with a rule, cell whole cells, fade cells paling, dissolve cells falling away into the margin, and " .. Band.ROWS .. " whole rows that fill the band; left out, each pattern's own (whole rows for asanoha, celtic_knot and stars_8_4, border for the others). guilloche has no form in a band." },
+    "How a pattern meets the text: cells falling away (the default), whole cells to a hard edge, cells paling into the paper, a ruled frame round the text, or a guilloche band round it. In a perimeter band (layout=" .. Band.LAYOUT .. ") it is how the band ends toward the text: border a straight edge with a rule, cell whole cells, fade cells paling, dissolve cells falling away into the margin, and " .. Band.ROWS .. " whole rows that fill the band; left out, each pattern's own (whole rows for asanoha, celtic_knot and stars_8_4, border for the others). guilloche has no form in a band. For flora in a perimeter band, border cuts it along a rule at the band's inner edge, and any other value cuts it there softly." },
   { "hero", "rosette, phyllotaxis, rose, guilloche, turned_circles, circle_disc, none",
     "One large radial motif at a top corner of a pattern page, which the cells give way to: rings of petals, seeds set as a sunflower sets them, a rose window, guilloche rings, a ring of turned circles, or a disc of overlapping circles in a rim. It sits in the top corner of the pattern's side (top right for right, top left for left; top right for layouts with both sides or the whole page): centred on the paper's corner and running off it under outer=bleed, a whole disc inside the margin under outer=margin. It grows ring by ring from its centre. none (the default) paints none." },
   { "outer", "bleed, margin", "How a pattern meets the paper's edge: running off the page (the default), or whole cells, and a whole hero, inside a small margin." },
@@ -59,6 +59,7 @@ M.about = {
   { "lighten", "0 to 1", "Lightens a pattern's fields toward the paper: 0 (the default) keeps their inks' lightness, 1 makes them nearly the paper." },
   { "bandwidth", "0.25 to 4", "The width of a pattern's bands and lines, as a factor of its own." },
   { Band.WIDTH, Band.WIDTH_MIN .. " to " .. Band.WIDTH_MAX, "The width in mm of a perimeter band (layout=" .. Band.LAYOUT .. "), the same on all four sides: " .. Band.WIDTH_DEFAULT .. " by default. Where a margin is narrower, the whole band narrows to what the narrowest side holds, the same all round and clear of the text block (none under 4 mm), and the log says so." },
+  { Band.FLORA, table.concat(Band.FLORAS, ", "), "The form of flora in a perimeter band (layout=" .. Band.LAYOUT .. " without a pattern): " .. Band.FLORAS[1] .. " (the default), one vine round all four sides, rooted in the foot-left corner and meeting itself in the top-right one, its corners rounded; pinwheel and corners are not drawn yet and are laid as " .. Band.FLORAS[1] .. ", and the log says so. The flora keeps to the band, cut softly along its inner edge, or along a rule there under edge=border. A band narrower than " .. Band.FLORA_NARROWEST .. " mm has no flora, and the log says so." },
   { "cache", "true, false",
     "true (the default) keeps each page's flora in a folder <jobname>-flora beside the PDF, so a later compile reuses it; false grows every page afresh." },
 }
@@ -188,6 +189,11 @@ M.define(Band.WIDTH, function(v)
   local n = tonumber(v)
   if n and n >= Band.WIDTH_MIN and n <= Band.WIDTH_MAX then return n end
   return nil, string.format("%s must be a number of mm from %d to %d", Band.WIDTH, Band.WIDTH_MIN, Band.WIDTH_MAX)
+end)
+
+M.define(Band.FLORA, function(v)
+  for _, f in ipairs(Band.FLORAS) do if v == f then return v end end
+  return nil, Band.FLORA .. " must be " .. table.concat(Band.FLORAS, ", ")
 end)
 
 M.define("scale", function(v)
@@ -595,7 +601,7 @@ M.SPEC = {
   finish = "pattern_finish", bands = "pattern_bands", bandwidth = "pattern_bandwidth", ground = "pattern_ground",
   ends = "pattern_ends", panels = "pattern_panels", lighten = "pattern_lighten",
   starfill = "pattern_starfill", gapfill = "pattern_gapfill", alternate = "pattern_alternate",
-  [Band.WIDTH] = "perimeter_width",
+  [Band.WIDTH] = "perimeter_width", [Band.FLORA] = "perimeter_flora",
 }
 -- The pattern keys besides `pattern` itself, by key -> default. A mixer's
 -- pattern state, its \florasetup line and the preview's spec all carry
