@@ -981,9 +981,6 @@ function C.flora_band(pt, spec, frames)
     Pattern.warn(pt, string.format("%s=%s needs a band of %g mm; the %s mm band is laid %s",
       Band.FLORA_DENSITY, b.density_asked, Band.DENSITY_NARROWEST[b.density_asked], mm, b.density))
   end
-  if not Band.FLORA_BUILT[b.form] then
-    Pattern.warn(pt, string.format("%s=%s is not drawn yet; the band is laid as %s", Band.FLORA, b.form, Band.FLORAS[1]))
-  end
   pt.perimeter_flora = b
   local I = b.I
   local W, H = spec.width, spec.height

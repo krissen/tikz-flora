@@ -42,13 +42,13 @@ M.EDGE = "border"
 -- repeat, and a band shows only fragments of it).
 M.NARROWEST = { penrose_rhombs = math.huge, khatam = 12, hexagram_lattice = 12 }
 
--- Flora in a perimeter band (frames.lua's M.vine): the key choosing its
+-- Flora in a perimeter band (frames.lua's M.flora): the key choosing its
 -- form and the forms it names, the first the default. vine is one vine
--- round all four sides; pinwheel and corners are named for later and laid
--- as vine for now, which the log says.
+-- round all four sides; pinwheel two plants turning round the page, each
+-- up one side and along the foot or the top; corners a plant in each
+-- corner with a sparser vine between them.
 M.FLORA = "perimeterflora"
 M.FLORAS = { "vine", "pinwheel", "corners" }
-M.FLORA_BUILT = { vine = true }
 -- How densely the vine grows, by the key's value, the first the default:
 -- the factor its plant is drawn larger by than at the default, so fewer,
 -- larger leaves and blooms fill the band.
