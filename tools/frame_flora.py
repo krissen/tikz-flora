@@ -62,6 +62,7 @@ TITLES = {
     "vine-4:3": "perimeterflora=vine on 4:3: 6, 8, 12 and 18 mm, frame title or not, edge=cell or border, light or dark, beside kikko",
     "vine-A4": "perimeterflora=vine on A4: 6, 8, 12 and 18 mm, frame title or not, edge=cell or border, light or dark, beside kikko",
     "vineroot": "perimeterflora=vine: the root in the foot-left corner and the meeting in the top-right one, enlarged",
+    "lod": "The vine with less detail in small shapes (grain at paper density, simple washes under 8 or 12 pt, both) beside it as drawn",
     "vinewidth": "perimeterflora=vine: 5 to 8 mm, and 12 mm in margins 25/10/8/12 (4.8 mm): none under 6 mm",
     "cfix": "C corners and vine (prototype): as first drawn and fixed (no runners, vine into the arms)",
     "choice": "The vine as the engine draws it, and the prototypes A, C and D at their best (16:9, 12 mm)",

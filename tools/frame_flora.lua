@@ -35,6 +35,7 @@ local Paint = require("flora.paint")
 local Pdf = require("flora.pdfout")
 
 local MM = 72 / 25.4
+local LODS
 -- LuaTeX's md5 library, a global there (.luals/luatex.lua declares it).
 local md5 = rawget(_G, "md5")
 
@@ -465,6 +466,35 @@ function SETS.vinewidth()
   return out
 end
 
+-- Less detail in the vine's small shapes (frames.lua's VINE_LOD, wash.lua's
+-- pt.lod), by name: grain at the density it has on paper at scale 1 (k^2
+-- of the frame's), shapes under 8 or 12 pt on paper painted simple, and
+-- both. Kinds "vine:lod=NAME".
+LODS = {
+  grain = { grain = function(k) return k * k end },
+  simple8 = { simple = 8 },
+  simple12 = { simple = 12 },
+  both = { simple = 8, grain = function(k) return k * k end },
+}
+
+-- The vine with each detail level, 16:9 at 6, 12 and 18 mm with a title,
+-- beside it as drawn: for timing and for tools/page_diff.py.
+function SETS.lod()
+  local out = {}
+  for _, wmm in ipairs({ 6, 12, 18 }) do
+    out[#out + 1] = item(wmm .. " mm", "as drawn", "16:9", wmm, true, "vine")
+    for _, name in ipairs({ "grain", "simple8", "simple12", "both" }) do
+      out[#out + 1] = item(wmm .. " mm", "lod=" .. name, "16:9", wmm, true, "vine:lod=" .. name)
+    end
+  end
+  -- The 12 mm page's foot-left corner enlarged, at about 200 %.
+  out[#out + 1] = item("12 mm, foot-left corner", "as drawn", "16:9", 12, true, "vine", nil, "footleft")
+  for _, name in ipairs({ "grain", "simple8", "simple12", "both" }) do
+    out[#out + 1] = item("12 mm, foot-left corner", "lod=" .. name, "16:9", 12, true, "vine:lod=" .. name, nil, "footleft")
+  end
+  return out
+end
+
 -- ------------------------------------------------------------------
 
 local outdir, setname, seeds_arg = arg[1], arg[2], arg[3]
@@ -505,12 +535,15 @@ for _, it in ipairs(SETS[setname]()) do
     if alt then
       pt, laid = paint_alt(spec, alt)
     else
-      if it.kind == "vine" then
+      local lod = it.kind:match("^vine:lod=(.+)$")
+      if it.kind == "vine" or lod then
         spec.layout, spec.perimeter_flora = "perimeter", "vine"
+        Frames.VINE_LOD = LODS[lod]
       elseif not pattern then
         spec.layout = it.kind
       end
       pt = Compose.page(spec)
+      Frames.VINE_LOD = nil
       local _, w = B.inner(spec, it.wmm * MM)
       laid = w
     end
