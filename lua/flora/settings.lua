@@ -59,6 +59,7 @@ M.about = {
   { "lighten", "0 to 1", "Lightens a pattern's fields toward the paper: 0 (the default) keeps their inks' lightness, 1 makes them nearly the paper." },
   { "bandwidth", "0.25 to 4", "The width of a pattern's bands and lines, as a factor of its own." },
   { Band.WIDTH, Band.WIDTH_MIN .. " to " .. Band.WIDTH_MAX, "The width in mm of a perimeter band (layout=" .. Band.LAYOUT .. "), the same on all four sides: " .. Band.WIDTH_DEFAULT .. " by default. Where a margin is narrower, the whole band narrows to what the narrowest side holds, the same all round and clear of the text block (none under 4 mm), and the log says so." },
+  { Band.FLORA_DENSITY, table.concat(Band.DENSITIES, ", "), "How densely the vine of a perimeter band grows: " .. Band.DENSITIES[1] .. " (the default), many small leaves and blooms; open, fewer and larger; sparse, fewest and largest, its stem as fine as at " .. Band.DENSITIES[1] .. ". The sparser it is, the quicker the page: about half the time at sparse. open needs a band of " .. Band.DENSITY_NARROWEST.open .. " mm and sparse one of " .. Band.DENSITY_NARROWEST.sparse .. " mm; in a narrower band the vine is laid at the sparsest density the band holds, and the log says so." },
   { Band.FLORA, table.concat(Band.FLORAS, ", "), "The form of flora in a perimeter band (layout=" .. Band.LAYOUT .. " without a pattern): " .. Band.FLORAS[1] .. " (the default), one vine round all four sides, rooted in the foot-left corner and meeting itself in the top-right one, its corners rounded; pinwheel and corners are not drawn yet and are laid as " .. Band.FLORAS[1] .. ", and the log says so. The flora keeps to the band, cut softly along its inner edge, or along a rule there under edge=border. A band narrower than " .. Band.FLORA_NARROWEST .. " mm has no flora, and the log says so." },
   { "cache", "true, false",
     "true (the default) keeps each page's flora in a folder <jobname>-flora beside the PDF, so a later compile reuses it; false grows every page afresh." },
@@ -189,6 +190,11 @@ M.define(Band.WIDTH, function(v)
   local n = tonumber(v)
   if n and n >= Band.WIDTH_MIN and n <= Band.WIDTH_MAX then return n end
   return nil, string.format("%s must be a number of mm from %d to %d", Band.WIDTH, Band.WIDTH_MIN, Band.WIDTH_MAX)
+end)
+
+M.define(Band.FLORA_DENSITY, function(v)
+  for _, d in ipairs(Band.DENSITIES) do if v == d then return v end end
+  return nil, Band.FLORA_DENSITY .. " must be " .. table.concat(Band.DENSITIES, ", ")
 end)
 
 M.define(Band.FLORA, function(v)
@@ -601,7 +607,7 @@ M.SPEC = {
   finish = "pattern_finish", bands = "pattern_bands", bandwidth = "pattern_bandwidth", ground = "pattern_ground",
   ends = "pattern_ends", panels = "pattern_panels", lighten = "pattern_lighten",
   starfill = "pattern_starfill", gapfill = "pattern_gapfill", alternate = "pattern_alternate",
-  [Band.WIDTH] = "perimeter_width", [Band.FLORA] = "perimeter_flora",
+  [Band.WIDTH] = "perimeter_width", [Band.FLORA] = "perimeter_flora", [Band.FLORA_DENSITY] = "perimeter_density",
 }
 -- The pattern keys besides `pattern` itself, by key -> default. A mixer's
 -- pattern state, its \florasetup line and the preview's spec all carry

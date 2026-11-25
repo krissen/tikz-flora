@@ -980,6 +980,10 @@ function C.flora_band(pt, spec, frames)
       mm, Band.FLORA_NARROWEST))
     return nil
   end
+  if b.density ~= b.density_asked then
+    Pattern.warn(pt, string.format("%s=%s needs a band of %g mm; the %.1f mm band is laid %s",
+      Band.FLORA_DENSITY, b.density_asked, Band.DENSITY_NARROWEST[b.density_asked], mm, b.density))
+  end
   if not Band.FLORA_BUILT[b.form] then
     Pattern.warn(pt, string.format("%s=%s is not drawn yet; the band is laid as %s", Band.FLORA, b.form, Band.FLORAS[1]))
   end

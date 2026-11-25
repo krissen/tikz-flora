@@ -512,13 +512,30 @@ M.VINE_BAND, M.VINE_SCALE, M.VINE_CORNER, M.VINE_TAPER = 70, { 0.4, 0.6 }, 0.5, 
 function M.vine(spec)
   local w, asked, side, I = require("flora.pattern").band_width(spec)
   local form = spec.perimeter_flora or Band.FLORAS[1]
-  local fs = { dropped = 0, band = { w = w, asked = asked, side = side, I = I, form = form } }
+  local fs = { dropped = 0, band = { w = w, asked = asked, side = side, I = I, form = form,
+    density_asked = spec.perimeter_density or Band.DENSITIES[1] } }
   if w < Band.FLORA_NARROWEST * 72 / 25.4 - 1e-6 then
     fs.band.none = true
     return fs
   end
   local W, H = spec.width, spec.height
-  local k = G.clamp(w / M.VINE_BAND, M.VINE_SCALE[1], M.VINE_SCALE[2])
+  -- The density (Band.FLORA_DENSITY) draws the plant larger by its factor,
+  -- with the same limits so scaled: fewer, larger leaves and blooms in the
+  -- same band, alike at every width. The main stem keeps the width on the
+  -- paper it has at the default density. A band narrower than a density's
+  -- Band.DENSITY_NARROWEST takes the next denser value, down to the one it
+  -- holds.
+  local asked_density = spec.perimeter_density or Band.DENSITIES[1]
+  local density = asked_density
+  local mm = w * 25.4 / 72
+  for i = #Band.DENSITIES, 1, -1 do
+    local d = Band.DENSITIES[i]
+    if d == density and mm < Band.DENSITY_NARROWEST[d] - 1e-6 and i > 1 then density = Band.DENSITIES[i - 1] end
+  end
+  fs.band.density = density
+  local fk = Band.DENSITY_SCALE[density] or 1
+  local k0 = G.clamp(w / M.VINE_BAND, M.VINE_SCALE[1], M.VINE_SCALE[2])
+  local k = k0 * fk
   local vb = w / k
   local u = vb / M.VINE_BAND
   local lp = Loop.new(w / 2, w / 2, W - w / 2, H - w / 2, w * M.VINE_CORNER)
@@ -532,6 +549,10 @@ function M.vine(spec)
     compose = { hero_min = math.min(28, 0.4 * vb), hero_max = math.min(80, 0.45 * vb) },
     plant = { end_taper = M.VINE_TAPER },
   }
+  if fk ~= 1 and M.VINE_STEM ~= "scale" then
+    local P = Tune.plant
+    tune.plant.root_width, tune.plant.tip_width = P.root_width / fk, P.tip_width / fk
+  end
   -- No pendant: a plant's pendant hangs in its foot's corner, which on the
   -- vine is the root, where the gilt would be bent round the band's corner.
   local Orn = require("flora.ornaments")
