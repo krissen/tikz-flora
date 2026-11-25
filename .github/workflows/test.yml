@@ -54,6 +54,8 @@ jobs:
           - clock lint page_cache pattern_perimeter_4 plant progression_frame_resources render_page settings
           - bake cache_key catalog headpiece pattern_ground pattern_reach_1 pattern_values prepare_spec relief stem_taper
           - compose floret_passes garden gilt_look letters pattern reserve
+          - perimeter_flora_1 perimeter_flora_2
+          - perimeter_flora_3 perimeter_flora_4
           - core grow inline layout pattern_colourways pattern_matrix_2 pdf_form_cache preview row_phase
     steps:
       - uses: actions/checkout@v4

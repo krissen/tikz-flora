@@ -11,14 +11,17 @@
 --   bands        the perimeter band (tests/pattern_perimeter.lua's pages):
 --                every pattern x edge (each and none) on the 16:9 slide
 --                (light) and A4 (dark), a 12 mm band, and the slide with
---                the theme's narrow margins; and every pattern on a
---                field page in three layouts x four edges. 350 pages.
+--                the theme's narrow margins; every pattern on a field
+--                page in three layouts x four edges; and flora in the
+--                band (tests/perimeter_flora.lua's pages) on the slide and
+--                A4 at 8 and 18 mm, edge none and border. 358 pages.
 --   slides       four slide layouts measured by LuaLaTeX (DIR, default
 --                tests/fixtures/slides) x five layouts x eight pattern
 --                setups, flora (pattern=none) among them, painted one
 --                after another as in one document. 160 pages.
---   progression  growth plans (flora.progression) of four layouts x three
---                seeds, each plan's eight stages. 96 bodies.
+--   progression  growth plans (flora.progression) of five layouts (flora
+--                in the perimeter band among them) x three seeds, each
+--                plan's eight stages. 120 bodies.
 --   protect      tests/pattern_protect.lua's sweep of the small page at
 --                scale 1 and 4: each cell's record and the failures.
 --
@@ -80,6 +83,14 @@ function run.bands()
       end
     end
   end
+  local F = dofile("tests/perimeter_flora.lua")
+  for _, paper in ipairs({ F.PAPERS[1], F.PAPERS[3] }) do
+    for _, wmm in ipairs({ 8, 18 }) do
+      for _, edge in ipairs({ false, "border" }) do
+        out("bands", string.format("flora %s %d %s", paper[1], wmm, tostring(edge)), page_text(F.spec(wmm, paper, true, "light", 1, edge or nil)))
+      end
+    end
+  end
 end
 
 function run.slides()
@@ -109,7 +120,7 @@ end
 function run.progression()
   local H = dofile("tests/helper.lua")
   local P = require("flora.progression")
-  for _, layout in ipairs({ "left", "wreath", "surround", "title" }) do
+  for _, layout in ipairs({ "left", "wreath", "surround", "title", "perimeter" }) do
     for seed = 1, 3 do
       local spec = H.page(seed, 400)
       spec.layout = layout

@@ -474,6 +474,7 @@ CI_EXEMPT = {
 }
 CI_EXEMPT_PREFIXES = {
     "tests/pattern_": "a sweep or its suite that the test files named after it load",
+    "tests/perimeter_flora": "the flora band's sweep and its suite, which the test files named after it load",
     "tests/fixtures/": "data the tests read",
     "tests/slides/": "data the tests read",
 }
