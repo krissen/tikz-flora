@@ -34,29 +34,29 @@ jobs:
       fail-fast: false
       matrix:
         # Dealt out by CPU seconds on a laptop (just test-times 4 on the
-        # tree of 2026-11-24): 291 to 328 s a group. On CI they took 4 min
-        # 26 s to 7 min 22 s (the first run). To deal them out again run
-        # just test-times 4 first, then python3 -I tools/test_times.py
-        # groups build/test-times.tsv 12 --skip tools_matrix: that file is
+        # tree of 2026-11-25): 308 to 346 s a group. To deal them out again
+        # run just test-times 4 first, then python3 -I tools/test_times.py
+        # groups build/test-times.tsv 14 --skip tools_matrix: that file is
         # the latest run's, and no times are kept with the repository
-        # (docs/testing.md). The heavy pattern tests are split in parts
-        # (tests/split.lua) so that none is more than a group's share.
-        # tools_matrix has the job below.
+        # (docs/testing.md). The heavy pattern and flora band tests are
+        # split in parts (tests/split.lua) so that none is more than a
+        # group's share. tools_matrix has the job below; tools, which needs
+        # the git working tree a checkout has, joined the last group by hand.
         tests:
-          - pattern_matrix_1 pattern_matrix_4
-          - header_mark pattern_protect
-          - pattern_perimeter_3 progression visitor
-          - pattern_perimeter_2 scene_ops
-          - backdrop pattern_perimeter_1 titles
-          - mix pattern_matrix_3 tools
-          - frame_matrix pattern_reach_3 support
-          - leaf ornaments pattern_reach_2 raster
-          - clock lint page_cache pattern_perimeter_4 plant progression_frame_resources render_page settings
-          - bake cache_key catalog headpiece pattern_ground pattern_reach_1 pattern_values prepare_spec relief stem_taper
-          - compose floret_passes garden gilt_look letters pattern reserve
-          - perimeter_flora_1 perimeter_flora_2
-          - perimeter_flora_3 perimeter_flora_4
-          - core grow inline layout pattern_colourways pattern_matrix_2 pdf_form_cache preview row_phase
+          - pattern_reach_1 pattern_reach_3
+          - compose pattern_matrix_1
+          - pattern_perimeter_4 scene_ops
+          - pattern_protect pattern_reach_2
+          - clock pattern_perimeter_3
+          - pattern_perimeter_2 progression
+          - pattern_matrix_3 support titles
+          - layout pattern_matrix_4 pattern_values
+          - header_mark perimeter_flora_1
+          - bake garden inline pattern_perimeter_1 raster
+          - frame_matrix lint pattern_ground perimeter_flora_4 plant progression_frame_resources
+          - gilt_look mix perimeter_flora_3 reserve row_phase
+          - cache_key core floret_passes grow headpiece page_cache pattern pattern_colourways pattern_matrix_2 preview relief stem_taper visitor
+          - backdrop catalog leaf letters ornaments pdf_form_cache perimeter_flora_2 prepare_spec render_page settings tools
     steps:
       - uses: actions/checkout@v4
       - name: texlua
