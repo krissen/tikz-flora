@@ -29,6 +29,8 @@ local Paint = require("flora.paint")
 local Pdf = require("flora.pdfout")
 
 local MM = 72 / 25.4
+-- LuaTeX's md5 library, a global there (.luals/luatex.lua declares it).
+local md5 = rawget(_G, "md5")
 
 -- ------------------------------------------------------------------
 -- Pages
@@ -359,6 +361,14 @@ function ALTS.cut(spec, I, w)
   return fs, finish
 end
 
+-- Sets t[k] to v and returns what it was: the prototypes stand in for a
+-- module's function while a page is painted.
+local function swap(t, k, v)
+  local was = t[k]
+  t[k] = v
+  return was
+end
+
 -- Paints `spec` with alternative `name`: Frames.of gives the prototype's
 -- frames while the page is painted.
 local function paint_alt(spec, name)
@@ -369,10 +379,9 @@ local function paint_alt(spec, name)
   -- paper's top, past the top inset and the header clip; the frame title
   -- lies in the text block, which the band keeps clear of.
   spec.layout, spec.top_inset, spec.header_y, spec.frametitle = "surround", 0, nil, nil
-  local of = Frames.of
-  Frames.of = function() return fs end
+  local of = swap(Frames, "of", function() return fs end)
   local ok, pt = pcall(Compose.page, spec)
-  Frames.of = of
+  swap(Frames, "of", of)
   if not ok then error(pt, 0) end
   if finish then finish(pt) end
   return pt, w
