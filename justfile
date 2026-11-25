@@ -89,6 +89,13 @@ frame-flora set="measure" out="build/frame-flora" seeds="11":
     texlua tools/frame_flora.lua "{{out}}/{{set}}" "{{set}}" "{{seeds}}"
     {{PYTHON}} -I tools/frame_flora.py "{{out}}/{{set}}" "{{set}}"
 
+# E.g. `just lint-hint lua/flora/loop.lua tests/perimeter_flora.lua`
+# (tools/lint_hint.py, docs/testing.md): lua-language-server's findings in
+# those files down to the level Hint, as the editor shows them; just lint
+# fails from Warning up.
+lint-hint *files:
+    python3 -I tools/lint_hint.py "$@"
+
 # The ornament gallery: every ornament kind, labelled, for three seeds
 # (tex/gallery.tex), to build/gallery.pdf and .png. ONLY limits it to some
 # slots or kinds (comma-separated), e.g. `just gallery flourish,fan 6`.

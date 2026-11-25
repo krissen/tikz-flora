@@ -21,6 +21,10 @@
 
 `just lint` (`python3 -I tools/lint.py`) runs lua-language-server, ruff, shellcheck and pyright, as CI does (`.github/workflows/lint.yml`). ruff and pyright are taken from the repository's `.venv` before `PATH`; `just venv` makes it from `requirements-dev.txt`, which pins the versions CI installs, and pyright run from `.venv` resolves imports with `.venv`'s Python, where numpy and Pillow are. A tool that is missing fails the run with a line saying how to get it: pyright is no longer skipped locally. `tests/test_lint.py` runs `tools/lint.py` against stand-in tools for every way each can end, a tool in `.venv` before one on `PATH`, and an argument it does not take.
 
+## Hints
+
+`just lint` fails on lua-language-server's findings from Warning up; the editor also shows Information and Hint (`.luarc.json` puts `duplicate-set-field` there). `just lint-hint FILE...` (`python3 -I tools/lint_hint.py FILE...`) runs the checker over the repository at the level Hint and prints the findings in the files named, a count for each and exit status 1 when there is any. Run it over the Lua files a change adds or edits; a test that replaces a module's field for a mutation does it through a helper with the field's name as a value (`t[key] = v`), which the checker does not take for a second definition.
+
 ## In Linux
 
 CI runs Ubuntu, where `/bin/sh` is dash and the userland is GNU's (`time`, `xargs`; `awk` is mawk); a Mac runs bash as `sh` and BSD tools. `tools/test-linux.sh [ARGS]` (`just test-linux [ARGS]`) runs `tools/test.sh ARGS` (default: `fast`) in a container of CI's Ubuntu (24.04) with the packages CI installs (texlive-binaries, time) and those the runner brings that the tests use (python3, procps), from `tools/test-linux.Dockerfile`. The container runs the machine's own architecture; `FLORA_LINUX_PLATFORM=linux/amd64` runs CI's, emulated on another machine and many times slower (the fast set about 150 s against about 12 s natively on an Apple silicon Mac).
