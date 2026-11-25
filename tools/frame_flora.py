@@ -19,7 +19,8 @@ transparent where nothing is painted) and writes:
   together (the least near, the greatest far, the mean covers).
 - OUTDIR/sheet.png, the pages in the rows and columns pages.tsv names,
   each with its text block in grey, the frame title darker, and the band
-  asked as a dashed line, under TITLE.
+  as laid as a dashed line (narrower than asked where a margin is),
+  under TITLE.
 
 Needs numpy and Pillow.
 """
@@ -40,6 +41,15 @@ PX = DPI / 72.0
 MM = 72 / 25.4
 SIDES = ("left", "right", "foot", "top")
 FONT = "/System/Library/Fonts/Supplemental/Arial.ttf"
+# The sheet's title for each of tools/frame_flora.lua's sets.
+TITLES = {
+    "measure": "Today: layout=perimeter and surround with flora (band asked and laid dashed)",
+    "alts": "(1) The prototypes side by side: 16:9, frame title, 12 mm band",
+    "widths": "(2) Each prototype at 8, 12 and 18 mm (16:9, frame title)",
+    "papers": "(3) Each prototype on 4:3 and A4 (12 mm, frame title)",
+    "band": "(4) Each prototype beside the pattern band (kikko), 12 mm, 16:9",
+    "margins": "(5) Margins 25/10/8/12 mm, 12 mm asked: every band narrows to 4.8 mm all round",
+}
 
 
 def box(s):
@@ -159,8 +169,8 @@ def tile(out, r, width):
         rect(rb, outline="#d08a8a")
     base = Image.composite(im, base, Image.eval(im.convert("L"), lambda v: 255 if v < 250 else 0))
     dr = ImageDraw.Draw(base)
-    # The band asked, dashed.
-    b = float(r["band_mm"]) * MM
+    # The band as laid (the asked width, or less where a margin is narrower), dashed.
+    b = float(r["band_pt"])
     pts = [(b, b), (W - b, b), (W - b, H - b), (b, H - b), (b, b)]
     for (x0, y0), (x1, y1) in pairwise(pts):
         n = max(1, int(max(abs(x1 - x0), abs(y1 - y0)) * k / 8))
@@ -203,7 +213,7 @@ def main(out, title=""):
         w.writeheader()
         w.writerows(rows)
     (out / "summary.md").write_text(summary(rows))
-    sheet(out, [r for r in pages if r["seed"] == pages[0]["seed"]], title or out.name)
+    sheet(out, [r for r in pages if r["seed"] == pages[0]["seed"]], TITLES.get(title, title) or out.name)
     print(f"frame_flora: {out / 'measure.tsv'}, {out / 'summary.md'}, {out / 'sheet.png'}")
 
 
