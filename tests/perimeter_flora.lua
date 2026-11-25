@@ -51,6 +51,8 @@ M.EDGES = { false, "border" }
 -- the narrowest band in mm each is laid in; a narrower band takes the
 -- next denser one.
 M.DENSITIES = { "dense", "open", "sparse" }
+-- The forms (perimeterflora), dealt over the cells as the densities are.
+M.FORMS = { "vine", "pinwheel", "corners" }
 M.DENSITY_NARROWEST = { dense = 6, open = 7, sparse = 9 }
 M.BACKDROPS = { "light", "dark" }
 -- Pages whose band is too narrow for flora: 5 mm asked, and 12 mm asked in
@@ -217,7 +219,8 @@ end
 
 -- The sweep: opts.papers, widths, titles and backdrops (default all), each
 -- cell with its own seed, edge and density, dealt in turn from M.SEEDS,
--- M.EDGES and M.DENSITIES (opts.density sets one for every cell)
+-- M.EDGES, M.DENSITIES and M.FORMS (opts.density and opts.form set one
+-- for every cell)
 -- so that the sweep holds several of each, in opts.margins (mm) if given;
 -- and opts.narrow (default true).
 -- Returns the cells swept and every failure as { invariant, cell, text }.
@@ -237,13 +240,15 @@ function M.run(opts)
           local seed = M.SEEDS[(n - 1) % #M.SEEDS + 1]
           local edge = M.EDGES[(n - 1) // #M.SEEDS % #M.EDGES + 1]
           local density = M.DENSITIES[(n - 1) // 2 % #M.DENSITIES + 1]
+          local form = M.FORMS[(n - 1) // 4 % #M.FORMS + 1]
           local want = (not opts.papers or opts.papers[paper[1]]) and (not opts.widths or opts.widths[wmm])
             and (not opts.titles or opts.titles[titled]) and (not opts.backdrops or opts.backdrops[bd])
           if want then
             local name = string.format("%s %g mm %s %s seed %d edge %s", paper[1], wmm, titled and "title" or "no title", bd, seed, tostring(edge))
             local spec = M.spec(wmm, paper, titled, bd, seed, edge or nil, opts.margins)
             spec.perimeter_density = opts.density or density
-            one(name .. " " .. density, spec, wmm)
+            spec.perimeter_flora = opts.form or form
+            one(name .. " " .. spec.perimeter_density .. " " .. spec.perimeter_flora, spec, wmm)
           end
         end
       end

@@ -1,9 +1,8 @@
 -- Flora in the perimeter band (frames.lua's M.vine): the invariants of
 -- tests/perimeter_flora.lua over every paper, band width, frame title and
 -- backdrop, each of them failing when the engine is broken the way it
--- guards against; the forms the key names that are not drawn yet laid as
--- vine, saying so; and the line the vine follows (loop.lua) mapped there
--- and back.
+-- guards against; each form's own frames; the log's band widths; and the
+-- line the vine follows (loop.lua) mapped there and back.
 -- The suite is split over tests/test_perimeter_flora_1.lua .. _4.lua: each
 -- runs run(part, parts), its share of the sweep and of the mutations, and
 -- part 1 the checks too small to weigh (tests/split.lua).
@@ -19,12 +18,12 @@ local Loop = require("flora.loop")
 -- paper and band width's share of the sweep (its four cells), and each
 -- mutation.
 local WEIGHTS = {
-  { "sweep:16:9 6", 46 }, { "sweep:16:9 8", 50 }, { "sweep:16:9 12", 35 }, { "sweep:16:9 18", 42 },
-  { "sweep:4:3 6", 40 }, { "sweep:4:3 8", 38 }, { "sweep:4:3 12", 45 }, { "sweep:4:3 18", 34 },
-  { "sweep:A4 6", 77 }, { "sweep:A4 8", 82 }, { "sweep:A4 12", 58 }, { "sweep:A4 18", 51 },
+  { "sweep:16:9 6", 37 }, { "sweep:16:9 8", 33 }, { "sweep:16:9 12", 33 }, { "sweep:16:9 18", 37 },
+  { "sweep:4:3 6", 28 }, { "sweep:4:3 8", 36 }, { "sweep:4:3 12", 36 }, { "sweep:4:3 18", 27 },
+  { "sweep:A4 6", 68 }, { "sweep:A4 8", 68 }, { "sweep:A4 12", 44 }, { "sweep:A4 18", 49 },
   { "mutant:not cut", 12 }, { "mutant:own width", 12 }, { "mutant:one plant", 8 }, { "mutant:narrow allowed", 10 },
   { "mutant:no rule", 12 }, { "mutant:header clip", 12 }, { "mutant:running head", 12 }, { "mutant:reservation drawn over", 12 },
-  { "mutant:inner gap", 12 }, { "mutant:density too narrow", 6 },
+  { "mutant:inner gap", 12 }, { "mutant:density too narrow", 6 }, { "mutant:one pinwheel plant", 6 },
 }
 
 return function(part, parts)
@@ -50,19 +49,19 @@ if S.once("loop") then
   end
 end
 
--- The forms not drawn yet are laid as vine, and the log says so once.
+-- Each form lays its own frames: the vine two plants along the line, the
+-- pinwheel two turned a half circle, corners four corner plants and four
+-- vines along the sides; none says in the log that it is laid as another.
 if S.once("forms") then
+  local want = { vine = 2, pinwheel = 2, corners = 8 }
   for _, form in ipairs(Band.FLORAS) do
-    local spec = F.spec(8, F.PAPERS[1], false, "light", 1, nil)
+    local spec = F.spec(12, F.PAPERS[1], false, "light", 1, nil)
     spec.perimeter_flora = form
     local fs = Frames.of(spec)
-    H.check(#fs == 2 and fs.band.form == form, form .. ": two plants of the vine")
-    Paint.reset_resources()
+    H.check(#fs == want[form] and fs.band.form == form, string.format("%s: %d frames, not %d", form, #fs, want[form]))
     local pt = Paint.new({ backend = "pdf" })
     Compose.flora_band(pt, spec, fs)
-    local said = 0
-    for _, w in ipairs(pt.pattern_warnings or {}) do if w:find(form .. " is not drawn yet", 1, true) then said = said + 1 end end
-    H.check(said == (Band.FLORA_BUILT[form] and 0 or 1), string.format("%s: says %d times it is not drawn yet", form, said))
+    H.check(#(pt.pattern_warnings or {}) == 0, form .. ": the log says " .. tostring((pt.pattern_warnings or {})[1]))
   end
 end
 
@@ -132,14 +131,21 @@ if S.once("narrow") then
 end
 
 -- Each invariant fails when the engine is broken as it guards against, on
--- the one page that shows it: field `key` of table `t` is replaced by what
--- `make` returns for it while the sweep runs, and set back after.
+-- the one page that shows it (a vine's, unless opts.form says otherwise):
+-- field `key` of table `t` is replaced by what `make` returns for it while
+-- the sweep runs, and set back after.
 local ONE = { papers = { ["16:9"] = true }, widths = { [12] = true }, titles = { [true] = true }, backdrops = { light = true }, narrow = false }
 local function mutant(name, invariant, t, key, make, opts)
   if not S.mine("mutant:" .. name) then return end
+  opts = opts or ONE
+  if not opts.form then
+    local o = {}
+    for k, v in pairs(opts) do o[k] = v end
+    o.form, opts = "vine", o
+  end
   local orig = t[key]
   t[key] = make(orig)
-  local ok, cells, fails = pcall(F.run, opts or ONE)
+  local ok, cells, fails = pcall(F.run, opts)
   t[key] = orig
   H.check(ok, string.format("mutation %s: the sweep stopped: %s", name, tostring(cells)))
   local n = 0
@@ -158,11 +164,18 @@ mutant("own width", "width", Pattern, "band_width", function(orig) return functi
   return w + 3, asked, side, { I[1] + 3, I[2] + 3, I[3] - 3, I[4] - 3 }
 end end)
 -- The second plant, round the foot and up the right, left out.
-mutant("one plant", "sides", Frames, "vine", function(orig) return function(spec)
-  local fs = orig(spec)
+mutant("one plant", "sides", Frames, "vine", function(orig) return function(spec, b)
+  local fs = orig(spec, b)
   fs[2] = nil
   return fs
 end end)
+-- The pinwheel's second plant, down the right and along the top, left out.
+mutant("one pinwheel plant", "sides", Frames, "pinwheel", function(orig) return function(spec, b)
+  local fs = orig(spec, b)
+  fs[2] = nil
+  return fs
+end end, { papers = { ["16:9"] = true }, widths = { [12] = true }, titles = { [true] = true }, backdrops = { light = true }, narrow = false,
+  form = "pinwheel" })
 -- Flora laid in bands down to 4 mm.
 mutant("narrow allowed", "narrow", Band, "FLORA_NARROWEST", function() return 4 end, { papers = {}, narrow = true })
 -- edge=border without its rule.
@@ -179,8 +192,8 @@ end, { papers = { ["16:9"] = true }, widths = { [8] = true }, titles = { [true] 
 -- The page clipped under its running head and top inset, as surround is.
 mutant("header clip", "sides", Compose, "perimeter_page", function() return function() return false end end)
 -- The vine's frames given the page's running head.
-mutant("running head", "mark", Frames, "vine", function(orig) return function(spec)
-  local fs = orig(spec)
+mutant("running head", "mark", Frames, "vine", function(orig) return function(spec, b)
+  local fs = orig(spec, b)
   for i = 1, #fs do fs[i].spec.header_y = spec.header_y end
   return fs
 end end)
