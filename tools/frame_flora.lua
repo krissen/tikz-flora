@@ -6,7 +6,7 @@
 -- makes. The prototypes live here only: nothing in lua/flora/ calls them,
 -- and they swap Frames.of only while one of their pages is painted.
 --
---   texlua tools/frame_flora.lua OUTDIR SET [SEEDS]
+--   texlua tools/frame_flora.lua OUTDIR SET [SEEDS [OPTS]]
 --
 -- SET is one of the sets in SETS: measure (layout=perimeter with flora and
 -- surround, over papers, widths and titles), vine-16:9, vine-4:3 and
@@ -18,7 +18,9 @@
 -- and OUTDIR/pages.tsv, one line a page: its sheet row and column labels,
 -- the paper (pt), the text block, the frame title's and the reservation's
 -- boxes, the band asked (mm) and laid (pt), the seed, the md5 of the body,
--- the seconds it took, the part shown enlarged and the backdrop.
+-- the seconds it took, the part shown enlarged and the backdrop. OPTS is a
+-- comma-separated list of formscale=FORM:FACTOR, which lays Band.FORM_SCALE's
+-- factor for FORM over the engine's, to try a scale before it is set there.
 --
 -- The pages are tests/pattern_perimeter.lua's (M.spec): the text block the
 -- band + 4 mm in from every edge, or given margins; with a title, a frame
@@ -29,6 +31,7 @@ package.path = "./lua/?.lua;" .. package.path
 require("flora.tune").gilt_dpi = 100
 
 local B = dofile("tests/pattern_perimeter.lua")
+local Band = require("flora.band")
 local Compose = require("flora.compose")
 local Frames = require("flora.frames")
 local Paint = require("flora.paint")
@@ -564,30 +567,51 @@ function SETS.seams()
   return out
 end
 
--- The narrowest bands for each form and density, 6 to 10 mm on 16:9, for
--- the share of solid ink (summary.md).
-function SETS.formwidth()
-  local out = {}
-  for _, f in ipairs({ "pinwheel", "corners" }) do
+-- One form at each density at 6, 8, 12 and 18 mm on 16:9, with a title: a
+-- form's scale before and after (OPTS formscale=).
+local function form_scale(form)
+  return function()
+    local out = {}
     for _, d in ipairs(DENSITIES) do
-      for _, wmm in ipairs({ 6, 7, 8, 9, 10 }) do
-        out[#out + 1] = item(f .. ", " .. d, wmm .. " mm", "16:9", wmm, true, "vine:form=" .. f .. ",density=" .. d)
+      for _, wmm in ipairs({ 6, 8, 12, 18 }) do
+        out[#out + 1] = item(form .. ", " .. d, wmm .. " mm", "16:9", wmm, true, "vine:form=" .. form .. ",density=" .. d)
       end
     end
+    return out
   end
-  return out
 end
+SETS["scale-pinwheel"], SETS["scale-corners"] = form_scale("pinwheel"), form_scale("corners")
+
+-- The narrowest bands for pinwheel and corners at each density, 6 to 10 mm
+-- on 16:9, for the share of solid ink (summary.md); formwidth-FORM takes
+-- one form.
+local function form_width(forms)
+  return function()
+    local out = {}
+    for _, f in ipairs(forms) do
+      for _, d in ipairs(DENSITIES) do
+        for _, wmm in ipairs({ 6, 7, 8, 9, 10 }) do
+          out[#out + 1] = item(f .. ", " .. d, wmm .. " mm", "16:9", wmm, true, "vine:form=" .. f .. ",density=" .. d)
+        end
+      end
+    end
+    return out
+  end
+end
+SETS.formwidth = form_width({ "pinwheel", "corners" })
+SETS["formwidth-pinwheel"], SETS["formwidth-corners"] = form_width({ "pinwheel" }), form_width({ "corners" })
 
 -- ------------------------------------------------------------------
 
-local outdir, setname, seeds_arg = arg[1], arg[2], arg[3]
+local outdir, setname, seeds_arg, opts_arg = arg[1], arg[2], arg[3], arg[4]
 if not (outdir and setname) or not SETS[setname] then
   local names = {}
   for k in pairs(SETS) do names[#names + 1] = k end
   table.sort(names)
-  io.stderr:write("usage: texlua tools/frame_flora.lua OUTDIR SET [SEEDS]; SET is one of " .. table.concat(names, ", ") .. "\n")
+  io.stderr:write("usage: texlua tools/frame_flora.lua OUTDIR SET [SEEDS [OPTS]]; SET is one of " .. table.concat(names, ", ") .. "\n")
   os.exit(2)
 end
+for form, factor in (opts_arg or ""):gmatch("formscale=(%a+):([%d.]+)") do Band.FORM_SCALE[form] = assert(tonumber(factor)) end
 local seeds = {}
 for s in (seeds_arg or "11"):gmatch("[^,]+") do seeds[#seeds + 1] = assert(tonumber(s), "a seed must be a number: " .. s) end
 

@@ -85,10 +85,11 @@ venv:
 # (tools/frame_flora.lua lists the sets). Writes OUT/SET/: the pages,
 # measure.tsv and summary.md (where the ink lies on each side, in mm, how
 # much of it is solid, the seconds) and sheet.png. SEEDS is a
-# comma-separated list.
-frame-flora set="measure" out="build/frame-flora" seeds="11":
+# comma-separated list. OPTS is formscale=FORM:FACTOR[,...], to try a form's
+# scale (band.lua's FORM_SCALE) before it is set there.
+frame-flora set="measure" out="build/frame-flora" seeds="11" opts="":
     mkdir -p "{{out}}/{{set}}"
-    texlua tools/frame_flora.lua "{{out}}/{{set}}" "{{set}}" "{{seeds}}"
+    texlua tools/frame_flora.lua "{{out}}/{{set}}" "{{set}}" "{{seeds}}" "{{opts}}"
     {{PYTHON}} -I tools/frame_flora.py "{{out}}/{{set}}" "{{set}}"
 
 # E.g. `just lint-hint lua/flora/loop.lua tests/perimeter_flora.lua`
