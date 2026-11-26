@@ -74,6 +74,7 @@ TITLES = {
     "formwidth": "pinwheel and corners at each density, 6 to 10 mm: the narrowest band each reads as a plant in",
     "scale-pinwheel": "pinwheel at each density, 6, 8, 12 and 18 mm, 16:9: one scale against another (OPTS formscale=)",
     "scale-corners": "corners at each density, 6, 8, 12 and 18 mm, 16:9: one scale against another (OPTS formscale=)",
+    "cornerswide": "corners in wide bands: 16:9 at 24 to 40 mm, 4:3 at 28 to 40 mm",
     "formtime": "Each form at each density, 12 mm, on 16:9, 4:3 and A4, for timing (CPU seconds a page)",
     "formtimewidth": "Each form at 6, 12, 18 and 40 mm on A4, dense, for timing (CPU seconds a page)",
     "formwidth-pinwheel": "pinwheel at each density, 6 to 10 mm",

@@ -567,6 +567,16 @@ function SETS.seams()
   return out
 end
 
+-- corners in wide bands: 16:9 at 24, 27, 30, 34 and 40 mm and 4:3 at 28,
+-- 30 and 40 mm, with a title.
+function SETS.cornerswide()
+  local out = {}
+  for _, c in ipairs({ { "16:9", { 24, 27, 30, 34, 40 } }, { "4:3", { 28, 30, 40 } } }) do
+    for _, wmm in ipairs(c[2]) do out[#out + 1] = item("corners, " .. c[1], wmm .. " mm", c[1], wmm, true, "vine:form=corners") end
+  end
+  return out
+end
+
 -- Each form at each density, 12 mm, on each paper; and each form at 6, 12,
 -- 18 and 40 mm on A4, dense: the CPU seconds a page takes (pages.tsv's
 -- secs; give SEEDS as 11,11,11 to time each page three times).
