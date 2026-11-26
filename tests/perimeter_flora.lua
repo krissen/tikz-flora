@@ -237,13 +237,13 @@ function M.check(spec, wmm)
 end
 
 -- The cell n's seed, edge, density and form, dealt in turn: the density
--- moves on every second cell, the form every fourth and one more with each
--- paper, so that the 48 cells hold every form asked at every density.
+-- moves on every second cell, the form on every cell and one more with each
+-- eighth, so that the 48 cells hold every form asked at every density.
 function M.deal(n)
   return M.SEEDS[(n - 1) % #M.SEEDS + 1],
     M.EDGES[(n - 1) // #M.SEEDS % #M.EDGES + 1],
     M.DENSITIES[(n - 1) // 2 % #M.DENSITIES + 1],
-    M.FORMS[((n - 1) // 4 + (n - 1) // 16) % #M.FORMS + 1]
+    M.FORMS[((n - 1) + (n - 1) // 8) % #M.FORMS + 1]
 end
 
 -- The cells of the sweep: papers x widths x titles x backdrops.

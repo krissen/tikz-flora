@@ -18,13 +18,13 @@ local Loop = require("flora.loop")
 -- paper and band width's share of the sweep (its four cells), each form's
 -- wide cells and each mutation.
 local WEIGHTS = {
-  { "sweep:16:9 6", 38 }, { "sweep:16:9 8", 66 }, { "sweep:16:9 12", 34 }, { "sweep:16:9 18", 37 },
-  { "sweep:4:3 6", 38 }, { "sweep:4:3 8", 33 }, { "sweep:4:3 12", 56 }, { "sweep:4:3 18", 36 },
-  { "sweep:A4 6", 114 }, { "sweep:A4 8", 69 }, { "sweep:A4 12", 55 }, { "sweep:A4 18", 75 },
+  { "sweep:16:9 6", 41 }, { "sweep:16:9 8", 50 }, { "sweep:16:9 12", 34 }, { "sweep:16:9 18", 46 },
+  { "sweep:4:3 6", 37 }, { "sweep:4:3 8", 41 }, { "sweep:4:3 12", 43 }, { "sweep:4:3 18", 39 },
+  { "sweep:A4 6", 72 }, { "sweep:A4 8", 86 }, { "sweep:A4 12", 61 }, { "sweep:A4 18", 61 },
   { "mutant:not cut", 12 }, { "mutant:own width", 12 }, { "mutant:one plant", 8 }, { "mutant:narrow allowed", 10 },
   { "mutant:no rule", 12 }, { "mutant:header clip", 12 }, { "mutant:running head", 12 }, { "mutant:reservation drawn over", 12 },
   { "mutant:inner gap", 12 }, { "mutant:density too narrow", 6 }, { "mutant:one pinwheel plant", 6 },
-  { "wide:vine", 18 }, { "wide:pinwheel", 35 }, { "wide:corners", 20 },
+  { "wide:vine", 16 }, { "wide:pinwheel", 32 }, { "wide:corners", 19 },
   { "mutant:one corners plant", 8 }, { "mutant:one corners side vine", 8 }, { "mutant:corners arms short", 12 },
   { "mutant:no fallback log", 12 }, { "mutant:deal in step", 1 }, { "mutant:layout arms short", 3 },
 }
