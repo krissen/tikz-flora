@@ -55,6 +55,11 @@ M.FLORAS = { "vine", "pinwheel", "corners" }
 M.FLORA_DENSITY = "perimeterdensity"
 M.DENSITIES = { "dense", "open", "sparse" }
 M.DENSITY_SCALE = { dense = 1, open = 1.25, sparse = 1.55 }
+-- The factor each form's plant is drawn at, times its density's: under 1,
+-- finer, so more leaves and blooms fill the band. pinwheel's plant grows in
+-- a frame with a foot and a column, which thins its leaves, so it is drawn
+-- finer to read as a plant at the widths vine does.
+M.FORM_SCALE = { vine = 1, pinwheel = 0.6, corners = 1 }
 -- The narrowest band in mm each density reads as a plant in rather than a
 -- scatter (at least about half its ink a millimetre thick, as dense has at
 -- 6 mm). A narrower band takes the sparsest density it holds, and the log

@@ -532,7 +532,7 @@ function M.flora(spec)
     if d == density and mm < Band.DENSITY_NARROWEST[d] - 1e-6 then density = Band.DENSITIES[i - 1] end
   end
   fs.band.density = density
-  local fk = Band.DENSITY_SCALE[density] or 1
+  local fk = (Band.DENSITY_SCALE[density] or 1) * (Band.FORM_SCALE[form] or 1)
   local k = G.clamp(w / M.VINE_BAND, M.VINE_SCALE[1], M.VINE_SCALE[2]) * fk
   local vb = w / k
   local tune = {
