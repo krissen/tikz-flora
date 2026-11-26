@@ -176,6 +176,22 @@ holds it to its box.
 
 `perimeterdensity` sets how densely the vine grows: `dense` (the default) with many small leaves and blooms, `open` with fewer and larger ones, `sparse` with the fewest and largest; the main stem is as fine at every density. A band too narrow for a density reads as a scatter rather than a plant, so `open` needs 7 mm and `sparse` 9 mm; in a narrower band the vine is laid at the sparsest density the band holds, and the log says so. The vine paints many more leaves and blooms than `surround` and takes longer to paint. Measured CPU seconds for one page (on a loaded machine, so take them as a guide): on 16:9 at 12 and 18 mm, 4.5 to 4.8 at `dense`, 3.9 to 4.4 at `open` and 2.2 to 2.3 at `sparse`; at 6 mm every density is laid `dense`, about 3.5; on A4 at 12 mm, 9.0, 6.2 and 5.1. `surround` takes 0.3 to 1.4 on the same 16:9 pages. The page cache (`cache=true`) keeps a grown page, so a later compile that leaves the page as it was takes it from the cache in a fraction of a second. Before this, flora under `layout=perimeter` was laid out as `surround`; `surround` itself is unchanged.
 
+The forms take different times. CPU seconds for one page at 12 mm (the mean of three runs each, on a machine whose load average stood between 14 and 82, so take them as a guide and the ratios before the seconds):
+
+| paper | form | `dense` | `open` | `sparse` |
+|---|---|---|---|---|
+| 16:9 | `vine` | 5.2 | 3.9 | 2.5 |
+| 16:9 | `pinwheel` | 8.7 | 6.6 | 5.4 |
+| 16:9 | `corners` | 5.9 | 4.5 | 3.3 |
+| 4:3 | `vine` | 5.1 | 3.7 | 2.1 |
+| 4:3 | `pinwheel` | 7.2 | 6.1 | 4.4 |
+| 4:3 | `corners` | 4.7 | 3.5 | 2.6 |
+| A4 | `vine` | 8.3 | 6.0 | 4.2 |
+| A4 | `pinwheel` | 14.2 | 10.3 | 7.9 |
+| A4 | `corners` | 8.2 | 5.8 | 4.1 |
+
+`pinwheel` takes about 1.7 times the vine's time, since its plants are drawn finer. The time grows slowly with the band's width: on A4 at `dense`, 6, 12, 18 and 40 mm take 6.8, 10.3, 9.6 and 12.6 s for `vine`, 15.5, 15.2, 14.0 and 18.0 s for `pinwheel` and 6.1, 7.8, 8.5 and 12.9 s for `corners`. `just frame-flora formtime` and `formtimewidth` measure them.
+
 Four more layouts are for title pages, after engraved and hand-coloured
 flower books of the nineteenth century. Each frames the lines in
 `floratitle` (or the first block of lines without it):
