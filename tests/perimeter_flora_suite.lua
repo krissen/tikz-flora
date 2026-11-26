@@ -14,13 +14,13 @@ local Paint = require("flora.paint")
 local Band = require("flora.band")
 local Loop = require("flora.loop")
 
--- What each item weighs, in CPU seconds (each item timed alone, 2026-11): a
+-- What each item weighs, in CPU seconds (each item timed alone, 2026-11, tools/weigh_perimeter_flora.lua for the sweep): a
 -- paper and band width's share of the sweep (its four cells), and each
 -- mutation.
 local WEIGHTS = {
-  { "sweep:16:9 6", 37 }, { "sweep:16:9 8", 33 }, { "sweep:16:9 12", 33 }, { "sweep:16:9 18", 37 },
-  { "sweep:4:3 6", 28 }, { "sweep:4:3 8", 36 }, { "sweep:4:3 12", 36 }, { "sweep:4:3 18", 27 },
-  { "sweep:A4 6", 68 }, { "sweep:A4 8", 68 }, { "sweep:A4 12", 44 }, { "sweep:A4 18", 49 },
+  { "sweep:16:9 6", 35 }, { "sweep:16:9 8", 61 }, { "sweep:16:9 12", 32 }, { "sweep:16:9 18", 38 },
+  { "sweep:4:3 6", 55 }, { "sweep:4:3 8", 33 }, { "sweep:4:3 12", 35 }, { "sweep:4:3 18", 46 },
+  { "sweep:A4 6", 62 }, { "sweep:A4 8", 67 }, { "sweep:A4 12", 99 }, { "sweep:A4 18", 50 },
   { "mutant:not cut", 12 }, { "mutant:own width", 12 }, { "mutant:one plant", 8 }, { "mutant:narrow allowed", 10 },
   { "mutant:no rule", 12 }, { "mutant:header clip", 12 }, { "mutant:running head", 12 }, { "mutant:reservation drawn over", 12 },
   { "mutant:inner gap", 12 }, { "mutant:density too narrow", 6 }, { "mutant:one pinwheel plant", 6 },
