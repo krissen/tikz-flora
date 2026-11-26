@@ -970,22 +970,22 @@ end
 function C.flora_band(pt, spec, frames)
   local Band, Pattern = require("flora.band"), require("flora.pattern")
   local b = frames.band
-  local mm = b.w * 25.4 / 72
-  if b.w < b.asked - 1e-6 then
-    Pattern.warn(pt, string.format("%s=%g is wider than the %s margin allows; the band is %.1f mm on all four sides",
-      Band.WIDTH, b.asked * 25.4 / 72, b.side, mm))
-  end
+  local MM = 25.4 / 72
+  if b.w < b.asked - 1e-6 then Pattern.warn(pt, Pattern.narrowed(b.asked, b.side, b.w)) end
   if b.none then
-    Pattern.warn(pt, string.format("the perimeter band is %.1f mm, narrower than the %g mm flora is laid in; it has no flora",
-      mm, Band.FLORA_NARROWEST))
+    local band, least = Pattern.pair(b.w * MM, Band.FLORA_NARROWEST, "under")
+    Pattern.warn(pt, string.format("the perimeter band is %s mm, narrower than the %s mm flora is laid in; it has no flora", band, least))
     return nil
   end
   if b.density ~= b.density_asked then
-    Pattern.warn(pt, string.format("%s=%s needs a band of %g mm; the %.1f mm band is laid %s",
-      Band.FLORA_DENSITY, b.density_asked, Band.DENSITY_NARROWEST[b.density_asked], mm, b.density))
+    local band, least = Pattern.pair(b.w * MM, Band.DENSITY_NARROWEST[b.density_asked], "under")
+    Pattern.warn(pt, string.format("%s=%s needs a band of %s mm; the %s mm band is laid %s",
+      Band.FLORA_DENSITY, b.density_asked, least, band, b.density))
   end
-  if not Band.FLORA_BUILT[b.form] then
-    Pattern.warn(pt, string.format("%s=%s is not drawn yet; the band is laid as %s", Band.FLORA, b.form, Band.FLORAS[1]))
+  if b.form ~= b.form_asked then
+    local band, most = Pattern.pair(b.w * MM, require("flora.frames").corners_widest(spec.width, spec.height) * MM, "over")
+    Pattern.warn(pt, string.format("%s=%s needs a band of at most %s mm on a paper %g x %g mm; the %s mm band is laid as %s",
+      Band.FLORA, b.form_asked, most, spec.width * MM, spec.height * MM, band, b.form))
   end
   pt.perimeter_flora = b
   local I = b.I

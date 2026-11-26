@@ -95,7 +95,7 @@ compile with a message naming the key.
 | `edge` | `dissolve` (default), `cell`, `fade`, `border`, `guilloche`; in a perimeter band also `rows` | How a pattern meets the text; for flora in a perimeter band, `border` cuts it along a rule and any other value softly |
 | `perimeterwidth` | 4 to 40 (mm) | The width of the perimeter band (`layout=perimeter`), of flora or of a pattern, 12 by default |
 | `perimeterdensity` | `dense` (default), `open`, `sparse` | How densely the vine in the perimeter band grows: fewer, larger leaves and blooms at `open` and `sparse`, and a quicker page |
-| `perimeterflora` | `vine` (default), `pinwheel`, `corners` | The form of flora in the perimeter band; `pinwheel` and `corners` are not drawn yet and are laid as `vine` |
+| `perimeterflora` | `vine` (default), `pinwheel`, `corners` | The form of flora in the perimeter band: one vine round the page, two plants turning round it, or a plant in each corner with a sparser vine between |
 | `hero` | `rosette`, `phyllotaxis`, `rose`, `guilloche`, `turned_circles`, `circle_disc`, `none` (default) | One large radial motif at a top corner of a pattern page |
 | `outer` | `bleed` (default), `margin` | How a pattern meets the paper's edge |
 | `scale` | 0.25 to 4 | The size of a pattern's cells, as a factor of their size for the field |
@@ -172,9 +172,25 @@ holds it to its box.
 
 #### Flora in the perimeter band
 
-`layout=perimeter` without a pattern lays flora as a band round the paper's edge: one vine round all four sides (`perimeterflora=vine`, the default), on the band's centre line with its corners rounded. It is two plants rooted in the foot-left corner, their roots crossing there, each growing round one half of the page to meet the other in the top-right corner, so the foot and the top run unbroken. The band is the pattern band's: `perimeterwidth` mm wide (12 by default), narrowed alike on all four sides to what the narrowest margin holds, clear of the whole text block, its frame title included, and of every `\florareserve` rectangle, and running to the paper's top past the top inset and the header clip; a page of it has no running-head mark. The plant is drawn in proportion to the band, finer in a narrow one and larger in a wide one, within limits. The flora is cut softly along the band's inner edge, or under `edge=border` along a rule there; other `edge` values cut it softly. A band narrower than 6 mm has no flora, and the log says so once per page. `pinwheel` and `corners` are named for later forms; for now they are laid as `vine`, and the log says so.
+`layout=perimeter` without a pattern lays flora as a band round the paper's edge: one vine round all four sides (`perimeterflora=vine`, the default), on the band's centre line with its corners rounded. It is two plants rooted in the foot-left corner, their roots crossing there, each growing round one half of the page to meet the other in the top-right corner, so the foot and the top run unbroken. The band is the pattern band's: `perimeterwidth` mm wide (12 by default), narrowed alike on all four sides to what the narrowest margin holds, clear of the whole text block, its frame title included, and of every `\florareserve` rectangle, and running to the paper's top past the top inset and the header clip; a page of it has no running-head mark. The plant is drawn in proportion to the band, finer in a narrow one and larger in a wide one, within limits. The flora is cut softly along the band's inner edge, or under `edge=border` along a rule there; other `edge` values cut it softly. A band narrower than 6 mm has no flora, and the log says so once per page. `perimeterflora` chooses the form: `vine` (the default); `pinwheel`, two plants turning round the page as `surround`'s do, one up the left side and along the foot, the other down the right side and along the top, each drawn at 0.6 of the vine's scale (`Band.FORM_SCALE`), since a plant grown in a frame with a foot and a column thins its leaves, so that it reads as a plant at the widths the vine does; or `corners`, a full plant in each corner with its arms along the two sides, turned a quarter at each corner, and a sparser vine with a small bloom along the middle of each side, reaching into the arms either side. Every form keeps to the same band, takes the same densities and edges and leaves the same narrow bands bare. The arms of `corners` are a third of a side long and at least 1.25 bands, so in a wide band they grow with it; where two arms cannot fit on the paper's shorter side (a band wider than 0.4 of it: 36 mm on 16:9, 38 mm on 4:3), `corners` is laid as the vine and the log says so.
 
 `perimeterdensity` sets how densely the vine grows: `dense` (the default) with many small leaves and blooms, `open` with fewer and larger ones, `sparse` with the fewest and largest; the main stem is as fine at every density. A band too narrow for a density reads as a scatter rather than a plant, so `open` needs 7 mm and `sparse` 9 mm; in a narrower band the vine is laid at the sparsest density the band holds, and the log says so. The vine paints many more leaves and blooms than `surround` and takes longer to paint. Measured CPU seconds for one page (on a loaded machine, so take them as a guide): on 16:9 at 12 and 18 mm, 4.5 to 4.8 at `dense`, 3.9 to 4.4 at `open` and 2.2 to 2.3 at `sparse`; at 6 mm every density is laid `dense`, about 3.5; on A4 at 12 mm, 9.0, 6.2 and 5.1. `surround` takes 0.3 to 1.4 on the same 16:9 pages. The page cache (`cache=true`) keeps a grown page, so a later compile that leaves the page as it was takes it from the cache in a fraction of a second. Before this, flora under `layout=perimeter` was laid out as `surround`; `surround` itself is unchanged.
+
+The forms take different times. CPU seconds for one page at 12 mm (the mean of three runs each, on a machine whose load average stood between 14 and 82, so take them as a guide and the ratios before the seconds):
+
+| paper | form | `dense` | `open` | `sparse` |
+|---|---|---|---|---|
+| 16:9 | `vine` | 5.2 | 3.9 | 2.5 |
+| 16:9 | `pinwheel` | 8.7 | 6.6 | 5.4 |
+| 16:9 | `corners` | 5.9 | 4.5 | 3.3 |
+| 4:3 | `vine` | 5.1 | 3.7 | 2.1 |
+| 4:3 | `pinwheel` | 7.2 | 6.1 | 4.4 |
+| 4:3 | `corners` | 4.7 | 3.5 | 2.6 |
+| A4 | `vine` | 8.3 | 6.0 | 4.2 |
+| A4 | `pinwheel` | 14.2 | 10.3 | 7.9 |
+| A4 | `corners` | 8.2 | 5.8 | 4.1 |
+
+`pinwheel` takes about 1.7 times the vine's time, since its plants are drawn finer. The time grows slowly with the band's width: on A4 at `dense`, 6, 12, 18 and 40 mm take 6.8, 10.3, 9.6 and 12.6 s for `vine`, 15.5, 15.2, 14.0 and 18.0 s for `pinwheel` and 6.1, 7.8, 8.5 and 12.9 s for `corners`. `just frame-flora formtime` and `formtimewidth` measure them.
 
 Four more layouts are for title pages, after engraved and hand-coloured
 flower books of the nineteenth century. Each frames the lines in

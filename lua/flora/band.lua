@@ -42,19 +42,24 @@ M.EDGE = "border"
 -- repeat, and a band shows only fragments of it).
 M.NARROWEST = { penrose_rhombs = math.huge, khatam = 12, hexagram_lattice = 12 }
 
--- Flora in a perimeter band (frames.lua's M.vine): the key choosing its
+-- Flora in a perimeter band (frames.lua's M.flora): the key choosing its
 -- form and the forms it names, the first the default. vine is one vine
--- round all four sides; pinwheel and corners are named for later and laid
--- as vine for now, which the log says.
+-- round all four sides; pinwheel two plants turning round the page, each
+-- up one side and along the foot or the top; corners a plant in each
+-- corner with a sparser vine between them.
 M.FLORA = "perimeterflora"
 M.FLORAS = { "vine", "pinwheel", "corners" }
-M.FLORA_BUILT = { vine = true }
 -- How densely the vine grows, by the key's value, the first the default:
 -- the factor its plant is drawn larger by than at the default, so fewer,
 -- larger leaves and blooms fill the band.
 M.FLORA_DENSITY = "perimeterdensity"
 M.DENSITIES = { "dense", "open", "sparse" }
 M.DENSITY_SCALE = { dense = 1, open = 1.25, sparse = 1.55 }
+-- The factor each form's plant is drawn at, times its density's: under 1,
+-- finer, so more leaves and blooms fill the band. pinwheel's plant grows in
+-- a frame with a foot and a column, which thins its leaves, so it is drawn
+-- finer to read as a plant at the widths vine does.
+M.FORM_SCALE = { vine = 1, pinwheel = 0.6, corners = 1 }
 -- The narrowest band in mm each density reads as a plant in rather than a
 -- scatter (at least about half its ink a millimetre thick, as dense has at
 -- 6 mm). A narrower band takes the sparsest density it holds, and the log

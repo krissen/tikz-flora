@@ -6,7 +6,7 @@
 -- makes. The prototypes live here only: nothing in lua/flora/ calls them,
 -- and they swap Frames.of only while one of their pages is painted.
 --
---   texlua tools/frame_flora.lua OUTDIR SET [SEEDS]
+--   texlua tools/frame_flora.lua OUTDIR SET [SEEDS [OPTS]]
 --
 -- SET is one of the sets in SETS: measure (layout=perimeter with flora and
 -- surround, over papers, widths and titles), vine-16:9, vine-4:3 and
@@ -18,7 +18,9 @@
 -- and OUTDIR/pages.tsv, one line a page: its sheet row and column labels,
 -- the paper (pt), the text block, the frame title's and the reservation's
 -- boxes, the band asked (mm) and laid (pt), the seed, the md5 of the body,
--- the seconds it took, the part shown enlarged and the backdrop.
+-- the seconds it took, the part shown enlarged and the backdrop. OPTS is a
+-- comma-separated list of formscale=FORM:FACTOR, which lays Band.FORM_SCALE's
+-- factor for FORM over the engine's, to try a scale before it is set there.
 --
 -- The pages are tests/pattern_perimeter.lua's (M.spec): the text block the
 -- band + 4 mm in from every edge, or given margins; with a title, a frame
@@ -29,6 +31,7 @@ package.path = "./lua/?.lua;" .. package.path
 require("flora.tune").gilt_dpi = 100
 
 local B = dofile("tests/pattern_perimeter.lua")
+local Band = require("flora.band")
 local Compose = require("flora.compose")
 local Frames = require("flora.frames")
 local Paint = require("flora.paint")
@@ -326,7 +329,10 @@ local function crop_box(name, W, H)
   elseif name == "corner" then return { 0, H - a * 0.55, a, H }
   elseif name == "topright" then return { W - a, H - a * 0.55, W, H }
   elseif name == "footleft" then return { 0, 0, a, a * 0.55 }
-  elseif name == "titleleft" then return { 0, H - a * 0.8, a * 1.45, H } end
+  elseif name == "titleleft" then return { 0, H - a * 0.8, a * 1.45, H }
+  elseif name == "footright" then return { W - a, 0, W, a * 0.55 }
+  elseif name == "footthird" then return { W * 0.3 - a / 2, 0, W * 0.3 + a / 2, a * 0.55 }
+  elseif name == "leftthird" then return { 0, H * 0.3 - a * 0.275, a, H * 0.3 + a * 0.275 } end
   return nil
 end
 
@@ -481,8 +487,7 @@ end
 
 -- The vine at each density (band.lua's DENSITIES) on 16:9 at 6, 12 and
 -- 18 mm, light and dark, and at 12 mm with edge=border and on 4:3 and A4.
--- Kinds "vine:density=NAME[,stem=scale]" (stem=scale lets the main stem
--- grow with the plant, frames.lua's VINE_STEM).
+-- Kinds "vine:density=NAME[,form=FORM]" (perimeterdensity, perimeterflora).
 local DENSITIES = { "dense", "open", "sparse" }
 function SETS.density()
   local out = {}
@@ -510,32 +515,134 @@ function SETS.densitywidth()
   return out
 end
 
--- The stem at the sparser densities: as wide on the paper as at the
--- default (as drawn), or grown with the plant, 16:9 at 6, 12 and 18 mm,
--- each with its foot-left corner enlarged.
-function SETS.stem()
+-- The three forms (perimeterflora) side by side at 12 mm on each paper.
+local FORMS = { "vine", "pinwheel", "corners" }
+function SETS.forms()
   local out = {}
-  for _, d in ipairs({ "open", "sparse" }) do
-    for _, stem in ipairs({ "keep", "scale" }) do
-      local kind = "vine:density=" .. d .. (stem == "scale" and ",stem=scale" or "")
-      local row = d .. ", stem " .. (stem == "keep" and "as at dense" or "grown with the plant")
-      for _, wmm in ipairs({ 6, 12, 18 }) do out[#out + 1] = item(row, wmm .. " mm", "16:9", wmm, true, kind) end
-      out[#out + 1] = item(row, "12 mm, foot-left corner", "16:9", 12, true, kind, nil, "footleft")
+  for _, p in ipairs({ "16:9", "4:3", "A4" }) do
+    for _, f in ipairs(FORMS) do out[#out + 1] = item(p .. ", 12 mm", f, p, 12, true, "vine:form=" .. f) end
+  end
+  return out
+end
+
+-- One form at 6, 8, 12 and 18 mm on 16:9, light and dark, edge=cell and
+-- border, beside the kikko band.
+local function form_sheet(form)
+  return function()
+    local out = {}
+    for _, wmm in ipairs({ 6, 8, 12, 18 }) do
+      for _, c in ipairs({ { "light", "cell" }, { "dark", "cell" }, { "light", "border" }, { "dark", "border" } }) do
+        out[#out + 1] = item(form .. ", " .. wmm .. " mm", c[1] .. ", edge=" .. c[2], "16:9", wmm, true, "vine:form=" .. form, nil, nil, c[2], c[1])
+      end
+      out[#out + 1] = item(form .. ", " .. wmm .. " mm", "kikko", "16:9", wmm, true, "band:kikko")
+    end
+    return out
+  end
+end
+SETS["form-pinwheel"], SETS["form-corners"] = form_sheet("pinwheel"), form_sheet("corners")
+
+-- Each form at each density, 16:9, 12 mm.
+function SETS.formdensity()
+  local out = {}
+  for _, f in ipairs(FORMS) do
+    for _, d in ipairs(DENSITIES) do out[#out + 1] = item(f, d, "16:9", 12, true, "vine:form=" .. f .. ",density=" .. d) end
+  end
+  return out
+end
+
+-- Where the new forms' stems meet, enlarged, as first drawn (the
+-- prototypes A and C, ALTS above) and as the engine draws them: the
+-- pinwheel's corners (where one plant's foot meets the other's side) and
+-- the corners' joins of a side's vine to a corner's arms, at 12 and 18 mm.
+function SETS.seams()
+  local out = {}
+  for _, wmm in ipairs({ 12, 18 }) do
+    for _, c in ipairs({ { "pinwheel", "footright", "alt:wreath" }, { "pinwheel", "corner", "alt:wreath" },
+      { "corners", "footthird", "alt:corners:fix=1" }, { "corners", "leftthird", "alt:corners:fix=1" } }) do
+      local row = c[1] .. ", " .. wmm .. " mm, " .. c[2]
+      out[#out + 1] = item(row, "first drawn", "16:9", wmm, true, c[3], nil, c[2])
+      out[#out + 1] = item(row, "as built", "16:9", wmm, true, "vine:form=" .. c[1], nil, c[2])
     end
   end
   return out
 end
 
+-- corners in wide bands: 16:9 at 24, 27, 30, 34 and 40 mm and 4:3 at 28,
+-- 30 and 40 mm, with a title.
+function SETS.cornerswide()
+  local out = {}
+  for _, c in ipairs({ { "16:9", { 24, 27, 30, 34, 40 } }, { "4:3", { 28, 30, 40 } } }) do
+    for _, wmm in ipairs(c[2]) do out[#out + 1] = item("corners, " .. c[1], wmm .. " mm", c[1], wmm, true, "vine:form=corners") end
+  end
+  return out
+end
+
+-- Each form at each density, 12 mm, on each paper; and each form at 6, 12,
+-- 18 and 40 mm on A4, dense: the CPU seconds a page takes (pages.tsv's
+-- secs; give SEEDS as 11,11,11 to time each page three times).
+function SETS.formtime()
+  local out = {}
+  for _, p in ipairs({ "16:9", "4:3", "A4" }) do
+    for _, f in ipairs(FORMS) do
+      for _, d in ipairs(DENSITIES) do out[#out + 1] = item(p .. ", " .. f, d, p, 12, true, "vine:form=" .. f .. ",density=" .. d) end
+    end
+  end
+  return out
+end
+
+function SETS.formtimewidth()
+  local out = {}
+  for _, f in ipairs(FORMS) do
+    for _, wmm in ipairs({ 6, 12, 18, 40 }) do out[#out + 1] = item("A4, " .. f, wmm .. " mm", "A4", wmm, true, "vine:form=" .. f) end
+  end
+  return out
+end
+
+-- One form at each density at 6, 8, 12 and 18 mm on 16:9, with a title: a
+-- form's scale before and after (OPTS formscale=).
+local function form_scale(form)
+  return function()
+    local out = {}
+    for _, d in ipairs(DENSITIES) do
+      for _, wmm in ipairs({ 6, 8, 12, 18 }) do
+        out[#out + 1] = item(form .. ", " .. d, wmm .. " mm", "16:9", wmm, true, "vine:form=" .. form .. ",density=" .. d)
+      end
+    end
+    return out
+  end
+end
+SETS["scale-pinwheel"], SETS["scale-corners"] = form_scale("pinwheel"), form_scale("corners")
+
+-- The narrowest bands for pinwheel and corners at each density, 6 to 10 mm
+-- on 16:9, for the share of solid ink (summary.md); formwidth-FORM takes
+-- one form.
+local function form_width(forms)
+  return function()
+    local out = {}
+    for _, f in ipairs(forms) do
+      for _, d in ipairs(DENSITIES) do
+        for _, wmm in ipairs({ 6, 7, 8, 9, 10 }) do
+          out[#out + 1] = item(f .. ", " .. d, wmm .. " mm", "16:9", wmm, true, "vine:form=" .. f .. ",density=" .. d)
+        end
+      end
+    end
+    return out
+  end
+end
+SETS.formwidth = form_width({ "pinwheel", "corners" })
+SETS["formwidth-pinwheel"], SETS["formwidth-corners"] = form_width({ "pinwheel" }), form_width({ "corners" })
+
 -- ------------------------------------------------------------------
 
-local outdir, setname, seeds_arg = arg[1], arg[2], arg[3]
+local outdir, setname, seeds_arg, opts_arg = arg[1], arg[2], arg[3], arg[4]
 if not (outdir and setname) or not SETS[setname] then
   local names = {}
   for k in pairs(SETS) do names[#names + 1] = k end
   table.sort(names)
-  io.stderr:write("usage: texlua tools/frame_flora.lua OUTDIR SET [SEEDS]; SET is one of " .. table.concat(names, ", ") .. "\n")
+  io.stderr:write("usage: texlua tools/frame_flora.lua OUTDIR SET [SEEDS [OPTS]]; SET is one of " .. table.concat(names, ", ") .. "\n")
   os.exit(2)
 end
+for form, factor in (opts_arg or ""):gmatch("formscale=(%a+):([%d.]+)") do Band.FORM_SCALE[form] = assert(tonumber(factor)) end
 local seeds = {}
 for s in (seeds_arg or "11"):gmatch("[^,]+") do seeds[#seeds + 1] = assert(tonumber(s), "a seed must be a number: " .. s) end
 
@@ -570,12 +677,11 @@ for _, it in ipairs(SETS[setname]()) do
       if it.kind == "vine" or vopts then
         spec.layout, spec.perimeter_flora = "perimeter", "vine"
         spec.perimeter_density = vopts and vopts:match("density=(%w+)") or nil
-        Frames.VINE_STEM = vopts and vopts:match("stem=(%w+)") or nil
+        spec.perimeter_flora = vopts and vopts:match("form=(%w+)") or "vine"
       elseif not pattern then
         spec.layout = it.kind
       end
       pt = Compose.page(spec)
-      Frames.VINE_STEM = nil
       local _, w = B.inner(spec, it.wmm * MM)
       laid = w
     end

@@ -34,7 +34,7 @@ jobs:
       fail-fast: false
       matrix:
         # Dealt out by CPU seconds on a laptop (just test-times 4 on the
-        # tree of 2026-11-25): 303 to 318 s a group. To deal them out again
+        # tree of 2026-11-26): 316 to 378 s a group. To deal them out again
         # run just test-times 4 first, then python3 -I tools/test_times.py
         # groups build/test-times.tsv 14 --skip tools_matrix: that file is
         # the latest run's, and no times are kept with the repository
@@ -42,20 +42,20 @@ jobs:
         # split in parts (tests/split.lua) so that none is more than a
         # group's share. tools_matrix has the job below.
         tests:
-          - pattern_matrix_1 perimeter_flora_2
-          - compose perimeter_flora_4
-          - perimeter_flora_1 perimeter_flora_3
-          - pattern pattern_matrix_3 raster
-          - ornaments pattern_reach_2
-          - garden header_mark pattern_protect
-          - backdrop pattern_perimeter_1 progression
-          - bake headpiece pattern_perimeter_3 plant row_phase titles visitor
-          - clock frame_matrix lint pattern_perimeter_4
-          - core grow leaf pattern_colourways pattern_perimeter_2 prepare_spec reserve scene_ops settings
-          - floret_passes page_cache pattern_reach_1 preview stem_taper support
-          - layout pattern_matrix_2 relief tools
-          - gilt_look mix pattern_matrix_4 pattern_values
-          - cache_key catalog inline letters pattern_ground pattern_reach_3 pdf_form_cache progression_frame_resources render_page
+          - pattern_matrix_1 pattern_reach_3
+          - compose pattern_matrix_4
+          - pattern_protect pattern_reach_1
+          - header_mark pattern_matrix_3
+          - layout pattern_matrix_2 pattern_values
+          - pattern_perimeter_2 raster support
+          - backdrop clock garden pattern_perimeter_3
+          - frame_matrix pattern_perimeter_1 titles visitor
+          - pattern perimeter_flora_2 progression_frame_resources
+          - gilt_look grow inline pattern_ground perimeter_flora_4
+          - headpiece lint mix pattern_reach_2
+          - bake core floret_passes page_cache perimeter_flora_1 preview progression relief settings stem_taper tools
+          - cache_key catalog letters pattern_colourways pdf_form_cache perimeter_flora_3 prepare_spec render_page reserve row_phase scene_ops
+          - leaf ornaments pattern_perimeter_4 plant
     steps:
       - uses: actions/checkout@v4
       - name: texlua

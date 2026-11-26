@@ -4,11 +4,12 @@ local Paint=require('flora.paint')
 local Compose=require('flora.compose')
 local Serial=require('flora.serial')
 local function spec(layout)
+  layout=layout or 'left'
   return {width=360,height=270,text={x0=65,y0=35,x1=295,y1=235},seed=7,
-    layout=layout or 'left', mix={gyps=0,cyme=0,umbel=0,ghost=0},
+    layout=layout:match('^[^:]+'), perimeter_flora=layout:match(':(.+)$'), mix={gyps=0,cyme=0,umbel=0,ghost=0},
     tune={compose={sprays=0,leaves=2,small_blooms=1,curls=0,no_leaflets=true}}}
 end
-for _,layout in ipairs({'left','centered','surround','title','flank','wreath','bouquet','scrollwork','perimeter'}) do
+for _,layout in ipairs({'left','centered','surround','title','flank','wreath','bouquet','scrollwork','perimeter','perimeter:pinwheel','perimeter:corners'}) do
   local s=spec(layout); local saved=Serial.encode(s)
   Paint.reset_resources(); local ordinary=Compose.page(s):body()
   s=spec(layout)

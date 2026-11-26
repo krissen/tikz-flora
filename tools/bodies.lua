@@ -13,15 +13,16 @@
 --                (light) and A4 (dark), a 12 mm band, and the slide with
 --                the theme's narrow margins; every pattern on a field
 --                page in three layouts x four edges; and flora in the
---                band (tests/perimeter_flora.lua's pages) on the slide and
---                A4 at 8 and 18 mm, edge none and border. 358 pages.
+--                band on the slide and A4: the vine at 8 and 18 mm, and
+--                pinwheel and corners at 12 mm, edge none and border. 366
+--                pages.
 --   slides       four slide layouts measured by LuaLaTeX (DIR, default
 --                tests/fixtures/slides) x five layouts x eight pattern
 --                setups, flora (pattern=none) among them, painted one
 --                after another as in one document. 160 pages.
---   progression  growth plans (flora.progression) of five layouts (flora
---                in the perimeter band among them) x three seeds, each
---                plan's eight stages. 120 bodies.
+--   progression  growth plans (flora.progression) of seven layouts (flora
+--                in the perimeter band in its three forms among them) x
+--                three seeds, each plan's eight stages. 168 bodies.
 --   protect      tests/pattern_protect.lua's sweep of the small page at
 --                scale 1 and 4: each cell's record and the failures.
 --
@@ -94,6 +95,17 @@ function run.bands()
       end
     end
   end
+  -- The other forms of flora in the band (perimeterflora), on the slide
+  -- and A4 at 12 mm, edge none and border.
+  for _, form in ipairs({ "pinwheel", "corners" }) do
+    for _, paper in ipairs({ B.PAPERS[1], B.PAPERS[3] }) do
+      for _, edge in ipairs({ false, "border" }) do
+        local spec = B.spec(nil, 12, paper, edge, "light")
+        spec.pattern, spec.seed, spec.perimeter_flora = nil, 1, form
+        out("bands", string.format("flora %s %s 12 %s", form, paper[1], tostring(edge)), page_text(spec))
+      end
+    end
+  end
 end
 
 function run.slides()
@@ -123,10 +135,11 @@ end
 function run.progression()
   local H = dofile("tests/helper.lua")
   local P = require("flora.progression")
-  for _, layout in ipairs({ "left", "wreath", "surround", "title", "perimeter" }) do
+  for _, layout in ipairs({ "left", "wreath", "surround", "title", "perimeter", "perimeter:pinwheel", "perimeter:corners" }) do
     for seed = 1, 3 do
       local spec = H.page(seed, 400)
-      spec.layout = layout
+      spec.layout = layout:match("^[^:]+")
+      spec.perimeter_flora = layout:match(":(.+)$")
       local plan = P.plan(spec)
       out("progression", string.format("%s %d plan", layout, seed), string.format("%d parts %.6f", #plan.parts, plan.area))
       for k, st in ipairs(P.stages(plan, 8)) do

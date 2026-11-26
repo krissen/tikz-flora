@@ -1,9 +1,8 @@
 -- Flora in the perimeter band (frames.lua's M.vine): the invariants of
 -- tests/perimeter_flora.lua over every paper, band width, frame title and
 -- backdrop, each of them failing when the engine is broken the way it
--- guards against; the forms the key names that are not drawn yet laid as
--- vine, saying so; and the line the vine follows (loop.lua) mapped there
--- and back.
+-- guards against; each form's own frames; the log's band widths; and the
+-- line the vine follows (loop.lua) mapped there and back.
 -- The suite is split over tests/test_perimeter_flora_1.lua .. _4.lua: each
 -- runs run(part, parts), its share of the sweep and of the mutations, and
 -- part 1 the checks too small to weigh (tests/split.lua).
@@ -15,16 +14,19 @@ local Paint = require("flora.paint")
 local Band = require("flora.band")
 local Loop = require("flora.loop")
 
--- What each item weighs, in CPU seconds (each item timed alone, 2026-11): a
--- paper and band width's share of the sweep (its four cells), and each
--- mutation.
+-- What each item weighs, in CPU seconds (each item timed alone, 2026-11, tools/weigh_perimeter_flora.lua for the sweep): a
+-- paper and band width's share of the sweep (its four cells), each form's
+-- wide cells and each mutation.
 local WEIGHTS = {
-  { "sweep:16:9 6", 46 }, { "sweep:16:9 8", 50 }, { "sweep:16:9 12", 35 }, { "sweep:16:9 18", 42 },
-  { "sweep:4:3 6", 40 }, { "sweep:4:3 8", 38 }, { "sweep:4:3 12", 45 }, { "sweep:4:3 18", 34 },
-  { "sweep:A4 6", 77 }, { "sweep:A4 8", 82 }, { "sweep:A4 12", 58 }, { "sweep:A4 18", 51 },
+  { "sweep:16:9 6", 41 }, { "sweep:16:9 8", 50 }, { "sweep:16:9 12", 34 }, { "sweep:16:9 18", 46 },
+  { "sweep:4:3 6", 37 }, { "sweep:4:3 8", 41 }, { "sweep:4:3 12", 43 }, { "sweep:4:3 18", 39 },
+  { "sweep:A4 6", 72 }, { "sweep:A4 8", 86 }, { "sweep:A4 12", 61 }, { "sweep:A4 18", 61 },
   { "mutant:not cut", 12 }, { "mutant:own width", 12 }, { "mutant:one plant", 8 }, { "mutant:narrow allowed", 10 },
   { "mutant:no rule", 12 }, { "mutant:header clip", 12 }, { "mutant:running head", 12 }, { "mutant:reservation drawn over", 12 },
-  { "mutant:inner gap", 12 }, { "mutant:density too narrow", 6 },
+  { "mutant:inner gap", 12 }, { "mutant:density too narrow", 6 }, { "mutant:one pinwheel plant", 6 },
+  { "wide:vine", 16 }, { "wide:pinwheel", 32 }, { "wide:corners", 19 },
+  { "mutant:one corners plant", 8 }, { "mutant:one corners side vine", 8 }, { "mutant:corners arms short", 12 },
+  { "mutant:no fallback log", 12 }, { "mutant:deal in step", 1 }, { "mutant:layout arms short", 3 }, { "mutant:pair rounding flipped", 3 },
 }
 
 return function(part, parts)
@@ -50,20 +52,92 @@ if S.once("loop") then
   end
 end
 
--- The forms not drawn yet are laid as vine, and the log says so once.
+-- Each form lays its own frames: the vine two plants along the line, the
+-- pinwheel two turned a half circle, corners four corner plants and four
+-- vines along the sides; none says in the log that it is laid as another.
 if S.once("forms") then
+  local want = { vine = 2, pinwheel = 2, corners = 8 }
   for _, form in ipairs(Band.FLORAS) do
-    local spec = F.spec(8, F.PAPERS[1], false, "light", 1, nil)
+    local spec = F.spec(12, F.PAPERS[1], false, "light", 1, nil)
     spec.perimeter_flora = form
     local fs = Frames.of(spec)
-    H.check(#fs == 2 and fs.band.form == form, form .. ": two plants of the vine")
-    Paint.reset_resources()
+    H.check(#fs == want[form] and fs.band.form == form, string.format("%s: %d frames, not %d", form, #fs, want[form]))
     local pt = Paint.new({ backend = "pdf" })
     Compose.flora_band(pt, spec, fs)
-    local said = 0
-    for _, w in ipairs(pt.pattern_warnings or {}) do if w:find(form .. " is not drawn yet", 1, true) then said = said + 1 end end
-    H.check(said == (Band.FLORA_BUILT[form] and 0 or 1), string.format("%s: says %d times it is not drawn yet", form, said))
+    H.check(#(pt.pattern_warnings or {}) == 0, form .. ": the log says " .. tostring((pt.pattern_warnings or {})[1]))
   end
+end
+
+-- Every frame of every form is laid, or the vine is and the log says so:
+-- the frames and the log alone (no painting), over every paper, both title
+-- modes, every form and density, every band from 6 to 40 mm and uneven
+-- margins.
+if S.once("layout") then
+  local pages, failures = F.layout()
+  H.check(pages == 5040, "layout: " .. pages .. " pages checked")
+  for i, f in ipairs(failures) do
+    if i > 20 then break end
+    H.check(false, string.format("perimeter flora layout %s: %s: %s", f[1], f[2], f[3]))
+  end
+end
+
+-- Every log line that writes a measure beside a limit says it on the right
+-- side of it, just under, on and just over the limit.
+if S.once("log pairs") then
+  local n, failures = F.log_pairs()
+  H.check(n == 267, "log pairs: " .. n .. " checks")
+  for i, f in ipairs(failures) do
+    if i > 20 then break end
+    H.check(false, string.format("perimeter flora log %s: %s", f[2], f[3]))
+  end
+end
+
+-- The sweep asks every form at every density.
+if S.once("deal") then
+  H.check(F.CELLS == 48, "the sweep has " .. F.CELLS .. " cells")
+  H.check(#F.unasked() == 0, "the sweep never asks " .. table.concat(F.unasked(), ", "))
+end
+
+-- The log's band widths never cross the limit they are told against: a
+-- band just under a limit is written under it, one on it at it. The
+-- flora band's limits (6 mm, open's 7 and sparse's 9), the narrowing below
+-- the width asked, and the pattern band's 4 mm.
+if S.once("log widths") then
+  local function said(warnings, pattern)
+    for _, w in ipairs(warnings or {}) do
+      local n = w:match(pattern)
+      if n then return tonumber(n) end
+    end
+  end
+  for _, c in ipairs({ { 5.99, "dense", 6 }, { 6, "dense", nil }, { 6.99, "open", 7 }, { 7, "open", nil }, { 8.99, "sparse", 9 }, { 9, "sparse", nil } }) do
+    local spec = F.spec(c[1], F.PAPERS[1], false, "light", 1, nil)
+    spec.perimeter_density = c[2]
+    local pt = Paint.new({ backend = "pdf" })
+    Compose.flora_band(pt, spec, Frames.of(spec))
+    local n = said(pt.pattern_warnings, "the perimeter band is ([%d.]+) mm, narrower") or said(pt.pattern_warnings, "the ([%d.]+) mm band is laid")
+    if c[3] then
+      H.check(n and n < c[3], string.format("a %g mm band at %s is written as %s mm against %g mm", c[1], c[2], tostring(n), c[3]))
+    else
+      H.check(n == nil, string.format("a %g mm band at %s says it is too narrow (%s mm)", c[1], c[2], tostring(n)))
+    end
+  end
+  -- Narrowed by its margins to just under the 12 mm asked.
+  local B = dofile("tests/pattern_perimeter.lua")
+  local m = (11.99 * 72 / 25.4 + 9) * 25.4 / 72
+  local spec = F.spec(12, F.PAPERS[1], false, "light", 1, nil, { m, m, m, m })
+  local pt = Paint.new({ backend = "pdf" })
+  Compose.flora_band(pt, spec, Frames.of(spec))
+  local n = said(pt.pattern_warnings, "the band is ([%d.]+) mm on all four sides")
+  H.check(n and n < 12, "a band narrowed to 11.99 mm is written as " .. tostring(n) .. " mm, not under the 12 mm asked")
+  -- The pattern band's 4 mm: margins that leave 3.99 mm.
+  m = (3.99 * 72 / 25.4 + 9) * 25.4 / 72
+  local ps = B.spec("kikko", 12, B.PAPERS[1], false, "light", { m, m, m, m })
+  pt = Paint.new({ backend = "pdf" })
+  local kikko
+  for _, p in ipairs(require("flora.patterns").list) do if p.name == "kikko" then kikko = p end end
+  Pattern.perimeter_band(ps, kikko, pt)
+  n = said(pt.pattern_warnings, "room for no perimeter band %(([%d.]+) mm, under")
+  H.check(n and n < 4, "a 3.99 mm pattern band is written as " .. tostring(n) .. " mm against 4 mm")
 end
 
 -- The sweep.
@@ -83,6 +157,17 @@ for _, paper in ipairs(F.PAPERS) do
     end
   end
 end
+for _, form in ipairs(F.FORMS) do
+  if S.mine("wide:" .. form) then
+    local cells, failures = F.run({ papers = {}, narrow = false, wide = { [form] = true } })
+    total = total + cells
+    S.check(H, cells == #F.WIDE, string.format("perimeter flora wide %s: %d cells", form, cells))
+    for i, f in ipairs(failures) do
+      if i > 20 then break end
+      H.check(false, string.format("perimeter flora %s: %s: %s", f[1], f[2], f[3]))
+    end
+  end
+end
 if S.once("narrow") then
   local cells, failures = F.run({ papers = {}, narrow = true })
   H.check(cells == #F.NARROW, "narrow cells: " .. cells)
@@ -90,14 +175,21 @@ if S.once("narrow") then
 end
 
 -- Each invariant fails when the engine is broken as it guards against, on
--- the one page that shows it: field `key` of table `t` is replaced by what
--- `make` returns for it while the sweep runs, and set back after.
+-- the one page that shows it (a vine's, unless opts.form says otherwise):
+-- field `key` of table `t` is replaced by what `make` returns for it while
+-- the sweep runs, and set back after.
 local ONE = { papers = { ["16:9"] = true }, widths = { [12] = true }, titles = { [true] = true }, backdrops = { light = true }, narrow = false }
 local function mutant(name, invariant, t, key, make, opts)
   if not S.mine("mutant:" .. name) then return end
+  opts = opts or ONE
+  if not opts.form then
+    local o = {}
+    for k, v in pairs(opts) do o[k] = v end
+    o.form, opts = "vine", o
+  end
   local orig = t[key]
   t[key] = make(orig)
-  local ok, cells, fails = pcall(F.run, opts or ONE)
+  local ok, cells, fails = pcall(F.run, opts)
   t[key] = orig
   H.check(ok, string.format("mutation %s: the sweep stopped: %s", name, tostring(cells)))
   local n = 0
@@ -116,11 +208,18 @@ mutant("own width", "width", Pattern, "band_width", function(orig) return functi
   return w + 3, asked, side, { I[1] + 3, I[2] + 3, I[3] - 3, I[4] - 3 }
 end end)
 -- The second plant, round the foot and up the right, left out.
-mutant("one plant", "sides", Frames, "vine", function(orig) return function(spec)
-  local fs = orig(spec)
+mutant("one plant", "sides", Frames, "vine", function(orig) return function(spec, b)
+  local fs = orig(spec, b)
   fs[2] = nil
   return fs
 end end)
+-- The pinwheel's second plant, down the right and along the top, left out.
+mutant("one pinwheel plant", "sides", Frames, "pinwheel", function(orig) return function(spec, b)
+  local fs = orig(spec, b)
+  fs[2] = nil
+  return fs
+end end, { papers = { ["16:9"] = true }, widths = { [12] = true }, titles = { [true] = true }, backdrops = { light = true }, narrow = false,
+  form = "pinwheel" })
 -- Flora laid in bands down to 4 mm.
 mutant("narrow allowed", "narrow", Band, "FLORA_NARROWEST", function() return 4 end, { papers = {}, narrow = true })
 -- edge=border without its rule.
@@ -137,8 +236,8 @@ end, { papers = { ["16:9"] = true }, widths = { [8] = true }, titles = { [true] 
 -- The page clipped under its running head and top inset, as surround is.
 mutant("header clip", "sides", Compose, "perimeter_page", function() return function() return false end end)
 -- The vine's frames given the page's running head.
-mutant("running head", "mark", Frames, "vine", function(orig) return function(spec)
-  local fs = orig(spec)
+mutant("running head", "mark", Frames, "vine", function(orig) return function(spec, b)
+  local fs = orig(spec, b)
   for i = 1, #fs do fs[i].spec.header_y = spec.header_y end
   return fs
 end end)
@@ -163,6 +262,56 @@ mutant("inner gap", "text", Pattern, "band_inner", function() return function(sp
   return { m, m, W - m, Ht - m }, ""
 end end, { papers = { ["16:9"] = true }, widths = { [12] = true }, titles = { [true] = true }, backdrops = { light = true },
   narrow = false, margins = { 14, 14, 14, 14 } })
+
+-- A corner plant left out, and a side's vine left out.
+local CORNERS = { papers = { ["16:9"] = true }, widths = { [12] = true }, titles = { [true] = true }, backdrops = { light = true },
+  narrow = false, form = "corners" }
+mutant("one corners plant", "frames", Frames, "corners", function(orig) return function(spec, b)
+  local fs = orig(spec, b)
+  table.remove(fs, 1)
+  return fs
+end end, CORNERS)
+mutant("one corners side vine", "frames", Frames, "corners", function(orig) return function(spec, b)
+  local fs = orig(spec, b)
+  table.remove(fs, 5)
+  return fs
+end end, CORNERS)
+-- Arms no longer than a third of the side however wide the band: the
+-- corner plants are dropped in the wide band, and nothing falls back.
+mutant("corners arms short", "frames", Frames, "CORNER_ROOM", function() return 0 end,
+  { papers = {}, narrow = false, wide = { corners = true } })
+-- The fall back to the vine not said in the log.
+mutant("no fallback log", "frames", Pattern, "warn", function(orig) return function(pt, msg)
+  if msg:find("needs a band of at most", 1, true) then return end
+  return orig(pt, msg)
+end end, { papers = {}, narrow = false, wide = { corners = true } })
+-- The sweep dealt as it was, form and density in step; and the layout
+-- check, with arms short.
+if S.mine("mutant:deal in step") then
+  local key, orig = "deal", F.deal
+  F[key] = function(n)
+    local seed, edge, density = orig(n)
+    return seed, edge, density, F.FORMS[(n - 1) // 4 % #F.FORMS + 1]
+  end
+  local missing = #F.unasked()
+  F[key] = orig
+  H.check(missing > 0, "mutation deal in step: the check finds every form x density asked")
+end
+-- The helper rounding the other way: the band up beside a lower limit.
+if S.mine("mutant:pair rounding flipped") then
+  local key, orig = "pair", Pattern.pair
+  Pattern[key] = function(v, limit, dir, d) return orig(v, limit, dir == "under" and "over" or "under", d) end
+  local ok, _, failures = pcall(F.log_pairs)
+  Pattern[key] = orig
+  H.check(ok and #failures > 0, "mutation pair rounding flipped: the log pairs check does not fail")
+end
+if S.mine("mutant:layout arms short") then
+  local orig = Frames.CORNER_ROOM
+  Frames.CORNER_ROOM = 0
+  local _, failures = F.layout()
+  Frames.CORNER_ROOM = orig
+  H.check(#failures > 0, "mutation layout arms short: the layout check does not fail")
+end
 
 -- The band's keys change nothing on a page of another layout.
 if S.once("other layouts") then

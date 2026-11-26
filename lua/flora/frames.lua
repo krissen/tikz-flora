@@ -280,7 +280,7 @@ local function layout_frames(spec)
   -- The perimeter band: a pattern's is pattern.lua's, and its frames are
   -- surround's; flora's is a vine round the band (M.vine).
   if layout == Band.LAYOUT then
-    if M.flora_band(spec) then return M.vine(spec) end
+    if M.flora_band(spec) then return M.flora(spec) end
     layout = "surround"
   end
   if layout == "left" then
@@ -491,7 +491,7 @@ function M.flora_band(spec)
   return spec.layout == Band.LAYOUT and not (spec.pattern ~= nil and require("flora.pattern").applies(spec))
 end
 
--- The vine's plants are grown in frames in which the band is VINE_BAND pt
+-- The band's plants are grown in frames in which the band is VINE_BAND pt
 -- wide, as a margin is, scaled down to the band by k, held between
 -- VINE_SCALE[1] and [2]: in a narrow band the plant is drawn finer, in a
 -- wide one larger, but neither as far as the band alone would take it.
@@ -500,74 +500,192 @@ end
 -- their length at each end.
 M.VINE_BAND, M.VINE_SCALE, M.VINE_CORNER, M.VINE_TAPER = 70, { 0.4, 0.6 }, 0.5, 0.03
 
--- Vine: flora in the perimeter band, one vine round all four sides on the
--- band's centre line (loop.lua), its corners rounded. It is two plants
--- rooted in the foot-left corner, their roots crossing there and their
--- stems narrowing to a point, each round one half of the page to meet in
--- the top-right corner, so the foot and the top run unbroken. The band is pattern.lua's (M.band_width): as wide
--- on every side, narrowed alike where a margin is narrower. The list's
--- `band` holds that width, the width asked, the side that narrowed it, the
--- inner rectangle, the form asked and, under Band.FLORA_NARROWEST mm,
--- none = true and no frames.
-function M.vine(spec)
+-- Flora in the perimeter band (band.lua's perimeterflora): the band and
+-- what every form shares, then the form's own frames (M.vine, M.pinwheel,
+-- M.corners). The band is pattern.lua's (M.band_width): as wide on every
+-- side, narrowed alike where a margin is narrower. The list's `band` holds
+-- that width, the width asked, the side that narrowed it, the inner
+-- rectangle, the form, the density asked and laid and, under
+-- Band.FLORA_NARROWEST mm, none = true and no frames.
+--
+-- Every form grows its plants in frames in which the band is VINE_BAND pt
+-- wide, scaled down to the band by k: the scale held between VINE_SCALE[1]
+-- and [2], times the density's factor (Band.FLORA_DENSITY), so that a
+-- sparser density draws fewer, larger leaves and blooms alike at every
+-- width. A band narrower than a density's Band.DENSITY_NARROWEST takes the
+-- next denser value it holds. The main stem keeps the width on the paper it
+-- has at the default density, and every stem narrows to a point at each
+-- end, so no plant starts or stops on a blunt stub.
+function M.flora(spec)
   local w, asked, side, I = require("flora.pattern").band_width(spec)
   local form = spec.perimeter_flora or Band.FLORAS[1]
-  local fs = { dropped = 0, band = { w = w, asked = asked, side = side, I = I, form = form,
+  local fs = { dropped = 0, band = { w = w, asked = asked, side = side, I = I, form = form, form_asked = form,
     density_asked = spec.perimeter_density or Band.DENSITIES[1] } }
   if w < Band.FLORA_NARROWEST * 72 / 25.4 - 1e-6 then
     fs.band.none = true
     return fs
   end
-  local W, H = spec.width, spec.height
-  -- The density (Band.FLORA_DENSITY) draws the plant larger by its factor,
-  -- with the same limits so scaled: fewer, larger leaves and blooms in the
-  -- same band, alike at every width. The main stem keeps the width on the
-  -- paper it has at the default density. A band narrower than a density's
-  -- Band.DENSITY_NARROWEST takes the next denser value, down to the one it
-  -- holds.
-  local asked_density = spec.perimeter_density or Band.DENSITIES[1]
-  local density = asked_density
+  local density = fs.band.density_asked
   local mm = w * 25.4 / 72
-  for i = #Band.DENSITIES, 1, -1 do
+  for i = #Band.DENSITIES, 2, -1 do
     local d = Band.DENSITIES[i]
-    if d == density and mm < Band.DENSITY_NARROWEST[d] - 1e-6 and i > 1 then density = Band.DENSITIES[i - 1] end
+    if d == density and mm < Band.DENSITY_NARROWEST[d] - 1e-6 then density = Band.DENSITIES[i - 1] end
   end
   fs.band.density = density
-  local fk = Band.DENSITY_SCALE[density] or 1
-  local k0 = G.clamp(w / M.VINE_BAND, M.VINE_SCALE[1], M.VINE_SCALE[2])
-  local k = k0 * fk
+  local fk = (Band.DENSITY_SCALE[density] or 1) * (Band.FORM_SCALE[form] or 1)
+  local k = G.clamp(w / M.VINE_BAND, M.VINE_SCALE[1], M.VINE_SCALE[2]) * fk
   local vb = w / k
-  local u = vb / M.VINE_BAND
-  local lp = Loop.new(w / 2, w / 2, W - w / 2, H - w / 2, w * M.VINE_CORNER)
+  local tune = {
+    compose = { hero_min = math.min(28, 0.4 * vb), hero_max = math.min(80, 0.45 * vb) },
+    plant = { end_taper = M.VINE_TAPER },
+  }
+  if fk ~= 1 then
+    local P = Tune.plant
+    tune.plant.root_width, tune.plant.tip_width = P.root_width / fk, P.tip_width / fk
+  end
+  local band = { W = spec.width, H = spec.height, w = w, I = I, k = k, vb = vb, u = vb / M.VINE_BAND, tune = tune }
+  -- corners needs room for its arms: where the band leaves none, the vine.
+  local form_asked = form
+  if form == "corners" and w > M.corners_widest(spec.width, spec.height) + 1e-6 then form = "vine" end
+  fs.band.form, fs.band.form_asked = form, form_asked
+  local build = M[form] or M.vine
+  for _, f in ipairs(build(spec, band)) do fs[#fs + 1] = f end
+  return fs
+end
+
+-- The page's ornaments for a plant whose pendant would hang where no foot
+-- corner is (a bare frame's root, bent round the band): every pendant at 0.
+local function no_pendant(spec)
+  local Orn = require("flora.ornaments")
+  local ornaments = {}
+  for kname, wt in pairs(spec.ornaments or {}) do ornaments[kname] = wt end
+  for _, kind in ipairs(Orn.of("pendant")) do ornaments[kind.name] = 0 end
+  return ornaments
+end
+
+-- A copy of tune `t` with section `sec`'s keys from `add` laid over it.
+local function tune_with(t, sec, add)
+  local out = {}
+  for k, v in pairs(t) do out[k] = v end
+  local s = {}
+  for k, v in pairs(t[sec] or {}) do s[k] = v end
+  for k, v in pairs(add) do s[k] = v end
+  out[sec] = s
+  return out
+end
+
+-- Vine: one vine round all four sides on the band's centre line
+-- (loop.lua), its corners rounded. It is two plants rooted in the
+-- foot-left corner, their roots crossing there, each round one half of the
+-- page to meet in the top-right corner, so the foot and the top run
+-- unbroken. `b` is what M.flora worked out for the band.
+function M.vine(spec, b)
+  local w, k, vb, u = b.w, b.k, b.vb, b.u
+  local lp = Loop.new(w / 2, w / 2, b.W - w / 2, b.H - w / 2, w * M.VINE_CORNER)
   local edge, gutter = 6 * u, 4 * u
   -- Each plant starts this far behind the corner, so the roots cross.
   local cross = (edge + 10 * u) * k
   local s0 = lp:corner(1)
   local h = (lp.len / 2 - 8 * k + cross) / k
   local fw = vb + 40 * u
-  local tune = {
-    compose = { hero_min = math.min(28, 0.4 * vb), hero_max = math.min(80, 0.45 * vb) },
-    plant = { end_taper = M.VINE_TAPER },
-  }
-  if fk ~= 1 and M.VINE_STEM ~= "scale" then
-    local P = Tune.plant
-    tune.plant.root_width, tune.plant.tip_width = P.root_width / fk, P.tip_width / fk
-  end
-  -- No pendant: a plant's pendant hangs in its foot's corner, which on the
-  -- vine is the root, where the gilt would be bent round the band's corner.
-  local Orn = require("flora.ornaments")
-  local ornaments = {}
-  for kname, wt in pairs(spec.ornaments or {}) do ornaments[kname] = wt end
-  for _, kind in ipairs(Orn.of("pendant")) do ornaments[kind.name] = 0 end
+  -- No pendant: it would hang at the root, bent round the band's corner.
+  local ornaments = no_pendant(spec)
+  local fs = {}
   for i, dir in ipairs({ 1, -1 }) do
     local fn, inv = lp:maps(s0 - dir * cross, vb / 2, k, dir)
     local f = curved(spec, fn, inv, fw, h, { x0 = vb, y0 = 0, x1 = fw, y1 = h },
       { label = i == 1 and "left" or "right", seed = i == 2 and seed_of(spec, 2) or nil })
-    f.spec.edge, f.spec.gutter, f.spec.header, f.spec.tune = edge, gutter, "margin", tune
+    f.spec.edge, f.spec.gutter, f.spec.header, f.spec.tune = edge, gutter, "margin", b.tune
     f.spec.ornaments = ornaments
     fs[#fs + 1] = f
   end
-  fs.loop = lp
+  return fs
+end
+
+-- Pinwheel: surround's two plants laid in the band, each grown in a frame
+-- the band's scale whose margin is the band: the first up the left side
+-- and along the foot, the second, turned half a circle, down the right
+-- side and along the top. Their stems run in the band's middle.
+function M.pinwheel(spec, b)
+  local k, W, H = b.k, b.W, b.H
+  local fw, fh = W / k, H / k
+  local I = b.I
+  local block = { x0 = I[1], y0 = I[2], x1 = I[3], y1 = I[4] }
+  local tune = tune_with(b.tune, "gesture", { edge = 0.42 })
+  local fs = {}
+  for i, m in ipairs({ { k, 0, 0, k, 0, 0 }, { -k, 0, 0, -k, W, H } }) do
+    local f = frame(spec, m, fw, fh, { block = block, label = i == 1 and "left" or "right", frame_only = true,
+      seed = i == 2 and seed_of(spec, 2) or nil })
+    if f then
+      local ft = f.spec.text
+      f.spec.closed = { { ft.x1, ft.y0 - 6, fw, fh }, { 0, ft.y1 + 4, fw, fh } }
+      f.spec.edge, f.spec.gutter, f.spec.header, f.spec.tune = 6 * b.u, 4 * b.u, "margin", tune
+      fs[#fs + 1] = f
+    end
+  end
+  return fs
+end
+
+-- The share of each side a corner's arms run along (M.corners), and the
+-- least an arm is, in bands: a corner plant needs room beyond the band's
+-- corner square, so in a wide band the arms grow with it. Arms that meet
+-- (two of a side's, reaching half of it each) leave no room for the side's
+-- vine, so a band wider than M.corners_widest takes no corners: M.flora
+-- lays the vine there and says so.
+M.CORNER_ARM, M.CORNER_ROOM = 0.3, 1.25
+
+-- The length of a corner's arm along a side of length `side`, in a band `w`
+-- wide.
+function M.corner_arm(side, w) return math.max(side * M.CORNER_ARM, w * M.CORNER_ROOM) end
+
+-- The widest band (pt) in which both of a paper's sides hold two arms.
+function M.corners_widest(W, H) return math.min(W, H) / (2 * M.CORNER_ROOM) end
+
+-- Corners: a full plant in each corner, its two arms along the two sides,
+-- turned a quarter at each corner so the four go round as a pinwheel; and
+-- along each side's middle a sparser vine with a small bloom, reaching a
+-- band's width into the arms either side, so no gap is left between them.
+-- The corner plants grow no runners, whose curls would reach in past the
+-- band's inner edge.
+function M.corners(spec, b)
+  local k, W, H, w, vb, u = b.k, b.W, b.H, b.w, b.vb, b.u
+  local I = b.I
+  local block = { x0 = I[1], y0 = I[2], x1 = I[3], y1 = I[4] }
+  -- Corner frames: origin at the corner, x inward from the side its column
+  -- runs along, y along that side clockwise from the corner.
+  local maps = {
+    { k, 0, 0, k, 0, 0 }, { 0, -k, k, 0, 0, H }, { -k, 0, 0, -k, W, H }, { 0, k, -k, 0, W, 0 },
+  }
+  local cols = { H, W, H, W }
+  local corner_tune = tune_with(b.tune, "compose", { runners = 0 })
+  local fs = {}
+  for i, m in ipairs(maps) do
+    local col, foot = cols[i], cols[i] == H and W or H
+    local f = frame(spec, m, M.corner_arm(foot, w) / k, M.corner_arm(col, w) / k, { block = block, label = "corner " .. i, frame_only = true,
+      seed = seed_of(spec, i) })
+    if f then
+      f.spec.edge, f.spec.gutter, f.spec.header, f.spec.tune = 6 * u, 4 * u, "margin", corner_tune
+      fs[#fs + 1] = f
+    end
+  end
+  -- The vine along each side's middle: a bare frame laid along the side.
+  local rail_tune = tune_with(b.tune, "compose", { hero_min = 0.13 * vb, hero_max = 0.17 * vb })
+  local ornaments = no_pendant(spec)
+  for i, m in ipairs(maps) do
+    local side = cols[i]
+    local arm = M.corner_arm(side, w)
+    local from, to = arm - w, side - arm + w
+    local y0 = from / k
+    local mm = { m[1], m[2], m[3], m[4], m[3] * y0 + m[5], m[4] * y0 + m[6] }
+    local inv = M.invert(mm)
+    local fw = vb + 40 * u
+    local f = curved(spec, function(x, y) return M.apply(mm, x, y) end, function(x, y) return M.apply(inv, x, y) end,
+      fw, (to - from) / k, { x0 = vb, y0 = 0, x1 = fw, y1 = (to - from) / k },
+      { label = "side " .. i, seed = seed_of(spec, 10 + i), density = 0.5 })
+    f.spec.edge, f.spec.gutter, f.spec.header, f.spec.tune = 6 * u, 4 * u, "margin", rail_tune
+    f.spec.ornaments = ornaments
+    fs[#fs + 1] = f
+  end
   return fs
 end
 

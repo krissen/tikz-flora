@@ -1015,6 +1015,40 @@ function M.warn(pt, msg)
   if texio and texio.write_nl then texio.write_nl("log", "flora: " .. msg) end
 end
 
+-- A measure and the limit it is told against, as the log writes the pair:
+-- `v` and `limit` in one unit (mm for a band's width), `dir` "under" for a
+-- v below the limit and "over" for one above it, `d` the decimals v is
+-- written to (1: a tenth of a mm). The written v lies strictly on the same
+-- side of the written limit as the real v does of the real limit, and the
+-- written limit is the real one to d + 1 decimals, rounded away from v, so
+-- the line cannot say 6.0 mm of a band that falls short of 6 mm, or "at
+-- most 36.0 mm" of a 36.0 mm band over 36.0 mm. Every log line that writes
+-- a measure beside a threshold goes through it. Returns both as text.
+function M.pair(v, limit, dir, d)
+  d = d or 1
+  local sv, sl = 10 ^ d, 10 ^ (d + 1)
+  local wv, wl
+  if dir == "under" then
+    wl = math.ceil(limit * sl - 1e-4) / sl
+    wv = math.floor(v * sv + 1e-7) / sv
+    while wv >= wl - 1e-9 do wv = wv - 1 / sv end
+  else
+    wl = math.floor(limit * sl + 1e-4) / sl
+    wv = math.ceil(v * sv - 1e-7) / sv
+    while wv <= wl + 1e-9 do wv = wv + 1 / sv end
+  end
+  return string.format("%." .. d .. "f", wv), string.format("%g", wl)
+end
+
+local PT_MM = 25.4 / 72
+
+-- The line the log gives when a margin narrows the band: `asked` and `w`
+-- in pt, `side` the margin that narrowed it. Pattern and flora bands alike.
+function M.narrowed(asked, side, w)
+  local band, width = M.pair(w * PT_MM, asked * PT_MM, "under")
+  return string.format("%s=%s is wider than the %s margin allows; the band is %s mm on all four sides", Band.WIDTH, width, side, band)
+end
+
 -- The perimeter band's width on spec's page in pt, as it is drawn: the
 -- width asked (band.lua's key, in mm, at most half the paper's either way),
 -- narrowed where a margin is narrower (M.band_inner). The one definition
@@ -1080,12 +1114,12 @@ function M.perimeter_band(spec, p, pt)
   -- narrow for a band at all, none is drawn.
   if w < asked - 1e-6 then
     if w < Band.WIDTH_MIN * 72 / 25.4 - 1e-6 then
-      M.warn(pt, string.format("%s=%g: the %s margin leaves room for no perimeter band (%.1f mm); none is drawn",
-        Band.WIDTH, asked * 25.4 / 72, side, w * 25.4 / 72))
+      local band, least = M.pair(w * PT_MM, Band.WIDTH_MIN, "under")
+      M.warn(pt, string.format("%s=%g: the %s margin leaves room for no perimeter band (%s mm, under the %s mm a band takes); none is drawn",
+        Band.WIDTH, asked * PT_MM, side, band, least))
       return { none = true }
     end
-    M.warn(pt, string.format("%s=%g is wider than the %s margin allows; the band is %.1f mm on all four sides",
-      Band.WIDTH, asked * 25.4 / 72, side, w * 25.4 / 72))
+    M.warn(pt, M.narrowed(asked, side, w))
   end
   local mm = w * 25.4 / 72
   local narrowest = Band.NARROWEST[p.name]
@@ -1093,7 +1127,8 @@ function M.perimeter_band(spec, p, pt)
     if narrowest == math.huge then
       M.warn(pt, p.name .. " does not carry a perimeter band; it is drawn all the same")
     else
-      M.warn(pt, string.format("%s does not carry a perimeter band narrower than %g mm; it is drawn at %g mm all the same", p.name, narrowest, mm))
+      local band, least = M.pair(mm, narrowest, "under")
+      M.warn(pt, string.format("%s does not carry a perimeter band narrower than %s mm; it is drawn at %s mm all the same", p.name, least, band))
     end
   end
   if key(spec, "hero") ~= "none" then
@@ -1470,8 +1505,9 @@ function M.paint_rows(spec, pt, p, band)
     return false
   end
   if plan.below then
-    M.warn(pt, string.format("%s: whole rows in a %g mm perimeter band make its cells smaller than its floor (factor %.3f, floor %.3f)",
-      p.name, w * 25.4 / 72, plan.f, plan.floor))
+    local factor, floor = M.pair(plan.f, plan.floor, "under", 3)
+    M.warn(pt, string.format("%s: whole rows in a %g mm perimeter band make its cells smaller than its floor (factor %s, floor %s)",
+      p.name, w * 25.4 / 72, factor, floor))
   end
   local size = p.scale * key(spec, "scale") * plan.f
   local oy, share = M.row_phase(p, size, w, plan.period, plan.along)

@@ -66,7 +66,19 @@ TITLES = {
     "timing": "The vine and surround on each paper at 6, 12 and 18 mm, for timing",
     "density": "perimeterdensity: dense, open and sparse at 6, 12 and 18 mm, light and dark, edge=border, 4:3 and A4 (seconds per page in each label)",
     "densitywidth": "perimeterdensity at 6 to 10 mm: where each density stops reading as a plant",
-    "stem": "The stem at open and sparse: as wide on the paper as at dense, or grown with the plant",
+    "forms": "perimeterflora: vine, pinwheel and corners side by side at 12 mm on 16:9, 4:3 and A4",
+    "form-pinwheel": "perimeterflora=pinwheel at 6, 8, 12 and 18 mm, light and dark, edge=cell and border, beside kikko",
+    "form-corners": "perimeterflora=corners at 6, 8, 12 and 18 mm, light and dark, edge=cell and border, beside kikko",
+    "formdensity": "Each form at each perimeterdensity, 16:9, 12 mm",
+    "seams": "Where the stems of pinwheel and corners meet, enlarged, at 12 and 18 mm",
+    "formwidth": "pinwheel and corners at each density, 6 to 10 mm: the narrowest band each reads as a plant in",
+    "scale-pinwheel": "pinwheel at each density, 6, 8, 12 and 18 mm, 16:9: one scale against another (OPTS formscale=)",
+    "scale-corners": "corners at each density, 6, 8, 12 and 18 mm, 16:9: one scale against another (OPTS formscale=)",
+    "cornerswide": "corners in wide bands: 16:9 at 24 to 40 mm, 4:3 at 28 to 40 mm",
+    "formtime": "Each form at each density, 12 mm, on 16:9, 4:3 and A4, for timing (CPU seconds a page)",
+    "formtimewidth": "Each form at 6, 12, 18 and 40 mm on A4, dense, for timing (CPU seconds a page)",
+    "formwidth-pinwheel": "pinwheel at each density, 6 to 10 mm",
+    "formwidth-corners": "corners at each density, 6 to 10 mm",
     "vinewidth": "perimeterflora=vine: 5 to 8 mm, and 12 mm in margins 25/10/8/12 (4.8 mm): none under 6 mm",
     "cfix": "C corners and vine (prototype): as first drawn and fixed (no runners, vine into the arms)",
     "choice": "The vine as the engine draws it, and the prototypes A, C and D at their best (16:9, 12 mm)",
@@ -198,8 +210,9 @@ def summary(rows):
         laid = float(ms[0]["band_pt"]) / MM
         plant = np.mean([float(m["solid"]) for m in ms]) * 100
         specks = np.mean([float(m["solid_mm2_per_cm"]) for m in ms])
-        secs = np.mean([float(m["secs"]) for m in ms])
-        lines.append(f"| {row} | {col} (laid {laid:.1f}) | " + " | ".join(cells) + f" | {text:.1f} ({title:.1f}) | {plant:.0f}, {specks:.1f} | {secs:.1f} |")
+        runs = [float(m["secs"]) for m in ms]
+        secs = f"{np.mean(runs):.1f}" if len(runs) == 1 else f"{np.mean(runs):.1f} ({min(runs):.1f}-{max(runs):.1f})"
+        lines.append(f"| {row} | {col} (laid {laid:.1f}) | " + " | ".join(cells) + f" | {text:.1f} ({title:.1f}) | {plant:.0f}, {specks:.1f} | {secs} |")
     return "\n".join(lines) + "\n"
 
 
