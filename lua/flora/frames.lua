@@ -519,7 +519,7 @@ M.VINE_BAND, M.VINE_SCALE, M.VINE_CORNER, M.VINE_TAPER = 70, { 0.4, 0.6 }, 0.5, 
 function M.flora(spec)
   local w, asked, side, I = require("flora.pattern").band_width(spec)
   local form = spec.perimeter_flora or Band.FLORAS[1]
-  local fs = { dropped = 0, band = { w = w, asked = asked, side = side, I = I, form = form,
+  local fs = { dropped = 0, band = { w = w, asked = asked, side = side, I = I, form = form, form_asked = form,
     density_asked = spec.perimeter_density or Band.DENSITIES[1] } }
   if w < Band.FLORA_NARROWEST * 72 / 25.4 - 1e-6 then
     fs.band.none = true
@@ -544,6 +544,10 @@ function M.flora(spec)
     tune.plant.root_width, tune.plant.tip_width = P.root_width / fk, P.tip_width / fk
   end
   local band = { W = spec.width, H = spec.height, w = w, I = I, k = k, vb = vb, u = vb / M.VINE_BAND, tune = tune }
+  -- corners needs room for its arms: where the band leaves none, the vine.
+  local form_asked = form
+  if form == "corners" and w > M.corners_widest(spec.width, spec.height) + 1e-6 then form = "vine" end
+  fs.band.form, fs.band.form_asked = form, form_asked
   local build = M[form] or M.vine
   for _, f in ipairs(build(spec, band)) do fs[#fs + 1] = f end
   return fs
@@ -622,8 +626,20 @@ function M.pinwheel(spec, b)
   return fs
 end
 
--- The share of each side a corner's arms run along (M.corners).
-M.CORNER_ARM = 0.3
+-- The share of each side a corner's arms run along (M.corners), and the
+-- least an arm is, in bands: a corner plant needs room beyond the band's
+-- corner square, so in a wide band the arms grow with it. Arms that meet
+-- (two of a side's, reaching half of it each) leave no room for the side's
+-- vine, so a band wider than M.corners_widest takes no corners: M.flora
+-- lays the vine there and says so.
+M.CORNER_ARM, M.CORNER_ROOM = 0.3, 1.25
+
+-- The length of a corner's arm along a side of length `side`, in a band `w`
+-- wide.
+function M.corner_arm(side, w) return math.max(side * M.CORNER_ARM, w * M.CORNER_ROOM) end
+
+-- The widest band (pt) in which both of a paper's sides hold two arms.
+function M.corners_widest(W, H) return math.min(W, H) / (2 * M.CORNER_ROOM) end
 
 -- Corners: a full plant in each corner, its two arms along the two sides,
 -- turned a quarter at each corner so the four go round as a pinwheel; and
@@ -633,7 +649,6 @@ M.CORNER_ARM = 0.3
 -- band's inner edge.
 function M.corners(spec, b)
   local k, W, H, w, vb, u = b.k, b.W, b.H, b.w, b.vb, b.u
-  local arm = M.CORNER_ARM
   local I = b.I
   local block = { x0 = I[1], y0 = I[2], x1 = I[3], y1 = I[4] }
   -- Corner frames: origin at the corner, x inward from the side its column
@@ -646,7 +661,7 @@ function M.corners(spec, b)
   local fs = {}
   for i, m in ipairs(maps) do
     local col, foot = cols[i], cols[i] == H and W or H
-    local f = frame(spec, m, foot * arm / k, col * arm / k, { block = block, label = "corner " .. i, frame_only = true,
+    local f = frame(spec, m, M.corner_arm(foot, w) / k, M.corner_arm(col, w) / k, { block = block, label = "corner " .. i, frame_only = true,
       seed = seed_of(spec, i) })
     if f then
       f.spec.edge, f.spec.gutter, f.spec.header, f.spec.tune = 6 * u, 4 * u, "margin", corner_tune
@@ -658,7 +673,8 @@ function M.corners(spec, b)
   local ornaments = no_pendant(spec)
   for i, m in ipairs(maps) do
     local side = cols[i]
-    local from, to = side * arm - w, side * (1 - arm) + w
+    local arm = M.corner_arm(side, w)
+    local from, to = arm - w, side - arm + w
     local y0 = from / k
     local mm = { m[1], m[2], m[3], m[4], m[3] * y0 + m[5], m[4] * y0 + m[6] }
     local inv = M.invert(mm)

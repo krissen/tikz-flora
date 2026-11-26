@@ -981,6 +981,11 @@ function C.flora_band(pt, spec, frames)
     Pattern.warn(pt, string.format("%s=%s needs a band of %g mm; the %s mm band is laid %s",
       Band.FLORA_DENSITY, b.density_asked, Band.DENSITY_NARROWEST[b.density_asked], mm, b.density))
   end
+  if b.form ~= b.form_asked then
+    Pattern.warn(pt, string.format("%s=%s needs a band of at most %.1f mm on a paper %g x %g mm; the %s mm band is laid as %s",
+      Band.FLORA, b.form_asked, require("flora.frames").corners_widest(spec.width, spec.height) * 25.4 / 72,
+      spec.width * 25.4 / 72, spec.height * 25.4 / 72, mm, b.form))
+  end
   pt.perimeter_flora = b
   local I = b.I
   local W, H = spec.width, spec.height
