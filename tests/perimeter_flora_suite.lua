@@ -277,13 +277,13 @@ end end, { papers = {}, narrow = false, wide = { corners = true } })
 -- The sweep dealt as it was, form and density in step; and the layout
 -- check, with arms short.
 if S.mine("mutant:deal in step") then
-  local orig = F.deal
-  F.deal = function(n)
+  local key, orig = "deal", F.deal
+  F[key] = function(n)
     local seed, edge, density = orig(n)
     return seed, edge, density, F.FORMS[(n - 1) // 4 % #F.FORMS + 1]
   end
   local missing = #F.unasked()
-  F.deal = orig
+  F[key] = orig
   H.check(missing > 0, "mutation deal in step: the check finds every form x density asked")
 end
 if S.mine("mutant:layout arms short") then
