@@ -15,15 +15,18 @@ local Band = require("flora.band")
 local Loop = require("flora.loop")
 
 -- What each item weighs, in CPU seconds (each item timed alone, 2026-11, tools/weigh_perimeter_flora.lua for the sweep): a
--- paper and band width's share of the sweep (its four cells), and each
--- mutation.
+-- paper and band width's share of the sweep (its four cells), each form's
+-- wide cells and each mutation.
 local WEIGHTS = {
-  { "sweep:16:9 6", 35 }, { "sweep:16:9 8", 61 }, { "sweep:16:9 12", 32 }, { "sweep:16:9 18", 38 },
-  { "sweep:4:3 6", 55 }, { "sweep:4:3 8", 33 }, { "sweep:4:3 12", 35 }, { "sweep:4:3 18", 46 },
-  { "sweep:A4 6", 62 }, { "sweep:A4 8", 67 }, { "sweep:A4 12", 99 }, { "sweep:A4 18", 50 },
+  { "sweep:16:9 6", 38 }, { "sweep:16:9 8", 66 }, { "sweep:16:9 12", 34 }, { "sweep:16:9 18", 37 },
+  { "sweep:4:3 6", 38 }, { "sweep:4:3 8", 33 }, { "sweep:4:3 12", 56 }, { "sweep:4:3 18", 36 },
+  { "sweep:A4 6", 114 }, { "sweep:A4 8", 69 }, { "sweep:A4 12", 55 }, { "sweep:A4 18", 75 },
   { "mutant:not cut", 12 }, { "mutant:own width", 12 }, { "mutant:one plant", 8 }, { "mutant:narrow allowed", 10 },
   { "mutant:no rule", 12 }, { "mutant:header clip", 12 }, { "mutant:running head", 12 }, { "mutant:reservation drawn over", 12 },
   { "mutant:inner gap", 12 }, { "mutant:density too narrow", 6 }, { "mutant:one pinwheel plant", 6 },
+  { "wide:vine", 18 }, { "wide:pinwheel", 35 }, { "wide:corners", 20 },
+  { "mutant:one corners plant", 8 }, { "mutant:one corners side vine", 8 }, { "mutant:corners arms short", 12 },
+  { "mutant:no fallback log", 12 }, { "mutant:deal in step", 1 }, { "mutant:layout arms short", 3 },
 }
 
 return function(part, parts)
@@ -63,6 +66,25 @@ if S.once("forms") then
     Compose.flora_band(pt, spec, fs)
     H.check(#(pt.pattern_warnings or {}) == 0, form .. ": the log says " .. tostring((pt.pattern_warnings or {})[1]))
   end
+end
+
+-- Every frame of every form is laid, or the vine is and the log says so:
+-- the frames and the log alone (no painting), over every paper, both title
+-- modes, every form and density, every band from 6 to 40 mm and uneven
+-- margins.
+if S.once("layout") then
+  local pages, failures = F.layout()
+  H.check(pages == 5040, "layout: " .. pages .. " pages checked")
+  for i, f in ipairs(failures) do
+    if i > 20 then break end
+    H.check(false, string.format("perimeter flora layout %s: %s: %s", f[1], f[2], f[3]))
+  end
+end
+
+-- The sweep asks every form at every density.
+if S.once("deal") then
+  H.check(F.CELLS == 48, "the sweep has " .. F.CELLS .. " cells")
+  H.check(#F.unasked() == 0, "the sweep never asks " .. table.concat(F.unasked(), ", "))
 end
 
 -- The log's band widths never cross the limit they are told against: a
@@ -121,6 +143,17 @@ for _, paper in ipairs(F.PAPERS) do
         if i > 20 then break end
         H.check(false, string.format("perimeter flora %s: %s: %s", f[1], f[2], f[3]))
       end
+    end
+  end
+end
+for _, form in ipairs(F.FORMS) do
+  if S.mine("wide:" .. form) then
+    local cells, failures = F.run({ papers = {}, narrow = false, wide = { [form] = true } })
+    total = total + cells
+    S.check(H, cells == #F.WIDE, string.format("perimeter flora wide %s: %d cells", form, cells))
+    for i, f in ipairs(failures) do
+      if i > 20 then break end
+      H.check(false, string.format("perimeter flora %s: %s: %s", f[1], f[2], f[3]))
     end
   end
 end
@@ -218,6 +251,48 @@ mutant("inner gap", "text", Pattern, "band_inner", function() return function(sp
   return { m, m, W - m, Ht - m }, ""
 end end, { papers = { ["16:9"] = true }, widths = { [12] = true }, titles = { [true] = true }, backdrops = { light = true },
   narrow = false, margins = { 14, 14, 14, 14 } })
+
+-- A corner plant left out, and a side's vine left out.
+local CORNERS = { papers = { ["16:9"] = true }, widths = { [12] = true }, titles = { [true] = true }, backdrops = { light = true },
+  narrow = false, form = "corners" }
+mutant("one corners plant", "frames", Frames, "corners", function(orig) return function(spec, b)
+  local fs = orig(spec, b)
+  table.remove(fs, 1)
+  return fs
+end end, CORNERS)
+mutant("one corners side vine", "frames", Frames, "corners", function(orig) return function(spec, b)
+  local fs = orig(spec, b)
+  table.remove(fs, 5)
+  return fs
+end end, CORNERS)
+-- Arms no longer than a third of the side however wide the band: the
+-- corner plants are dropped in the wide band, and nothing falls back.
+mutant("corners arms short", "frames", Frames, "CORNER_ROOM", function() return 0 end,
+  { papers = {}, narrow = false, wide = { corners = true } })
+-- The fall back to the vine not said in the log.
+mutant("no fallback log", "frames", Pattern, "warn", function(orig) return function(pt, msg)
+  if msg:find("needs a band of at most", 1, true) then return end
+  return orig(pt, msg)
+end end, { papers = {}, narrow = false, wide = { corners = true } })
+-- The sweep dealt as it was, form and density in step; and the layout
+-- check, with arms short.
+if S.mine("mutant:deal in step") then
+  local orig = F.deal
+  F.deal = function(n)
+    local seed, edge, density = orig(n)
+    return seed, edge, density, F.FORMS[(n - 1) // 4 % #F.FORMS + 1]
+  end
+  local missing = #F.unasked()
+  F.deal = orig
+  H.check(missing > 0, "mutation deal in step: the check finds every form x density asked")
+end
+if S.mine("mutant:layout arms short") then
+  local orig = Frames.CORNER_ROOM
+  Frames.CORNER_ROOM = 0
+  local _, failures = F.layout()
+  Frames.CORNER_ROOM = orig
+  H.check(#failures > 0, "mutation layout arms short: the layout check does not fail")
+end
 
 -- The band's keys change nothing on a page of another layout.
 if S.once("other layouts") then

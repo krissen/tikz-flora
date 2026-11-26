@@ -23,6 +23,9 @@
 --           edge does
 --   density each density is laid as asked, or in a band too narrow for it
 --           as the next denser one the band holds, said once in the log
+--   frames  the form is laid with all its frames (vine 2, pinwheel 2,
+--           corners 8), or, where corners has no room for its arms, as the
+--           vine, saying so once in the log: no frame is left out silently
 --   mark    no frame of the page carries a running head, so it has no mark
 --
 -- Sizes are as users give them: papers and bands in mm.
@@ -54,6 +57,12 @@ M.DENSITIES = { "dense", "open", "sparse" }
 -- The forms (perimeterflora), dealt over the cells as the densities are.
 M.FORMS = { "vine", "pinwheel", "corners" }
 M.DENSITY_NARROWEST = { dense = 6, open = 7, sparse = 9 }
+-- The frames each form lays, and, the test's own number like the others,
+-- the least an arm of corners is in bands: a band over the paper's shorter
+-- side less than twice that is too wide for corners, which is laid as the
+-- vine.
+M.FRAMES = { vine = 2, pinwheel = 2, corners = 8 }
+M.CORNER_ROOM = 1.25
 M.BACKDROPS = { "light", "dark" }
 -- Pages whose band is too narrow for flora: 5 mm asked, and 12 mm asked in
 -- a slide theme's margins (25/10/8/12 mm), which narrow it to 4.8 mm.
@@ -209,6 +218,16 @@ function M.check(spec, wmm)
   local said = 0
   for _, w in ipairs(pt.pattern_warnings or {}) do if w:find("perimeterdensity=" .. asked .. " needs", 1, true) then said = said + 1 end end
   if said ~= (want ~= asked and 1 or 0) then fail("density", string.format("%s in a %.1f mm band says %d times it is laid denser", asked, we / MM, said)) end
+  -- frames: every frame of the form, or the vine in a band corners has no
+  -- room in, said once.
+  local formask = spec.perimeter_flora or "vine"
+  local formwant = formask
+  if formask == "corners" and we > math.min(W, H) / (2 * M.CORNER_ROOM) + 1e-6 then formwant = "vine" end
+  if b.form ~= formwant then fail("frames", string.format("%s in a %.1f mm band is laid %s, not %s", formask, we / MM, tostring(b.form), formwant)) end
+  if #frames ~= M.FRAMES[formwant] then fail("frames", string.format("%s in a %.1f mm band has %d frames, not %d", formask, we / MM, #frames, M.FRAMES[formwant])) end
+  local fsaid = 0
+  for _, w in ipairs(pt.pattern_warnings or {}) do if w:find("perimeterflora=" .. formask .. " needs", 1, true) then fsaid = fsaid + 1 end end
+  if fsaid ~= (formwant ~= formask and 1 or 0) then fail("frames", string.format("%s in a %.1f mm band says %d times that it is laid as the vine", formask, we / MM, fsaid)) end
   -- mark
   for _, f in ipairs(frames) do
     if f.spec and f.spec.header_y then fail("mark", "a frame of the band carries a running head") break end
@@ -217,12 +236,44 @@ function M.check(spec, wmm)
   return fails
 end
 
+-- The cell n's seed, edge, density and form, dealt in turn: the density
+-- moves on every second cell, the form every fourth and one more with each
+-- paper, so that the 48 cells hold every form asked at every density.
+function M.deal(n)
+  return M.SEEDS[(n - 1) % #M.SEEDS + 1],
+    M.EDGES[(n - 1) // #M.SEEDS % #M.EDGES + 1],
+    M.DENSITIES[(n - 1) // 2 % #M.DENSITIES + 1],
+    M.FORMS[((n - 1) // 4 + (n - 1) // 16) % #M.FORMS + 1]
+end
+
+-- The cells of the sweep: papers x widths x titles x backdrops.
+M.CELLS = #M.PAPERS * #M.WIDTHS * 2 * #M.BACKDROPS
+
+-- The form x density pairs M.deal does not ask in its cells.
+function M.unasked()
+  local seen, out = {}, {}
+  for n = 1, M.CELLS do
+    local _, _, d, f = M.deal(n)
+    seen[f .. " " .. d] = true
+  end
+  for _, f in ipairs(M.FORMS) do
+    for _, d in ipairs(M.DENSITIES) do
+      if not seen[f .. " " .. d] then out[#out + 1] = f .. " " .. d end
+    end
+  end
+  return out
+end
+
+-- Wide bands, one cell of each form: where the sweep's widths (to 18 mm)
+-- stop and the key goes on to 40.
+M.WIDE = { { "16:9", 30 }, { "4:3", 40 } }
+
 -- The sweep: opts.papers, widths, titles and backdrops (default all), each
--- cell with its own seed, edge and density, dealt in turn from M.SEEDS,
--- M.EDGES, M.DENSITIES and M.FORMS (opts.density and opts.form set one
--- for every cell)
+-- cell with its own seed, edge, density and form, dealt by M.deal
+-- (opts.density and opts.form set one for every cell)
 -- so that the sweep holds several of each, in opts.margins (mm) if given;
--- and opts.narrow (default true).
+-- opts.narrow (default true); and opts.wide, the forms set true that also
+-- have a cell in each of M.WIDE's bands.
 -- Returns the cells swept and every failure as { invariant, cell, text }.
 function M.run(opts)
   opts = opts or {}
@@ -237,10 +288,7 @@ function M.run(opts)
       for _, titled in ipairs({ true, false }) do
         for _, bd in ipairs(M.BACKDROPS) do
           n = n + 1
-          local seed = M.SEEDS[(n - 1) % #M.SEEDS + 1]
-          local edge = M.EDGES[(n - 1) // #M.SEEDS % #M.EDGES + 1]
-          local density = M.DENSITIES[(n - 1) // 2 % #M.DENSITIES + 1]
-          local form = M.FORMS[(n - 1) // 4 % #M.FORMS + 1]
+          local seed, edge, density, form = M.deal(n)
           local want = (not opts.papers or opts.papers[paper[1]]) and (not opts.widths or opts.widths[wmm])
             and (not opts.titles or opts.titles[titled]) and (not opts.backdrops or opts.backdrops[bd])
           if want then
@@ -254,10 +302,71 @@ function M.run(opts)
       end
     end
   end
+  for i, c in ipairs(M.WIDE) do
+    for j, form in ipairs(M.FORMS) do
+      if opts.wide and opts.wide[form] then
+        local paper
+        for _, p in ipairs(M.PAPERS) do if p[1] == c[1] then paper = p end end
+        local spec = M.spec(c[2], paper, true, "light", 1, nil)
+        spec.perimeter_density, spec.perimeter_flora = M.DENSITIES[(i + j) % #M.DENSITIES + 1], form
+        one(string.format("%s %g mm wide %s %s", c[1], c[2], spec.perimeter_density, form), spec, c[2])
+      end
+    end
+  end
   if opts.narrow ~= false then
     for _, c in ipairs(M.NARROW) do one(c[1], M.spec(c[3], c[2], true, "light", 1, nil, c[4]), c[3]) end
   end
   return cells, failures
+end
+
+-- The frames and the log alone, no painting: every paper (and a small one, A6),
+-- both title modes, every form and density, every band from 6 to 40 mm in
+-- steps of 1 mm, and uneven margins. It costs a few seconds, so it can run
+-- over all of them. Returns the pages checked and every failure as
+-- { "frames", page, text }.
+-- (160 x 90 mm is the 16:9 paper; A6 is the smallest in which a 40 mm band
+-- leaves a text block.)
+M.SMALL = { "A6", 105, 148 }
+function M.layout(opts)
+  opts = opts or {}
+  local Frames = require("flora.frames")
+  local failures, pages = {}, 0
+  local papers = {}
+  for _, p in ipairs(M.PAPERS) do papers[#papers + 1] = p end
+  papers[#papers + 1] = M.SMALL
+  local margins = { false, { 25, 10, 8, 12 } }
+  for _, paper in ipairs(papers) do
+    for _, m in ipairs(margins) do
+      for _, titled in ipairs({ true, false }) do
+        for _, form in ipairs(M.FORMS) do
+          for _, density in ipairs(M.DENSITIES) do
+            for wmm = 6, 40 do
+              local spec = M.spec(wmm, paper, titled, "light", 1, nil, m or nil)
+              spec.perimeter_density, spec.perimeter_flora = density, form
+              local fs = Frames.of(spec)
+              local b = fs.band
+              local pt = Paint.new({ backend = "pdf" })
+              Compose.flora_band(pt, spec, fs)
+              local we = b.w
+              local want = form
+              if form == "corners" and we > math.min(spec.width, spec.height) / (2 * M.CORNER_ROOM) + 1e-6 then want = "vine" end
+              local said = 0
+              for _, w in ipairs(pt.pattern_warnings or {}) do if w:find("perimeterflora=" .. form .. " needs", 1, true) then said = said + 1 end end
+              local name = string.format("%s %g mm%s %s %s %s", paper[1], wmm, m and " margins" or "", titled and "title" or "no title", density, form)
+              pages = pages + 1
+              if b.none then
+                if #fs ~= 0 then failures[#failures + 1] = { "frames", name, #fs .. " frames in a band without flora" } end
+              elseif b.form ~= want or #fs ~= M.FRAMES[want] or said ~= (want ~= form and 1 or 0) then
+                failures[#failures + 1] = { "frames", name, string.format("laid %s with %d frames (%d said), wanted %s with %d (%d said)",
+                  tostring(b.form), #fs, said, want, M.FRAMES[want], want ~= form and 1 or 0) }
+              end
+            end
+          end
+        end
+      end
+    end
+  end
+  return pages, failures
 end
 
 return M
