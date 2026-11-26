@@ -74,6 +74,8 @@ TITLES = {
     "formwidth": "pinwheel and corners at each density, 6 to 10 mm: the narrowest band each reads as a plant in",
     "scale-pinwheel": "pinwheel at each density, 6, 8, 12 and 18 mm, 16:9: one scale against another (OPTS formscale=)",
     "scale-corners": "corners at each density, 6, 8, 12 and 18 mm, 16:9: one scale against another (OPTS formscale=)",
+    "formtime": "Each form at each density, 12 mm, on 16:9, 4:3 and A4, for timing (CPU seconds a page)",
+    "formtimewidth": "Each form at 6, 12, 18 and 40 mm on A4, dense, for timing (CPU seconds a page)",
     "formwidth-pinwheel": "pinwheel at each density, 6 to 10 mm",
     "formwidth-corners": "corners at each density, 6 to 10 mm",
     "vinewidth": "perimeterflora=vine: 5 to 8 mm, and 12 mm in margins 25/10/8/12 (4.8 mm): none under 6 mm",
@@ -207,8 +209,9 @@ def summary(rows):
         laid = float(ms[0]["band_pt"]) / MM
         plant = np.mean([float(m["solid"]) for m in ms]) * 100
         specks = np.mean([float(m["solid_mm2_per_cm"]) for m in ms])
-        secs = np.mean([float(m["secs"]) for m in ms])
-        lines.append(f"| {row} | {col} (laid {laid:.1f}) | " + " | ".join(cells) + f" | {text:.1f} ({title:.1f}) | {plant:.0f}, {specks:.1f} | {secs:.1f} |")
+        runs = [float(m["secs"]) for m in ms]
+        secs = f"{np.mean(runs):.1f}" if len(runs) == 1 else f"{np.mean(runs):.1f} ({min(runs):.1f}-{max(runs):.1f})"
+        lines.append(f"| {row} | {col} (laid {laid:.1f}) | " + " | ".join(cells) + f" | {text:.1f} ({title:.1f}) | {plant:.0f}, {specks:.1f} | {secs} |")
     return "\n".join(lines) + "\n"
 
 

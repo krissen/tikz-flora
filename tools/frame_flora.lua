@@ -567,6 +567,27 @@ function SETS.seams()
   return out
 end
 
+-- Each form at each density, 12 mm, on each paper; and each form at 6, 12,
+-- 18 and 40 mm on A4, dense: the CPU seconds a page takes (pages.tsv's
+-- secs; give SEEDS as 11,11,11 to time each page three times).
+function SETS.formtime()
+  local out = {}
+  for _, p in ipairs({ "16:9", "4:3", "A4" }) do
+    for _, f in ipairs(FORMS) do
+      for _, d in ipairs(DENSITIES) do out[#out + 1] = item(p .. ", " .. f, d, p, 12, true, "vine:form=" .. f .. ",density=" .. d) end
+    end
+  end
+  return out
+end
+
+function SETS.formtimewidth()
+  local out = {}
+  for _, f in ipairs(FORMS) do
+    for _, wmm in ipairs({ 6, 12, 18, 40 }) do out[#out + 1] = item("A4, " .. f, wmm .. " mm", "A4", wmm, true, "vine:form=" .. f) end
+  end
+  return out
+end
+
 -- One form at each density at 6, 8, 12 and 18 mm on 16:9, with a title: a
 -- form's scale before and after (OPTS formscale=).
 local function form_scale(form)
