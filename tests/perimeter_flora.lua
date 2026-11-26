@@ -369,4 +369,136 @@ function M.layout(opts)
   return pages, failures
 end
 
+-- The log's lines that write a measure beside a limit, each driven past
+-- the limit (just under, on and just over it, by DELTAS mm) and read back:
+-- the band and the limit as written lie on the same side as the real ones,
+-- strictly, and the written limit is the real one to a hundredth of a mm.
+-- A line is said when the band is on the wrong side of its limit, and
+-- not on or on the right side of it. (flora/pattern.lua's M.pair.)
+M.DELTAS = { 0.001, 0.01, 0.05, 0.09 }
+
+-- Reads one line's band and limit; returns them as numbers, or nil.
+local function read(warnings, pattern, band_first)
+  for _, w in ipairs(warnings or {}) do
+    local a, b = w:match(pattern)
+    if a then
+      if band_first then return tonumber(a), tonumber(b) end
+      return tonumber(b), tonumber(a)
+    end
+  end
+end
+
+-- Checks what row `name` said for a real band `real` (mm) against `limit`
+-- in direction dir; `got` is read(...)'s band and limit.
+local function judge(fails, name, dir, limit, real, band, written)
+  local side = dir == "under" and real < limit - 1e-9 or dir == "over" and real > limit + 1e-9
+  if not side then
+    if band then fails[#fails + 1] = { "log", name, string.format("a %.3f mm band against %g mm is written as %g against %g", real, limit, band, written) } end
+    return
+  end
+  if not band then fails[#fails + 1] = { "log", name, string.format("a %.3f mm band against %g mm says nothing", real, limit) }; return end
+  local ok = dir == "under" and band < written or band > written
+  if not ok then
+    fails[#fails + 1] = { "log", name, string.format("a %.3f mm band %s the %g mm limit is written as %g against %g", real, dir, limit, band, written) }
+  end
+  if math.abs(written - limit) > 0.0101 then
+    fails[#fails + 1] = { "log", name, string.format("the %g mm limit is written as %g", limit, written) }
+  end
+end
+
+function M.log_pairs()
+  local fails, n = {}, 0
+  local Pattern = require("flora.pattern")
+  local Frames = require("flora.frames")
+  local function reals(limit, dir)
+    local out = { limit }
+    for _, d in ipairs(M.DELTAS) do
+      out[#out + 1] = limit - d
+      out[#out + 1] = limit + d
+    end
+    return out
+  end
+  -- The helper alone, for measures of another unit: a ratio to a floor.
+  for _, dir in ipairs({ "under", "over" }) do
+    for _, limit in ipairs({ 0.9, 0.35, 6, 38.4, 36, 40.52 }) do
+      for _, d in ipairs({ 0.00001, 0.0001, 0.001, 0.009, 0.01, 0.05, 0.09 }) do
+        for _, dd in ipairs({ 1, 3 }) do
+          local v = dir == "under" and limit - d or limit + d
+          local band, lim = Pattern.pair(v, limit, dir, dd)
+          n = n + 1
+          band, lim = tonumber(band), tonumber(lim)
+          if not (dir == "under" and band < lim or dir == "over" and band > lim) or math.abs(lim - limit) > 10 ^ -(dd + 1) * 1.01 then
+            fails[#fails + 1] = { "log", "pair", string.format("%g %s %g (%d decimals) is written as %g against %g", v, dir, limit, dd, band, lim) }
+          end
+        end
+      end
+    end
+  end
+  local function flora(wmm, paper, form, density, margins)
+    local spec = M.spec(wmm, paper, false, "light", 1, nil, margins)
+    spec.perimeter_flora, spec.perimeter_density = form, density
+    local pt = Paint.new({ backend = "pdf" })
+    Compose.flora_band(pt, spec, Frames.of(spec))
+    return pt.pattern_warnings or {}
+  end
+  -- Under the least a band has flora in (6 mm).
+  for _, real in ipairs(reals(6, "under")) do
+    n = n + 1
+    local band, lim = read(flora(real, M.PAPERS[1]), "the perimeter band is ([%d.]+) mm, narrower than the ([%d.]+) mm", true)
+    judge(fails, "no flora at " .. real, "under", 6, real, band, lim)
+  end
+  -- Under the least a density is laid in.
+  for _, c in ipairs({ { "open", 7 }, { "sparse", 9 } }) do
+    for _, real in ipairs(reals(c[2], "under")) do
+      n = n + 1
+      local band, lim = read(flora(real, M.PAPERS[1], nil, c[1]), "needs a band of ([%d.]+) mm; the ([%d.]+) mm band", false)
+      judge(fails, c[1] .. " at " .. real, "under", c[2], real, band, lim)
+    end
+  end
+  -- Over the widest band corners holds: each paper's shorter side over 2.5.
+  for _, paper in ipairs({ M.PAPERS[1], M.PAPERS[2], M.SMALL, { "odd", 127, 101.3 } }) do
+    local limit = math.min(paper[2], paper[3]) / 2.5
+    for _, real in ipairs(reals(limit, "over")) do
+      n = n + 1
+      local ws = flora(real, paper, "corners")
+      local lim, band = read(ws, "needs a band of at most ([%d.]+) mm on a paper .-; the ([%d.]+) mm band", true)
+      judge(fails, paper[1] .. " corners at " .. real, "over", limit, real, band, lim)
+    end
+  end
+  -- A margin narrowing a band below the width asked, and a pattern band
+  -- under the least a band takes (4 mm) or the least its pattern carries.
+  local kikko, khatam
+  for _, p in ipairs(require("flora.patterns").list) do
+    if p.name == "kikko" then kikko = p elseif p.name == "khatam" then khatam = p end
+  end
+  local function margin(wmm) local m = (wmm * 72 / 25.4 + 9) * 25.4 / 72; return { m, m, m, m } end
+  for _, asked in ipairs({ 12, 12.34 }) do
+    for _, real in ipairs(reals(asked, "under")) do
+      n = n + 1
+      local spec = M.spec(asked, M.PAPERS[1], false, "light", 1, nil, margin(real))
+      local pt = Paint.new({ backend = "pdf" })
+      Compose.flora_band(pt, spec, Frames.of(spec))
+      local lim, band = read(pt.pattern_warnings, "perimeterwidth=([%d.]+) is wider than the .- margin allows; the band is ([%d.]+) mm", true)
+      judge(fails, "narrowed from " .. asked .. " to " .. real, "under", asked, real, band, lim)
+    end
+  end
+  for _, real in ipairs(reals(4, "under")) do
+    n = n + 1
+    local ps = B.spec("kikko", 12, B.PAPERS[1], false, "light", margin(real))
+    local pt = Paint.new({ backend = "pdf" })
+    Pattern.perimeter_band(ps, kikko, pt)
+    local band, lim = read(pt.pattern_warnings, "room for no perimeter band %(([%d.]+) mm, under the ([%d.]+) mm", true)
+    judge(fails, "no pattern band at " .. real, "under", 4, real, band, lim)
+  end
+  for _, real in ipairs(reals(12, "under")) do
+    n = n + 1
+    local ps = B.spec("khatam", 12, B.PAPERS[1], false, "light", margin(real))
+    local pt = Paint.new({ backend = "pdf" })
+    Pattern.perimeter_band(ps, khatam, pt)
+    local lim, band = read(pt.pattern_warnings, "narrower than ([%d.]+) mm; it is drawn at ([%d.]+) mm", true)
+    judge(fails, "khatam at " .. real, "under", 12, real, band, lim)
+  end
+  return n, fails
+end
+
 return M

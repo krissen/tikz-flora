@@ -26,7 +26,7 @@ local WEIGHTS = {
   { "mutant:inner gap", 12 }, { "mutant:density too narrow", 6 }, { "mutant:one pinwheel plant", 6 },
   { "wide:vine", 16 }, { "wide:pinwheel", 32 }, { "wide:corners", 19 },
   { "mutant:one corners plant", 8 }, { "mutant:one corners side vine", 8 }, { "mutant:corners arms short", 12 },
-  { "mutant:no fallback log", 12 }, { "mutant:deal in step", 1 }, { "mutant:layout arms short", 3 },
+  { "mutant:no fallback log", 12 }, { "mutant:deal in step", 1 }, { "mutant:layout arms short", 3 }, { "mutant:pair rounding flipped", 3 },
 }
 
 return function(part, parts)
@@ -81,6 +81,17 @@ if S.once("layout") then
   end
 end
 
+-- Every log line that writes a measure beside a limit says it on the right
+-- side of it, just under, on and just over the limit.
+if S.once("log pairs") then
+  local n, failures = F.log_pairs()
+  H.check(n == 267, "log pairs: " .. n .. " checks")
+  for i, f in ipairs(failures) do
+    if i > 20 then break end
+    H.check(false, string.format("perimeter flora log %s: %s", f[2], f[3]))
+  end
+end
+
 -- The sweep asks every form at every density.
 if S.once("deal") then
   H.check(F.CELLS == 48, "the sweep has " .. F.CELLS .. " cells")
@@ -125,7 +136,7 @@ if S.once("log widths") then
   local kikko
   for _, p in ipairs(require("flora.patterns").list) do if p.name == "kikko" then kikko = p end end
   Pattern.perimeter_band(ps, kikko, pt)
-  n = said(pt.pattern_warnings, "room for no perimeter band %(([%d.]+) mm%)")
+  n = said(pt.pattern_warnings, "room for no perimeter band %(([%d.]+) mm, under")
   H.check(n and n < 4, "a 3.99 mm pattern band is written as " .. tostring(n) .. " mm against 4 mm")
 end
 
@@ -285,6 +296,14 @@ if S.mine("mutant:deal in step") then
   local missing = #F.unasked()
   F[key] = orig
   H.check(missing > 0, "mutation deal in step: the check finds every form x density asked")
+end
+-- The helper rounding the other way: the band up beside a lower limit.
+if S.mine("mutant:pair rounding flipped") then
+  local key, orig = "pair", Pattern.pair
+  Pattern[key] = function(v, limit, dir, d) return orig(v, limit, dir == "under" and "over" or "under", d) end
+  local ok, _, failures = pcall(F.log_pairs)
+  Pattern[key] = orig
+  H.check(ok and #failures > 0, "mutation pair rounding flipped: the log pairs check does not fail")
 end
 if S.mine("mutant:layout arms short") then
   local orig = Frames.CORNER_ROOM
