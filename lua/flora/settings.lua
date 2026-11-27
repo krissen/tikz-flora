@@ -560,10 +560,10 @@ function M.parse(s)
     local k, v = kv[1], kv[2]
     local parse = keys[k]
     if not parse then
-      local known = {}
-      for name in pairs(keys) do known[#known + 1] = name end
-      table.sort(known)
-      error(string.format("unknown key \"%s\" (known keys: %s)", k, table.concat(known, ", ")))
+      local names = {}
+      for name in pairs(keys) do names[#names + 1] = name end
+      table.sort(names)
+      error(string.format("unknown key \"%s\" (known keys: %s)", k, table.concat(names, ", ")))
     end
     if v == nil then error(string.format("key \"%s\" needs a value", k)) end
     local val, msg = parse(v)
@@ -647,9 +647,9 @@ M.FRESH_DROPS = { mix = true, palette = true, patternpalette = true, spin = true
 
 -- The M.SPEC keys a fresh restyle keeps, for M.from_spec.
 function M.fresh_keys()
-  local keys = {}
-  for k in pairs(M.SPEC) do if not M.FRESH_DROPS[k] then keys[k] = true end end
-  return keys
+  local kept = {}
+  for k in pairs(M.SPEC) do if not M.FRESH_DROPS[k] then kept[k] = true end end
+  return kept
 end
 
 -- The mixer's preview of a page (site/src/lib/render.worker.js): its
@@ -675,11 +675,11 @@ function M.to_spec(set, spec)
 end
 
 -- The settings a spec was made from (the inverse of M.to_spec), for
--- `keys` (default: all of M.SPEC).
-function M.from_spec(spec, keys)
+-- `only` (default: all of M.SPEC).
+function M.from_spec(spec, only)
   local set = {}
   for k, f in pairs(M.SPEC) do
-    if not keys or keys[k] then set[k] = spec[f] end
+    if not only or only[k] then set[k] = spec[f] end
   end
   return set
 end

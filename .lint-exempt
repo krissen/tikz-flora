@@ -19,7 +19,6 @@ lua/flora/pdfout.lua
 lua/flora/progression.lua
 lua/flora/raster_relief.lua
 lua/flora/raster.lua
-lua/flora/settings.lua
 lua/flora/sprig.lua
 lua/flora/visitor.lua
 lua/flora/wash.lua
