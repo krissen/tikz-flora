@@ -109,6 +109,7 @@ end, function() stars.cells = cells0 end)
 -- A role that swaps its lightness order with the ground on the dark backdrop.
 local role_inks = Pattern.role_inks
 caught("order", "asanoha", function()
+  ---@diagnostic disable-next-line: duplicate-set-field
   Pattern.role_inks = function(rng, p, spec)
     local base = role_inks(rng, p, spec)
     if spec.backdrop == "dark" and base.ground then base.band, base.ground = base.ground, base.band end
@@ -143,6 +144,7 @@ end, function() kikko.cells = kikko_cells end)
 
 -- Fields that cannot be told apart.
 caught("fields", "kikko", function()
+  ---@diagnostic disable-next-line: duplicate-set-field
   Pattern.role_inks = function(rng, p, spec)
     local base = role_inks(rng, p, spec)
     base.fill2 = base.fill1
@@ -152,6 +154,7 @@ end, function() Pattern.role_inks = role_inks end)
 
 -- A band that loses its contrast.
 caught("contrast", "truchet", function()
+  ---@diagnostic disable-next-line: duplicate-set-field
   Pattern.role_inks = function(rng, p, spec)
     local base = role_inks(rng, p, spec)
     base.band = require("flora.paint").palette.paper
@@ -163,6 +166,7 @@ end, function() Pattern.role_inks = role_inks end)
 -- saturation scaled it (tsuki-mi's and usu-zumi's fields stay coloured).
 local role_share = Pattern.role_share
 caught("saturation", "kikko", function()
+  ---@diagnostic disable-next-line: duplicate-set-field
   Pattern.role_share = function(r, vs, sat) return vs or role_share(r, nil, sat) end
 end, function() Pattern.role_share = role_share end)
 
@@ -173,7 +177,7 @@ end, function() Pattern.role_share = role_share end)
 for _, what in ipairs({ "contrast", "vanish" }) do
   local real = package.loaded["flora.pattern"]
   caught(what, "rosette_lattice", function()
-    local f = io.open("lua/flora/pattern.lua")
+    local f = assert(io.open("lua/flora/pattern.lua"))
     local src = f:read("a")
     f:close()
     local old = "Color.lightness(base.ground) < DARK and not p.surface then"
@@ -188,6 +192,7 @@ end
 
 -- The ground's edge: a ground on paper under ground=auto.
 caught("edge", "rosette_lattice", function()
+  ---@diagnostic disable-next-line: duplicate-set-field
   Pattern.role_inks = function(rng, p, spec)
     local base = role_inks(rng, p, spec)
     base.ground = base.ground or require("flora.paint").palette.gold
@@ -245,7 +250,9 @@ end, function() hexagram.cells = hexagram_cells end)
 do
   local on_panel, panel_path = Pattern.on_panel, Pattern.panel_path
   caught("onpanel", "sikku_kolam", function()
+    ---@diagnostic disable-next-line: duplicate-set-field
     Pattern.on_panel = function() return true end
+    ---@diagnostic disable-next-line: duplicate-set-field
     Pattern.panel_path = function(f)
       local g = {}
       for k, v in pairs(f) do g[k] = v end
@@ -355,7 +362,7 @@ if S.mine("block:lacquer") then
   -- rather than the gold ink: put back into pattern.lua's source.
   do
     local real = package.loaded["flora.pattern"]
-    local f = io.open("lua/flora/pattern.lua")
+    local f = assert(io.open("lua/flora/pattern.lua"))
     local src = f:read("a")
     f:close()
     local old = "if base.band ~= pal.gold then base.band = Color.on_ground"
@@ -396,7 +403,7 @@ if S.mine("block:density0") then
   for _, f in ipairs(fs) do H.check(false, f) end
   if os.getenv("FLORA_MATRIX_VERBOSE") then print(string.format("density0: %d pages, %d failures", pages, #fs)) end
   local real = package.loaded["flora.pattern"]
-  local f = io.open("lua/flora/pattern.lua")
+  local f = assert(io.open("lua/flora/pattern.lua"))
   local src = f:read("a")
   f:close()
   for _, m in ipairs({
@@ -424,7 +431,7 @@ if S.mine("block:defaults") then
   for _, f in ipairs(fs) do H.check(false, f) end
   if os.getenv("FLORA_MATRIX_VERBOSE") then print(string.format("defaults: %d pages, %d failures", pages, #fs)) end
   local real = package.loaded["flora.pattern"]
-  local f = io.open("lua/flora/pattern.lua")
+  local f = assert(io.open("lua/flora/pattern.lua"))
   local src = f:read("a")
   f:close()
   local line = "return v == nil or v == Settings.PATTERN[k] or tonumber(v) ~= nil and tonumber(v) == tonumber(Settings.PATTERN[k])"
@@ -448,7 +455,7 @@ if S.mine("block:unitdraw") then
   for _, f in ipairs(fs) do H.check(false, f) end
   if os.getenv("FLORA_MATRIX_VERBOSE") then print(string.format("unitdraw: %d pages, %d kept units, %d failures", pages, units, #fs)) end
   local real = package.loaded["flora.pattern"]
-  local f = io.open("lua/flora/pattern.lua")
+  local f = assert(io.open("lua/flora/pattern.lua"))
   local src = f:read("a")
   f:close()
   local line = "        r = g.r\n"
@@ -476,7 +483,7 @@ if S.mine("block:groundtime") then
   for _, f in ipairs(ffs) do H.check(false, f) end
   if os.getenv("FLORA_MATRIX_VERBOSE") then print(string.format("groundtime: %d pages, %d cell parts, %d failures; frames on asanoha: %d pages, %d failures", pages, checked, #fs, fp, #ffs)) end
   local real = package.loaded["flora.pattern"]
-  local f = io.open("lua/flora/pattern.lua")
+  local f = assert(io.open("lua/flora/pattern.lua"))
   local src = f:read("a")
   f:close()
   local line = "if plate(g.anchor, g.at, "
@@ -505,7 +512,7 @@ if S.mine("block:fadeunder") then
   for _, f in ipairs(fs) do H.check(false, f) end
   if os.getenv("FLORA_MATRIX_VERBOSE") then print(string.format("fadeunder: %d pages, %d faded colours, %d failures", pages, compared, #fs)) end
   local real = package.loaded["flora.pattern"]
-  local f = io.open("lua/flora/pattern.lua")
+  local f = assert(io.open("lua/flora/pattern.lua"))
   local src = f:read("a")
   f:close()
   local line = "to = to or (not hero and base.fade) or pal.paper"
@@ -529,7 +536,7 @@ if S.mine("block:reweave") then
   for _, f in ipairs(fs) do H.check(false, f) end
   if os.getenv("FLORA_MATRIX_VERBOSE") then print(string.format("reweave: %d pages, %d cells compared, %d failures", pages, compared, #fs)) end
   local real = package.loaded["flora.pattern"]
-  local f = io.open("lua/flora/pattern.lua")
+  local f = assert(io.open("lua/flora/pattern.lua"))
   local src = f:read("a")
   f:close()
   local line = "kept[#kept + 1] = { cell = v.c, a = v.a,"
@@ -554,6 +561,7 @@ if S.mine("block:aliases") then
   for _, b in ipairs(bad) do H.check(false, "alias: " .. b) end
   if os.getenv("FLORA_MATRIX_VERBOSE") then print(string.format("aliases: %d pages, %d differ", n, #bad)) end
   local weight = Patterns.weight
+  ---@diagnostic disable-next-line: duplicate-set-field
   Patterns.weight = function(weights, p)
     if weights[p.name] ~= nil then return weights[p.name] end
     return weight(setmetatable({}, { __index = function(_, k) if not ALIASES[k] then return weights[k] end end }), p)
@@ -591,9 +599,9 @@ end, function() kikko.cells = kikko_cells2 end)
 -- reference page as it was drawn before the scale followed the field.
 if S.mine("block:field scale") then
   Pattern.FIELD_SCALE.enabled = true
-  local S = dofile("tests/pattern_scale.lua")
-  local scells, sfails = S.run()
-  H.check(#scells == #Patterns.list * #S.FORMATS * #S.LAYOUTS * #S.RATIOS, "field scale cells: " .. #scells)
+  local Sc = dofile("tests/pattern_scale.lua")
+  local scells, sfails = Sc.run()
+  H.check(#scells == #Patterns.list * #Sc.FORMATS * #Sc.LAYOUTS * #Sc.RATIOS, "field scale cells: " .. #scells)
   for _, f in ipairs(sfails) do H.check(false, "field scale: " .. f) end
   if os.getenv("FLORA_MATRIX_VERBOSE") then
     print(string.format("field scale: %d cells, %d failures", #scells, #sfails))
@@ -602,7 +610,7 @@ if S.mine("block:field scale") then
   local few = { khatam = true, asanoha = true }
   local function scale_caught(what, mutate, restore)
     mutate()
-    local ok, _, fs = pcall(S.run, few)
+    local ok, _, fs = pcall(Sc.run, few)
     restore()
     local n = 0
     for _, f in ipairs(ok and fs or {}) do if f:find(": " .. what .. ":", 1, true) then n = n + 1 end end
@@ -611,6 +619,7 @@ if S.mine("block:field scale") then
   end
   local factor, strip = Pattern.field_factor, Pattern.field_strip
   -- The cells keep their own size whatever the field.
+  ---@diagnostic disable-next-line: duplicate-set-field
   scale_caught("periods", function() Pattern.field_factor = function() return 1 end end,
     function() Pattern.field_factor = factor end)
   -- The reference drifts by a hundredth.
@@ -621,11 +630,13 @@ if S.mine("block:field scale") then
   local floor = Pattern.factor_floor
   local ceil = Pattern.FIELD_SCALE.ceil
   scale_caught("bounds", function()
+    ---@diagnostic disable-next-line: duplicate-set-field
     Pattern.factor_floor = function() return 0 end
     Pattern.FIELD_SCALE.ceil = nil
   end, function() Pattern.factor_floor = floor; Pattern.FIELD_SCALE.ceil = ceil end)
   -- surround sized by its narrowest strip, not its widest.
   scale_caught("periods", function()
+    ---@diagnostic disable-next-line: duplicate-set-field
     Pattern.field_strip = function(spec)
       if spec.layout ~= "surround" then return strip(spec) end
       local t = spec.text

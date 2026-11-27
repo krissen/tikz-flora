@@ -29,6 +29,5 @@ tests/pattern_matrix.lua
 tests/pattern_panel.lua
 tests/test_header_mark.lua
 tests/test_ornaments.lua
-tests/pattern_matrix_suite.lua
 tests/test_pattern.lua
 tests/test_raster.lua
