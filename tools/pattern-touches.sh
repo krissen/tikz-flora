@@ -1,25 +1,27 @@
 #!/bin/sh
-# Sheets of the pattern prototypes (lua/flora/pattern_touches.lua's
-# pattern_opts keys), the variants of tools/pattern_variants.lua that carry
-# a `set`, rendered by tools/pattern_roles.lua, each sheet one labelled
-# image per question.
+# Sheets of the pattern touches (lua/flora/pattern_touches.lua's settings
+# glint, herogold, deviant and loose): the variants of
+# tools/pattern_variants.lua that carry a `set`, rendered by
+# tools/pattern_roles.lua, each sheet one labelled image per question.
 #
 #   tools/pattern-touches.sh OUT SET
 #
 # SET is one of:
 #   gold       where the gold lies, per pattern: today's field, then
-#              gold=core, cells, knobs, crossings and hero side by side, the
+#              glint=on, core, cells, knobs and herogold=on side by side, the
 #              field and the hero, on paper and on the dark backdrop
 #   deviant    one cell turned and in another colour, per pattern: three
 #              seeds, each the whole 16:9 page and a close-up, off and on
 #   loose      one cell come loose with a dotted path back, as deviant
-#   perimeter  the keys in a 12 mm band round the paper, per pattern
+#   perimeter  the keys in a 12 mm band round the paper, per pattern: a
+#              corner and a side in close-up, off and each key on
+#   inventory  inventory.tsv: what each pattern takes, one pattern a row
 #
 # Writes OUT/sheets/<set>__<pattern>.png. Under each tile: the gold's share
 # of the field's ink (pixels at 50 dpi whose alpha is over a half, the gold
-# painted again as pure magenta, probe/*.pdf) and the places the prototype
+# painted again as pure magenta, probe/*.pdf) and the places the touches
 # laid. OUT/render/SET/touches.tsv has each page's numbers and log. OUT/bake
-# holds the baked layouts (tools/pattern-bake.sh). PATTERN_PROTO_SHEETS_ONLY=1
+# holds the baked layouts (tools/pattern-bake.sh). PATTERN_TOUCHES_SHEETS_ONLY=1
 # lays out sheets from an earlier render. Needs lualatex, pdftocairo and
 # ImageMagick. Run from the repository root.
 set -eu
@@ -37,7 +39,7 @@ case "$SET" in gold | deviant | loose | perimeter | inventory) ;; *) echo "unkno
 mkdir -p "$R" "$OUT/sheets" "$T"
 tools/pattern-bake.sh "$OUT"
 
-if [ -z "${PATTERN_PROTO_SHEETS_ONLY:-}" ]; then
+if [ -z "${PATTERN_TOUCHES_SHEETS_ONLY:-}" ]; then
   rm -rf "${R:?}"
   mkdir -p "$R"
   : > "$R/roles.tsv"
@@ -114,7 +116,7 @@ sheet_gold() {
     for bd in light dark; do
       for kind in field hero; do
         row=""
-        for g in off core cells knobs crossings hero; do
+        for g in off on core cells knobs hero; do
           v="gold-$g"
           t="$T/tile-$kind-$bd-$g.png"
           if [ "$kind" = field ]; then
@@ -130,8 +132,7 @@ sheet_gold() {
           s=$(share "$R/$v/light/probe/$page.pdf")
           label=$g
           case "$g" in
-            off) label="today" ;; core) label="A core" ;; cells) label="B cells" ;; knobs) label="C knobs" ;;
-            crossings) label="D crossings" ;; hero) label="E hero" ;;
+            off) label="today" ;; on) label="glint=on" ;; hero) label="herogold=on" ;; *) label="glint=$g" ;;
           esac
           [ "$kind" = hero ] && label="$label, hero"
           caption "$t" "$T/cap-$kind-$bd-$g.png" "$label\\ngold ${s}% of the ink, ${places:--} places"
@@ -198,24 +199,48 @@ sheet_one() {
 }
 
 sheet_perimeter() {
+  cm=60
+  cp=$(awk "BEGIN { print int($cm / 25.4 * $DD) }")
   for pat in $(patterns_of perimeter-off); do
-    tiles=""
-    for k in off gold-core gold-cells gold-knobs gold-crossings deviant loose; do
+    corner=""
+    side=""
+    for k in off glint knobs cells deviant loose; do
       v="perimeter-$k"
       compose "$R/$v/light/$pat.pdf" "$OUT/bake/text-4-$DD.png" light "$T/full.png" $DD
-      magick "$T/full.png" -resize 420x "$T/t.png"
       places=$(tsv "$v" light "$pat" 5)
+      devs=$(tsv "$v" light "$pat" 11)
+      loose=$(tsv "$v" light "$pat" 12)
       s=$(share "$R/$v/light/probe/$pat.pdf")
-      caption "$T/t.png" "$T/p-$k.png" "$k\\ngold ${s}% of the ink, ${places:--} places"
-      tiles="$tiles $T/p-$k.png"
+      note="gold ${s}% of the ink, ${places:--} places"
+      [ "$k" = deviant ] && note="$devs turned"
+      [ "$k" = loose ] && note="$loose loose"
+      # The corner at the top left; the side, the left side's middle, or
+      # for deviant and loose the cm mm round the first one's place.
+      magick "$T/full.png" -crop "${cp}x${cp}+0+0" +repage -resize 300x300 "$T/c.png"
+      caption "$T/c.png" "$T/pc-$k.png" "$k, corner\\n$note"
+      fx=$(tsv "$v" light "$pat" 9)
+      fy=$(tsv "$v" light "$pat" 10)
+      H=$(tsv "$v" light "$pat" 8)
+      W=$(tsv "$v" light "$pat" 7)
+      label="side"
+      if [ -n "$fx" ]; then
+        label="close-up at the one"
+        cx=$(awk -v f="$fx" -v m="$cm" -v w="$W" -v d=$DD 'BEGIN { x = f - m / 2; if (x < 0) x = 0; if (x > w - m) x = w - m; print int(x / 25.4 * d) }')
+        cy=$(awk -v f="$fy" -v m="$cm" -v h="$H" -v d=$DD 'BEGIN { y = h - f - m / 2; if (y < 0) y = 0; if (y > h - m) y = h - m; print int(y / 25.4 * d) }')
+      else
+        cx=0
+        cy=$(awk -v h="$H" -v m="$cm" -v d=$DD 'BEGIN { print int((h - m) / 2 / 25.4 * d) }')
+      fi
+      magick "$T/full.png" -crop "${cp}x${cp}+${cx}+${cy}" +repage -resize 300x300 "$T/s.png"
+      caption "$T/s.png" "$T/ps-$k.png" "$k, $label\\n$note"
+      corner="$corner $T/pc-$k.png"
+      side="$side $T/ps-$k.png"
     done
-    first=$(echo "$tiles" | tr ' ' '\n' | grep . | head -4 | tr '\n' ' ')
-    rest=$(echo "$tiles" | tr ' ' '\n' | grep . | tail -n +5 | tr '\n' ' ')
     # shellcheck disable=SC2086
-    magick $first +append "$T/prow1.png"
+    magick $corner +append "$T/prow1.png"
     # shellcheck disable=SC2086
-    magick $rest +append -background '#d8d4cc' -extent "$(magick identify -format '%w' "$T/prow1.png")x" "$T/prow2.png"
-    magick "$T/prow1.png" "$T/prow2.png" -append -gravity northwest -background '#d8d4cc' -splice 0x34 -font "$FONT" -pointsize 20 -annotate +8+6 "$pat: a 12 mm perimeter band" "$OUT/sheets/perimeter__$pat.png"
+    magick $side +append "$T/prow2.png"
+    magick "$T/prow1.png" "$T/prow2.png" -append -gravity northwest -background '#d8d4cc' -splice 0x34 -font "$FONT" -pointsize 20 -annotate +8+6 "$pat: a 12 mm perimeter band, a corner and a side" "$OUT/sheets/perimeter__$pat.png"
     echo "sheet: $OUT/sheets/perimeter__$pat.png"
   done
 }
@@ -225,7 +250,7 @@ sheet_perimeter() {
 # lays, from the inventory variants (one pattern a row).
 sheet_inventory() {
   f="$OUT/sheets/inventory.tsv"
-  printf 'pattern\troles\tink_pct_of_page\tgold_pct_today\tgold_pct_core\tplaces_core\tplaces_cells\tplaces_knobs\tplaces_crossings\tdeviants\tloose\tlog\n' > "$f"
+  printf 'pattern\troles\tink_pct_of_page\tgold_pct_today\tgold_pct_core\tplaces_core\tplaces_cells\tplaces_knobs\tplaces_on\tdeviants\tloose\tlog\n' > "$f"
   for pat in $(patterns_of inventory-off); do
     pp="$R/inventory-off/light/probe/$pat.pdf"
     measure "$pp" > "$T/ink.txt"
@@ -233,10 +258,10 @@ sheet_inventory() {
     today=$GOLD
     measure "$R/inventory-core/light/probe/$pat.pdf" > /dev/null
     core=$GOLD
-    log=$( { for k in core cells knobs crossings deviant loose; do tsv "inventory-$k" light "$pat" 14; done; } | grep . | tr '\n' ' ' | cut -c1-200)
+    log=$( { for k in on core cells knobs deviant loose; do tsv "inventory-$k" light "$pat" 14; done; } | grep . | tr '\n' ' ' | cut -c1-200)
     printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' "$pat" "$(tsv inventory-off light "$pat" 13)" "$ink" "$today" "$core" \
       "$(tsv inventory-core light "$pat" 5)" "$(tsv inventory-cells light "$pat" 5)" "$(tsv inventory-knobs light "$pat" 5)" \
-      "$(tsv inventory-crossings light "$pat" 5)" "$(tsv inventory-deviant light "$pat" 11)" "$(tsv inventory-loose light "$pat" 12)" "$log" >> "$f"
+      "$(tsv inventory-on light "$pat" 5)" "$(tsv inventory-deviant light "$pat" 11)" "$(tsv inventory-loose light "$pat" 12)" "$log" >> "$f"
   done
   echo "table: $f"
 }
