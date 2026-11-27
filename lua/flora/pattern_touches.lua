@@ -398,24 +398,29 @@ function M.plan(S, ctx)
         else
           for _, v in ipairs(c.tile or c.verts) do reach = math.max(reach, dist(v[1], v[2], c.x, c.y)) end
         end
-        for _, f in ipairs({ 3.2, 2.8, 2.4, 2.0, 1.7, 1.4 }) do
-          if f * med < M.MIN_MOVE * 2 * reach then goto too_near end
-          local dx, dy = ux * f * med, uy * f * med
-          local nx, ny = c.x + dx, c.y + dy
-          local ok = nx > med and nx < ctx.W - med and ny > med and ny < ctx.top - med and text_dist(nx, ny) >= field
-          if ok then
-            ok = ctx.fits("cell", { shape_at(c, dx, dy, 0) }, ctx.width / 2 + (c.pad or 0) + 0.2 * med)
-          end
-          if ok then
-            for _, o in ipairs(kept) do
-              if o ~= k and dist(nx, ny, o.cell.x, o.cell.y) < 0.85 * med then ok = false break end
+        -- Straight out first, then slid along the edge either way.
+        for _, ang in ipairs({ 0, 0.6, -0.6, 1.2, -1.2 }) do
+          local vx, vy = ux * cos(ang) - uy * sin(ang), ux * sin(ang) + uy * cos(ang)
+          for _, f in ipairs({ 3.2, 2.8, 2.4, 2.0, 1.7, 1.4 }) do
+            if f * med < M.MIN_MOVE * 2 * reach then goto too_near end
+            local dx, dy = vx * f * med, vy * f * med
+            local nx, ny = c.x + dx, c.y + dy
+            local ok = nx > med and nx < ctx.W - med and ny > med and ny < ctx.top - med and text_dist(nx, ny) >= field
+            if ok then
+              ok = ctx.fits("cell", { shape_at(c, dx, dy, 0) }, ctx.width / 2 + (c.pad or 0) + 0.2 * med)
             end
+            if ok then
+              for _, o in ipairs(kept) do
+                if o ~= k and dist(nx, ny, o.cell.x, o.cell.y) < 0.85 * med then ok = false break end
+              end
+            end
+            if ok then
+              done = { k = k, dx = dx, dy = dy, turn = (rng:next() < 0.5 and -1 or 1) * 12 * pi / 180 }
+              break
+            end
+            ::too_near::
           end
-          if ok then
-            done = { k = k, dx = dx, dy = dy, turn = (rng:next() < 0.5 and -1 or 1) * 12 * pi / 180 }
-            break
-          end
-          ::too_near::
+          if done then break end
         end
       end
       if done then break end

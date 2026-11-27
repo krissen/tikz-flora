@@ -350,11 +350,11 @@ function M.run(backdrop, mutations)
         if true then return true end]], "deviant", { "stars_8_4", "kikko" }, { 1, 2, 3, 4, 5, 6, 7, 8 }, { "4" } },
     { "a plate a cell's width away", [[if f * med < M.MIN_MOVE * 2 * reach then goto too_near end]], [[f = 1.0]], "stray", { "stars_8_4" } },
     { "whole cells in the field", [[if deg[k] >= 0.6 * top and area(k.cell) >= big and not taken[k] then]], [[if not taken[k] then]], "deviant", { "stars_8_4" }, { 1, 2, 3, 4, 5, 6, 7, 8, 9, 10 } },
-    { "the plate's distance from the text", [[local ok = nx > med and nx < ctx.W - med and ny > med and ny < ctx.top - med and text_dist(nx, ny) >= field
-          if ok then
-            ok = ctx.fits(]], [[local ok = nx > med and nx < ctx.W - med and ny > med and ny < ctx.top - med
-          if ok then
-            ok = true or ctx.fits(]], "stray", { "stars_8_4", "kikko" }, { 1, 2, 3, 4, 5, 6, 7, 8 } },
+    { "the plate's distance from the text", [[and text_dist(nx, ny) >= field
+            if ok then
+              ok = ctx.fits(]], [[
+            if ok then
+              ok = true or ctx.fits(]], "stray", { "stars_8_4", "kikko" }, { 1, 2, 3, 4, 5, 6, 7, 8 } },
     { "the same seed", [[local rng = ctx.rng:fork("pattern touches")]], [[local rng = ctx.rng:fork("pattern touches" .. tostring({}))]], "seed", { "stars_8_4" } },
   }) do
     local i, j = src:find(m[2], 1, true)
