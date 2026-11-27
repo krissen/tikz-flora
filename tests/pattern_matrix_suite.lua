@@ -400,7 +400,7 @@ if S.mine("block:density0") then
   local src = f:read("a")
   f:close()
   for _, m in ipairs({
-    { "the knot's fixed cells", "local ok = dens > 0 and d >= gap", "local ok = d >= gap", "celtic_knot" },
+    { "the knot's fixed cells", "local clear = dens > 0 and d >= gap", "local clear = d >= gap", "celtic_knot" },
     { "an empty panel", "if #grounded > 0 then", "if true then", "asanoha" },
   }) do
     local i, j = src:find(m[2], 1, true)

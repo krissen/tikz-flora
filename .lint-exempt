@@ -15,7 +15,6 @@ lua/flora/orn_relief.lua
 lua/flora/orn_roundel.lua
 lua/flora/orn_scrollwork.lua
 lua/flora/ornament.lua
-lua/flora/pattern.lua
 lua/flora/pdfout.lua
 lua/flora/progression.lua
 lua/flora/raster_relief.lua

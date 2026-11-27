@@ -731,9 +731,9 @@ function M.field_edges(cells, grounded, onpage)
   local grid = {}
   local function gk(x, y) return math.floor(x / nd) .. "," .. math.floor(y / nd) end
   for _, c in ipairs(cells) do
-    local key = gk(c.x, c.y)
-    grid[key] = grid[key] or {}
-    table.insert(grid[key], c)
+    local at = gk(c.x, c.y)
+    grid[at] = grid[at] or {}
+    table.insert(grid[at], c)
   end
   local info = { nd = nd, share = {}, depth = {}, isolated = 0, edge = 0 }
   local neighbours = {}
@@ -926,7 +926,7 @@ function M.edge_pieces(mode, f, info)
     end }
   end
   if mode == "discs" then
-    return { drops = true, piece = function(k, path, colour)
+    return { drops = true, piece = function(k, _, colour)
       local c = k.cell
       return { { "o", c.x, c.y, 0.62 * info.nd } }, colour
     end }
@@ -1828,8 +1828,8 @@ function M.paint(spec, pt)
     -- keeps clear of the text and the page has any density; it does not
     -- thin out toward the text.
     if c.fixed then
-      local ok = dens > 0 and d >= gap
-      return true, ok and 1 or 0, false, ok, 1
+      local clear = dens > 0 and d >= gap
+      return true, clear and 1 or 0, false, clear, 1
     end
     -- A band's cell is kept whole, falls away past the inner edge under
     -- dissolve, or pales toward it under fade.
@@ -2010,9 +2010,9 @@ function M.paint(spec, pt)
       if #failed == 0 then break end
       local r2 = (0.75 * size) ^ 2
       local walled = 0
-      for key, o in pairs(keep) do
+      for ck, o in pairs(keep) do
         for _, c in ipairs(failed) do
-          if (o.x - c.x) ^ 2 + (o.y - c.y) ^ 2 < r2 then keep[key] = nil; walled = walled + 1; break end
+          if (o.x - c.x) ^ 2 + (o.y - c.y) ^ 2 < r2 then keep[ck] = nil; walled = walled + 1; break end
         end
       end
       if walled == 0 then break end
