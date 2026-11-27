@@ -104,6 +104,20 @@ for name in pairs(Touches.NO_CENTRES) do
   H.check(pt:body() == page(name):body(), name .. ": glint=knobs changed the page")
 end
 
+-- herogold paints the hero's lines in gold and combines with a glint; with no
+-- hero on the page it logs that and paints the page as it is.
+do
+  local with_hero = { pattern_hero = "rosette", layout = "right", text = { x0 = 40, y0 = 40, x1 = 200, y1 = 230 }, width = 453, height = 256 }
+  local plain = page("stars_8_4", nil, with_hero)
+  local gold = page("stars_8_4", { herogold = "on" }, with_hero)
+  H.check(plain.pattern.hero ~= nil, "the page has no hero to test herogold on")
+  H.check(gold:body() ~= plain:body() and gold.pattern_warnings == nil, "herogold=on did not paint the hero in gold")
+  local both = page("stars_8_4", { herogold = "on", glint = "on" }, with_hero)
+  H.check(both:body() ~= gold:body() and both.pattern.touches.places > 0, "herogold and glint do not combine")
+  local none = page("stars_8_4", { herogold = "on" })
+  H.check(warned(none, "herogold=on: the page has no hero") and none:body() == page("stars_8_4"):body(), "herogold without a hero is not logged and painted as it is")
+end
+
 -- The last frame of a growth is the page, with the keys on.
 for _, set in ipairs({ { glint = "knobs" }, { glint = "on" }, { deviant = "on" }, { loose = "on" } }) do
   Paint.reset_resources()

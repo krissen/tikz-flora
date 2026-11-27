@@ -335,6 +335,7 @@ function M.plan(S, ctx)
   plan.med = med
   rep.spacing = med
   rep.deviants = rep.deviants or {}
+  rep.at = rep.at or {}
   -- The loose plate first, so that a deviant is not the cell that leaves.
   -- Of the four strips of a band of whole rows one carries it, drawn by
   -- seed: one cell on the page.
@@ -492,11 +493,13 @@ function M.plan(S, ctx)
     for _, it in ipairs(spread(rng:fork("cells"), items, n, M.APART.cells * med)) do
       at(it.k).gilt = true
       laid = laid + 1
+      rep.at[#rep.at + 1] = { page_xy(it.x, it.y) }
     end
   elseif g == "knobs" then
     for _, k in ipairs(kept) do
       at(k).knob = true
       laid = laid + 1
+      rep.at[#rep.at + 1] = { page_xy(k.cell.x, k.cell.y) }
     end
   elseif g == "crossings" then
     local all = {}
@@ -509,6 +512,7 @@ function M.plan(S, ctx)
       pl.glints = pl.glints or {}
       pl.glints[#pl.glints + 1] = { c.x, c.y }
       laid = laid + 1
+      rep.at[#rep.at + 1] = { page_xy(c.x, c.y) }
     end
   elseif g == "core" then
     local roles = {}
