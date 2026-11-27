@@ -59,8 +59,8 @@ M.about = {
   { "glint", "off, on, core, cells, knobs",
     "Where gold lies in a pattern's field, in place of the pattern's own (off, the default, leaves it as it is): on lays a few glints where the bands cross, spread by the page's seed; core makes the band's core gold (it shows only where the core is drawn, at least 0.6 pt wide, and the log says where it is not); cells gilds a few whole cells; knobs sets a gold knob at the middle of every cell. A pattern with nothing to lay it by (see the guide) is painted as it is, and the log says so." },
   { "herogilding", "on, off", "Paints the hero's lines in gold (off, the default). It combines with glint." },
-  { "deviant", "on, off", "Turns at most one whole cell on each side of the text, or of a perimeter band, and paints it in another colour, its place drawn by the page's seed (off, the default)." },
-  { "stray", "on, off", "Lets one cell come loose from the field's edge and lie a little way outside it, a dotted path leading back to the gap it left, clear of the text as the field is (off, the default)." },
+  { "deviant", "off, on, 2, 3, 4", "Turns whole cells and paints them in another colour, their places drawn by the page's seed (off, the default): on turns one on the page, a number from 2 to 4 that many, on different edges of the paper in a perimeter band and of the text in a field, before two share one, and never two next to each other. Where there is room for fewer than asked the log says so." },
+  { "stray", "on, off", "Lets one cell come loose from the field's edge and lie at least about a cell's width from the gap it left, a dotted path leading back to it, clear of the text as the field is (off, the default). Where no place keeps that, none is laid and the log says so." },
   { "lighten", "0 to 1", "Lightens a pattern's fields toward the paper: 0 (the default) keeps their inks' lightness, 1 makes them nearly the paper." },
   { "bandwidth", "0.25 to 4", "The width of a pattern's bands and lines, as a factor of its own." },
   { Band.WIDTH, Band.WIDTH_MIN .. " to " .. Band.WIDTH_MAX, "The width in mm of a perimeter band (layout=" .. Band.LAYOUT .. "), the same on all four sides: " .. Band.WIDTH_DEFAULT .. " by default. Where a margin is narrower, the whole band narrows to what the narrowest side holds, the same all round and clear of the text block (none under 4 mm), and the log says so." },
@@ -304,12 +304,17 @@ M.define("glint", function(v)
   return nil, "glint must be off, on, core, cells or knobs"
 end)
 
-for _, k in ipairs({ "herogilding", "deviant", "stray" }) do
+for _, k in ipairs({ "herogilding", "stray" }) do
   M.define(k, function(v)
     if v == "on" or v == "off" then return v end
     return nil, k .. " must be on or off"
   end)
 end
+
+M.define("deviant", function(v)
+  if v == "on" or v == "off" or v == "2" or v == "3" or v == "4" then return v end
+  return nil, "deviant must be off, on, 2, 3 or 4"
+end)
 
 M.define("lighten", function(v)
   local n = tonumber(v)

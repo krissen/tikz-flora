@@ -28,6 +28,9 @@ M.LAYOUTS = {
   perimeter = { width = 360, height = 480, text = { x0 = 60, y0 = 60, x1 = 300, y1 = 420 }, layout = "perimeter", perimeter_width = 24, seed = 5 },
 }
 M.LAYOUT_ORDER = { "field", "perimeter" }
+-- How far a stray plate lies from its gap at least, in cell widths (twice
+-- the farthest corner or the radius), set after measuring the cells.
+M.MIN_MOVE = 1.15
 M.KEYS = { "glint", "herogilding", "deviant", "stray" }
 
 local function dist(ax, ay, bx, by) return math.sqrt((ax - bx) ^ 2 + (ay - by) ^ 2) end
@@ -163,62 +166,85 @@ function M.gold(backdrop, only)
   return pages, fs
 end
 
--- Deviants: whole cells inside the field, at most one along a side.
-function M.deviant(backdrop, only, seeds)
+-- Deviants: on is one on the page, a count of 2 to 4 that many at most, on
+-- different edges (of the paper in a band, of the text in a field) before
+-- two share one and never close together; whole cells inside the field.
+function M.deviant(backdrop, only, seeds, values)
   local fs, pages = {}, 0
+  local T = require("flora.pattern_touches")
   for _, name in ipairs(only or M.PATTERNS) do
     for _, layout in ipairs(M.LAYOUT_ORDER) do
       for _, seed in ipairs(seeds or { M.LAYOUTS[layout].seed }) do
-      local tag = string.format("%s %s %s seed %d deviant", name, layout, backdrop, seed)
-      local pt = page(name, layout, backdrop, { deviant = "on" }, { seed = seed })
-      pages = pages + 1
-      if require("flora.pattern_touches").NO_CELLS[name] then
-        if pt:body() ~= page(name, layout, backdrop, nil, { seed = seed }):body() then fs[#fs + 1] = tag .. ": a pattern without cells changed the page" end
-        if not pt.pattern_warnings then fs[#fs + 1] = tag .. ": unsupported and not logged" end
-      else
-        local rep = pt.pattern.touches
-        local L = M.LAYOUTS[layout]
-        local per = { l = 0, r = 0, b = 0, t = 0 }
-        for _, d in ipairs(rep and rep.deviants or {}) do
-          local e = { l = d.x, r = L.width - d.x, b = d.y, t = L.height - d.y }
-          local best = "l"
-          for k, v in pairs(e) do if v < e[best] then best = k end end
-          per[best] = per[best] + 1
-        end
-        for side, n in pairs(per) do
-          if n > 1 then fs[#fs + 1] = string.format("%s: %d along side %s", tag, n, side) end
-        end
-        -- Whole cells with most of the field's neighbours.
-        local kept = pt.pattern.kept
-        local nn = {}
-        for i, k in ipairs(kept) do
-          local best = math.huge
-          for j, o in ipairs(kept) do
-            if i ~= j then best = math.min(best, dist(k.cell.x, k.cell.y, o.cell.x, o.cell.y)) end
-          end
-          nn[#nn + 1] = best
-        end
-        table.sort(nn)
-        local med = nn[math.ceil(#nn / 2)] or 0
-        local degree, top = {}, 0
-        for i, k in ipairs(kept) do
-          local n = 0
-          for j, o in ipairs(kept) do
-            if i ~= j and dist(k.cell.x, k.cell.y, o.cell.x, o.cell.y) < 1.5 * med then n = n + 1 end
-          end
-          degree[i] = n
-          top = math.max(top, n)
-        end
-        for _, d in ipairs(rep and rep.deviants or {}) do
-          for i, k in ipairs(kept) do
-            -- Strips report in page coordinates, cells in their own.
-            local x, y = k.cell.x, k.cell.y
-            if layout == "field" and dist(x, y, d.x, d.y) < 1e-6 and degree[i] < 0.6 * top then
-              fs[#fs + 1] = string.format("%s: a deviant with %d of %d neighbours", tag, degree[i], top)
+        for _, value in ipairs(values or { "on", "2", "3", "4" }) do
+          local tag = string.format("%s %s %s seed %d deviant=%s", name, layout, backdrop, seed, value)
+          local pt = page(name, layout, backdrop, { deviant = value }, { seed = seed })
+          pages = pages + 1
+          if T.NO_CELLS[name] then
+            if pt:body() ~= page(name, layout, backdrop, nil, { seed = seed }):body() then fs[#fs + 1] = tag .. ": a pattern without cells changed the page" end
+            if not pt.pattern_warnings then fs[#fs + 1] = tag .. ": unsupported and not logged" end
+          else
+            local rep = pt.pattern.touches
+            local L = M.LAYOUTS[layout]
+            local want = value == "on" and 1 or tonumber(value)
+            local list = rep and rep.deviants or {}
+            if #list > want then fs[#fs + 1] = string.format("%s: %d on the page", tag, #list) end
+            if #list < want and not warned(pt, "deviant=" .. value .. ": room for") then
+              fs[#fs + 1] = string.format("%s: %d of %d laid and no line says why", tag, #list, want)
+            end
+            -- Different edges before the same one twice.
+            local per, parts = {}, layout == "perimeter" and 4 or 2
+            for _, d in ipairs(list) do
+              local part
+              if layout == "perimeter" then
+                local e = { l = d.x, r = L.width - d.x, b = d.y, t = L.height - d.y }
+                part = "l"
+                for k, v in pairs(e) do if v < e[part] then part = k end end
+              else
+                part = d.x < L.text.x0 and "l" or "r"
+              end
+              per[part] = (per[part] or 0) + 1
+            end
+            for part, n in pairs(per) do
+              if n > math.ceil(want / parts) then fs[#fs + 1] = string.format("%s: %d on edge %s", tag, n, part) end
+            end
+            -- Never two close together.
+            local apart = 3 * (rep and rep.spacing or 0)
+            for i = 1, #list do
+              for j = i + 1, #list do
+                if dist(list[i].x, list[i].y, list[j].x, list[j].y) < apart then fs[#fs + 1] = tag .. ": two close together" end
+              end
+            end
+            -- Whole cells with most of the field's neighbours.
+            local kept = pt.pattern.kept
+            local nn = {}
+            for i, k in ipairs(kept) do
+              local best = math.huge
+              for j, o in ipairs(kept) do
+                if i ~= j then best = math.min(best, dist(k.cell.x, k.cell.y, o.cell.x, o.cell.y)) end
+              end
+              nn[#nn + 1] = best
+            end
+            table.sort(nn)
+            local med = nn[math.ceil(#nn / 2)] or 0
+            local degree, top = {}, 0
+            for i, k in ipairs(kept) do
+              local n = 0
+              for j, o in ipairs(kept) do
+                if i ~= j and dist(k.cell.x, k.cell.y, o.cell.x, o.cell.y) < 1.5 * med then n = n + 1 end
+              end
+              degree[i] = n
+              top = math.max(top, n)
+            end
+            for _, d in ipairs(list) do
+              for i, k in ipairs(kept) do
+                -- Strips report in page coordinates, cells in their own.
+                if layout == "field" and dist(k.cell.x, k.cell.y, d.x, d.y) < 1e-6 and degree[i] < 0.6 * top then
+                  fs[#fs + 1] = string.format("%s: a deviant with %d of %d neighbours", tag, degree[i], top)
+                end
+              end
             end
           end
         end
-      end
       end
     end
   end
@@ -231,7 +257,7 @@ function M.stray(backdrop, only, seeds)
   local fs, pages = {}, 0
   for _, name in ipairs(only or M.PATTERNS) do
     for _, layout in ipairs(M.LAYOUT_ORDER) do
-      for _, seed in ipairs(seeds or { M.LAYOUTS[layout].seed }) do
+      for _, seed in ipairs(seeds or (layout == "field" and { 7, 11, 13 } or { 5 })) do
         local tag = string.format("%s %s %s seed %d stray", name, layout, backdrop, seed)
         local L = M.LAYOUTS[layout]
         local reserve = { { 20, 20, 50, 50 } }
@@ -246,6 +272,18 @@ function M.stray(backdrop, only, seeds)
             local field = math.huge
             for _, k in ipairs(pt.pattern.kept) do
               for _, r in ipairs(keep) do field = math.min(field, rect_dist(k.cell.x, k.cell.y, r)) end
+            end
+            -- It lies about a cell's width or more from its gap.
+            for _, k in ipairs(pt.pattern.kept) do
+              if dist(k.cell.x, k.cell.y, l.x, l.y) < 1e-6 then
+                local r = 0
+                for _, v in ipairs(k.cell.circle and { { k.cell.circle[1] + k.cell.circle[3], k.cell.circle[2] } } or k.cell.tile or k.cell.verts) do
+                  r = math.max(r, dist(v[1], v[2], k.cell.x, k.cell.y))
+                end
+                if dist(l.x, l.y, l.to_x, l.to_y) < M.MIN_MOVE * 2 * r - 1e-6 then
+                  fs[#fs + 1] = string.format("%s: the plate moved %.2f cell widths", tag, dist(l.x, l.y, l.to_x, l.to_y) / (2 * r))
+                end
+              end
             end
             for _, q in ipairs(l.points) do
               if q[1] < 0 or q[1] > L.width or q[2] < 0 or q[2] > L.height then fs[#fs + 1] = tag .. ": a point off the page" end
@@ -304,17 +342,19 @@ function M.run(backdrop, mutations)
     { "an unsupported key", [[      if why then
         warn(]], [[      if false then
         warn(]], "gold", { "truchet" } },
-    { "one deviant a side", [[local k = list[rng:int(1, #list)]
-        local c = k.cell]], [[local k = list[1]
-        for _, extra in ipairs(list) do
-          if extra ~= k then
-            at(extra).deviant = { theta = 0 }
-            rep.deviants[#rep.deviants + 1] = { x = extra.cell.x, y = extra.cell.y, side = s }
-          end
-        end
-        local c = k.cell]], "deviant", { "stars_8_4" } },
+    { "on is one", [[local n = dv == "on" and 1 or tonumber(dv)]], [[local n = dv == "on" and 2 or tonumber(dv)]], "deviant", { "stars_8_4" }, nil, { "on" } },
+    { "different edges first", [[for _, s in ipairs(sides) do
+          if #picked < N then]], [[for _, s in ipairs({ sides[1] }) do
+          if #picked < N then]], "deviant", { "stars_8_4" }, nil, { "2" } },
+    { "never close together", [[local function free(k)]], [[local function free(k)
+        if true then return true end]], "deviant", { "stars_8_4", "kikko" }, { 1, 2, 3, 4, 5, 6, 7, 8 }, { "4" } },
+    { "a plate a cell's width away", [[if f * med < M.MIN_MOVE * 2 * reach then goto too_near end]], [[f = 1.0]], "stray", { "stars_8_4" } },
     { "whole cells in the field", [[if deg[k] >= 0.6 * top and area(k.cell) >= big and not taken[k] then]], [[if not taken[k] then]], "deviant", { "stars_8_4" }, { 1, 2, 3, 4, 5, 6, 7, 8, 9, 10 } },
-    { "the plate's distance from the text", [[ny < ctx.top - med and text_dist(nx, ny) >= field]], [[ny < ctx.top - med]], "stray", { "stars_8_4" }, { 1, 2, 3, 4, 5, 6, 7, 8 } },
+    { "the plate's distance from the text", [[local ok = nx > med and nx < ctx.W - med and ny > med and ny < ctx.top - med and text_dist(nx, ny) >= field
+          if ok then
+            ok = ctx.fits(]], [[local ok = nx > med and nx < ctx.W - med and ny > med and ny < ctx.top - med
+          if ok then
+            ok = true or ctx.fits(]], "stray", { "stars_8_4", "kikko" }, { 1, 2, 3, 4, 5, 6, 7, 8 } },
     { "the same seed", [[local rng = ctx.rng:fork("pattern touches")]], [[local rng = ctx.rng:fork("pattern touches" .. tostring({}))]], "seed", { "stars_8_4" } },
   }) do
     local i, j = src:find(m[2], 1, true)
@@ -323,7 +363,7 @@ function M.run(backdrop, mutations)
       -- pattern.lua holds the module it loaded: load it again over the mutant.
       package.loaded["flora.pattern_touches"] = assert(load(src:sub(1, i - 1) .. m[3] .. src:sub(j + 1), "@pattern_touches.lua (mutated)"))()
       package.loaded["flora.pattern"] = nil
-      local ok, a, fs = pcall(M[m[4]], backdrop, m[5], m[6])
+      local ok, a, fs = pcall(M[m[4]], backdrop, m[5], m[6], m[7])
       package.loaded["flora.pattern_touches"], package.loaded["flora.pattern"] = real, real_pattern
       if not ok then error(a, 0) end
       H.check(#fs > 0, "the " .. m[4] .. " check missed " .. m[1])

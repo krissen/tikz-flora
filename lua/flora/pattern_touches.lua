@@ -60,6 +60,12 @@ M.NO_CROSSINGS = {
 M.SHARE = { cells = 0.04, crossings = 0.08 }
 M.MIN = { cells = 2, crossings = 5 }
 M.APART = { cells = 3.2, crossings = 2.6 }
+-- How far a stray plate lies from its gap at the least, in cell widths (the
+-- cell's width taken as twice its farthest corner, or its diameter). Set
+-- after measuring the cells of stars_8_4, kikko, asanoha and
+-- overlapping_circles, whose plates had lain 0.7 to 2.4 widths away, and
+-- the least that reads as moved (tests/pattern_touches_suite.lua holds it).
+M.MIN_MOVE = 1.15
 
 -- The state for a page, or nil when no key is set. `want` holds the keys'
 -- values (glint, herogilding, deviant, stray); `warn` takes a line for the
@@ -87,16 +93,28 @@ function M.new(want, p, warn, pt)
       end
     end
   end
-  for _, k in ipairs({ "herogilding", "deviant", "stray" }) do
+  for _, k in ipairs({ "herogilding", "stray" }) do
     local v = want[k]
     if v ~= nil and v ~= "off" then
       if v ~= "on" then
         no(k, v, "on, off")
       elseif k ~= "herogilding" and M.NO_CELLS[p.name] then
-        warn(string.format("%s=on: %s has no cells to %s (%s); it is painted as it is", k, p.name, k == "deviant" and "turn" or "move", M.NO_CELLS[p.name]))
+        warn(string.format("%s=on: %s has no cells to move (%s); it is painted as it is", k, p.name, M.NO_CELLS[p.name]))
       else
         S[k] = true
       end
+    end
+  end
+  -- deviant: on is one, 2 to 4 that many.
+  local dv = want.deviant
+  if dv ~= nil and dv ~= "off" then
+    local n = dv == "on" and 1 or tonumber(dv)
+    if not (n and n >= 1 and n <= 4 and n == math.floor(n)) or dv == "1" then
+      no("deviant", dv, "off, on, 2, 3, 4")
+    elseif M.NO_CELLS[p.name] then
+      warn(string.format("deviant=%s: %s has no cells to turn (%s); it is painted as it is", dv, p.name, M.NO_CELLS[p.name]))
+    else
+      S.deviant, S.asked = n, dv
     end
   end
   if not (S.gold or S.herogilding or S.deviant or S.stray) then return nil end
@@ -374,7 +392,14 @@ function M.plan(S, ctx)
       local l = sqrt(ux * ux + uy * uy)
       if l > 1e-6 then
         ux, uy = ux / l, uy / l
-        for _, f in ipairs({ 2.8, 2.3, 1.8, 1.4 }) do
+        local reach = 0
+        if c.circle then
+          reach = c.circle[3]
+        else
+          for _, v in ipairs(c.tile or c.verts) do reach = math.max(reach, dist(v[1], v[2], c.x, c.y)) end
+        end
+        for _, f in ipairs({ 3.2, 2.8, 2.4, 2.0, 1.7, 1.4 }) do
+          if f * med < M.MIN_MOVE * 2 * reach then goto too_near end
           local dx, dy = ux * f * med, uy * f * med
           local nx, ny = c.x + dx, c.y + dy
           local ok = nx > med and nx < ctx.W - med and ny > med and ny < ctx.top - med and text_dist(nx, ny) >= field
@@ -390,6 +415,7 @@ function M.plan(S, ctx)
             done = { k = k, dx = dx, dy = dy, turn = (rng:next() < 0.5 and -1 or 1) * 12 * pi / 180 }
             break
           end
+          ::too_near::
         end
       end
       if done then break end
@@ -427,7 +453,7 @@ function M.plan(S, ctx)
       local gx, gy = page_xy(ax, ay)
       rep.stray = { x = gx, y = gy, to_x = x1, to_y = y1, dots = #dots, points = points }
     else
-      ctx.warn(string.format("stray=on: no cell of %s at the field's edge has room outside it, clear of the text as the field is; none is loosened", p.name))
+      ctx.warn(string.format("stray=on: no cell of %s at the field's edge has room at least a cell's width from its gap, clear of the text as the field is; none is moved", p.name))
     end
   end
   -- Deviants: at most one on each side, a whole cell inside the field (not
@@ -471,20 +497,69 @@ function M.plan(S, ctx)
         end
       end
     end
-    local laid = 0
-    for _, s in ipairs({ "l", "r", "t", "b", "strip" }) do
-      local list = by_side[s]
-      if list and #list > 0 then
-        local k = list[rng:int(1, #list)]
-        local c = k.cell
-        local n = c.circle and 0 or #(c.tile or c.verts)
-        at(k).deviant = { theta = n > 0 and pi / n or 0 }
-        local x, y = page_xy(c.x, c.y)
-        rep.deviants[#rep.deviants + 1] = { x = x, y = y, side = s }
-        laid = laid + 1
+    local function shuffled(list, r)
+      local out = { table.unpack(list) }
+      for i = #out, 2, -1 do
+        local j = r:int(1, i)
+        out[i], out[j] = out[j], out[i]
+      end
+      return out
+    end
+    local function turn_cell(k, s)
+      local c = k.cell
+      local n = c.circle and 0 or #(c.tile or c.verts)
+      at(k).deviant = { theta = n > 0 and pi / n or 0 }
+      local x, y = page_xy(c.x, c.y)
+      rep.deviants[#rep.deviants + 1] = { x = x, y = y, side = s }
+    end
+    local N = S.deviant
+    if strip then
+      -- Of the four strips of a band of whole rows N carry one, drawn by
+      -- seed (the same on every strip's call).
+      local mine = false
+      for i, side in ipairs(shuffled({ 1, 2, 3, 4 }, ctx.rng:fork("deviant strips"))) do
+        if i <= N and side == strip.side then mine = true end
+      end
+      local list = by_side.strip
+      if mine and list and #list > 0 then turn_cell(list[rng:int(1, #list)], "strip") end
+      if strip.side == 4 and #rep.deviants < N then
+        ctx.warn(string.format("deviant=%s: room for %d turned cells in this band", S.asked, #rep.deviants))
+      end
+    else
+      -- One on each edge in turn, the edges in the order the seed draws,
+      -- then a second on an edge that has room, never within four spacings
+      -- of one turned.
+      local sides = {}
+      for _, s in ipairs(shuffled({ "l", "r", "t", "b" }, rng)) do
+        if by_side[s] then sides[#sides + 1] = s end
+      end
+      local picked = {}
+      local function free(k)
+        for _, o in ipairs(picked) do
+          if dist(k.cell.x, k.cell.y, o.cell.x, o.cell.y) < 4 * med then return false end
+        end
+        return true
+      end
+      local progress = true
+      while #picked < N and progress do
+        progress = false
+        for _, s in ipairs(sides) do
+          if #picked < N then
+            for _, k in ipairs(shuffled(by_side[s], rng)) do
+              if free(k) then
+                picked[#picked + 1] = k
+                turn_cell(k, s)
+                progress = true
+                break
+              end
+            end
+          end
+        end
+      end
+      if #picked < N then
+        ctx.warn(string.format("deviant=%s: room for %d turned cells inside the field, beside the text", S.asked, #picked))
       end
     end
-    if laid == 0 then ctx.warn("deviant=on: no whole cell inside the field lies beside the text; none is turned") end
   end
   if S.herogilding and not ctx.hero then ctx.warn("herogilding=on: the page has no hero to paint in gold") end
   -- Gold.

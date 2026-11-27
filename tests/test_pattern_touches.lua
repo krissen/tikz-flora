@@ -37,6 +37,9 @@ for _, k in ipairs({ "glint", "herogilding", "deviant", "stray" }) do
   H.check(Settings.parse(k .. "=off")[k] == "off", k .. "=off does not parse")
   H.check(not pcall(Settings.parse, k .. "=silver"), k .. "=silver was accepted")
 end
+-- deviant takes off, on, or a count from 2 to 4.
+for _, v in ipairs({ "off", "on", "2", "3", "4" }) do H.check(Settings.parse("deviant=" .. v).deviant == v, "deviant=" .. v .. " does not parse") end
+for _, v in ipairs({ "1", "5", "0", "2.5", "many" }) do H.check(not pcall(Settings.parse, "deviant=" .. v), "deviant=" .. v .. " was accepted") end
 for _, v in ipairs(Touches.GLINT_ORDER) do H.check(Settings.parse("glint=" .. v).glint == v, "glint=" .. v .. " does not parse") end
 H.check(not pcall(Settings.parse, "glint=crossings"), "glint=crossings was accepted")
 
@@ -58,7 +61,7 @@ do
   H.check(g:body() == plain, "an unknown glint value changed the page")
   for _, key in ipairs({ "herogilding", "deviant", "stray" }) do
     local d = page(nil, { [key] = "maybe" })
-    H.check(warned(d, key .. "=maybe is not one of on, off"), key .. ": unknown value not logged")
+    H.check(warned(d, key .. "=maybe is not one of " .. (key == "deviant" and "off, on, 2, 3, 4" or "on, off")), key .. ": unknown value not logged")
     H.check(d:body() == plain, key .. ": an unknown value changed the page")
   end
 end
