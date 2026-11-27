@@ -92,6 +92,12 @@ frame-flora set="measure" out="build/frame-flora" seeds="11" opts="":
     texlua tools/frame_flora.lua "{{out}}/{{set}}" "{{set}}" "{{seeds}}" "{{opts}}"
     {{PYTHON}} -I tools/frame_flora.py "{{out}}/{{set}}" "{{set}}"
 
+# Sheets of the pattern prototypes (docs/pattern-proto.md): SET is gold,
+# deviant, loose, perimeter or inventory; OUT gets the baked layouts, the
+# renders and sheets/. E.g. `just pattern-proto build/pattern-proto gold`.
+pattern-proto out set:
+    tools/pattern-proto.sh "{{out}}" "{{set}}"
+
 # E.g. `just lint-hint lua/flora/loop.lua tests/perimeter_flora.lua`
 # (tools/lint_hint.py, docs/testing.md): lua-language-server's findings in
 # those files down to the level Hint, as the editor shows them; just lint

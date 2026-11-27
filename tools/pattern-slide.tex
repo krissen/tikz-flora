@@ -1,0 +1,13 @@
+% A 160 x 90 mm page (16:9) with a short text block, baked as the pattern
+% sheets' slide (tools/pattern-roles.sh): FLORA_SPEC_DIR=DIR lualatex on it
+% writes DIR/spec-1.lua, which the sheets read as spec-slide.lua.
+\documentclass[10pt]{article}
+\usepackage[paperwidth=160mm,paperheight=90mm,left=12mm,right=70mm,top=12mm,bottom=12mm]{geometry}
+\usepackage{lipsum}
+\usepackage{tikzflora}
+\florasetup{layout=right, seed=3}
+\begin{document}
+\thispagestyle{empty}
+\noindent\textbf{Of leaves}\par\smallskip
+\lipsum[1][1-4]
+\end{document}
