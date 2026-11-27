@@ -34,6 +34,7 @@ local Mix = require("flora.mix")
 local Patterns = require("flora.patterns")
 local Progression = require("flora.progression")
 local Band = require("flora.band")
+local Proto = require("flora.pattern_proto")
 
 local M = {}
 
@@ -665,7 +666,7 @@ function M.cell_inks(base, a, hero, to)
   local function f(c) return c and (a >= 1 and c or Paint.mix(to, c, a)) end
   return {
     band = f(hero and base.band0 or base.band), core = f(base.core), accent = f(base.accent),
-    line = f(hero and base.line0 or base.line),
+    line = f(hero and base.line0 or base.line), gold = f(base.gold),
     fill = { f(base.fill1), f(base.fill2) },
     ground = f(base.ground), dark = f(base.dark), paper = f(pal.paper),
     lines = base.lines,
@@ -1665,6 +1666,15 @@ function M.paint(spec, pt)
   local panels = key(spec, "panels")
   if panels == "auto" then panels = p.panels or "off" end
   if opts.symmetric == nil then opts.symmetric = panels == "on" end
+  -- Prototypes (pattern_proto.lua), off unless pattern_opts sets their
+  -- keys. What lies outside the field (the hero, the border's rule and
+  -- frame) keeps the colours it had.
+  local proto = Proto.new(opts, p, function(msg) M.warn(pt, msg) end)
+  local outer_base = base
+  if proto then
+    Proto.colours(proto, base)
+    outer_base = proto.outer
+  end
   local ground_edges = { auto = "panel", panel = "panel", motif = "shape", round = "discs", cells = "cells" }
   if opts.ground_edge == nil then opts.ground_edge = ground_edges[M.ground_mode(spec)] or "cells" end
   -- In a band of whole cells the ground follows the cells under
@@ -2021,6 +2031,9 @@ function M.paint(spec, pt)
     for _, v in ipairs(list) do kept[#kept + 1] = { cell = v.c, a = v.a, turn = v.turn, jitter = stagger:next() } end
   end
 
+  local plan = proto and Proto.plan(proto, { kept = kept, size = size, width = width, text = text, W = W, top = top,
+    hero = hero, fits = fits, rng = rng, warn = function(msg) M.warn(pt, msg) end })
+
   -- Growth starts at the page's outer edge, away from the text. A cell
   -- whose centre lies off the page (outer=bleed) starts with the edge,
   -- not before it, so no cell is born before the growth begins.
@@ -2188,9 +2201,21 @@ function M.paint(spec, pt)
       end
     end
   end
+  local late = {}
   for _, k in ipairs(kept) do
     local c, ink = k.cell, band_ink(M.cell_inks(base, k.a, nil, under_of(k)), p, spec, k_scale, ff)
     local birth, painted = k.birth, k.painted
+    -- A cell with a plan of its own (pattern_proto.lua) is painted through
+    -- it: turned or moved, gilded, or with a knob or glints.
+    local pl = plan and plan.at[k]
+    local draw_lines, draw_cell = function() c.construct(pt, c, ink) end, function() c.paint(pt, c, ink) end
+    local h
+    if pl then
+      h = Proto.painters(plan, pl, c, ink, pt)
+      draw_lines, draw_cell = h.construct, h.paint
+      h.enter()
+      if h.late then late[#late + 1] = { k = k, h = h } end
+    end
     -- The same precondition for the cell itself, its outline and what it
     -- lays (M.footprint), as judge placed it.
     if not fits("cell", M.footprint(c, base), width / 2 + (c.pad or 0)) then
@@ -2211,17 +2236,29 @@ function M.paint(spec, pt)
         end
       end
       if c.sweep then
-        swept((grow - birth) / LINES, function() lit(function() c.construct(pt, c, ink) end) end)
-        swept((grow - painted) / BAND, function() lit(function() c.paint(pt, c, ink) end) end)
+        swept((grow - birth) / LINES, function() lit(draw_lines) end)
+        swept((grow - painted) / BAND, function() lit(draw_cell) end)
       else
-        if grow >= birth then lit(function() c.construct(pt, c, ink) end) end
-        if grow >= painted + 0.04 then lit(function() c.paint(pt, c, ink) end) end
+        if grow >= birth then lit(draw_lines) end
+        if grow >= painted + 0.04 then lit(draw_cell) end
       end
     else
       Progression.part(pt, "pattern_line", { c.x, c.y }, birth, LINES,
-        function() lit(function() c.construct(pt, c, ink) end) end, nil, { no_area = true, sweep = c.sweep })
+        function() lit(draw_lines) end, nil, { no_area = true, sweep = c.sweep })
       Progression.part(pt, "pattern", { c.x, c.y }, painted, BAND,
-        function() lit(function() c.paint(pt, c, ink) end) end, nil, c.sweep and { sweep = c.sweep } or nil)
+        function() lit(draw_cell) end, nil, c.sweep and { sweep = c.sweep } or nil)
+    end
+    if h then h.leave() end
+  end
+  -- What a prototype lays over every cell (a knob, glints), as its cell is
+  -- painted.
+  for _, l in ipairs(late) do
+    local c = l.k.cell
+    local draw = function() lit(function() l.h.enter(); l.h.late(); l.h.leave() end) end
+    if grow then
+      if grow >= l.k.painted + 0.04 then draw() end
+    else
+      Progression.part(pt, "pattern", { c.x, c.y }, l.k.painted, BAND, draw)
     end
   end
   -- edge=border's rule along the inner edge, as edge=border's frame,
@@ -2229,7 +2266,7 @@ function M.paint(spec, pt)
   -- and every reservation), not under the inner rectangle's own.
   if clips > 0 then pt:clip_end(); clips = clips - 1 end
   if band and cut and (not grow or grow >= 0.1) then
-    local I, ink = band.I, M.cell_inks(base, 1, true)
+    local I, ink = band.I, M.cell_inks(outer_base, 1, true)
     local rule = { { "m", I[1], I[2] }, { "l", I[3], I[2] }, { "l", I[3], I[4] }, { "l", I[1], I[4] }, { "z" } }
     Progression.part(pt, "pattern_border", { I[1], I[2] }, 0, 0.2, function()
       local fw = band_ink({}, p, spec, k_scale, ff).width
@@ -2239,16 +2276,16 @@ function M.paint(spec, pt)
   end
   for _ = 1, clips do pt:clip_end() end
   if hero and fits("hero", { { circle = hero } }, 0) then
-    M.paint_hero(pt, hero, band_ink(M.cell_inks(base, 1, true), p, spec, k_key), grow)
+    M.paint_hero(pt, hero, band_ink(M.cell_inks(outer_base, 1, true), p, spec, k_key), grow)
   end
   if edge == "guilloche" and not band and (not grow or grow >= 0.1) then
-    local ink = band_ink(M.cell_inks(base, 1, true), p, spec, k_key)
+    local ink = band_ink(M.cell_inks(outer_base, 1, true), p, spec, k_key)
     Progression.part(pt, "pattern_border", { text.x0, text.y0 }, 0, 0.2, function()
       require("flora.pattern_hero").paint_band(pt, text, gap / 2, 4, ink)
     end)
   end
   if edge == "border" and not band and (not grow or grow >= 0.1) then
-    local ink = M.cell_inks(base, 1, true)
+    local ink = M.cell_inks(outer_base, 1, true)
     local o = gap / 2
     local frame = { { "m", text.x0 - o, text.y0 - o }, { "l", text.x1 + o, text.y0 - o },
       { "l", text.x1 + o, text.y1 + o }, { "l", text.x0 - o, text.y1 + o }, { "z" } }
@@ -2282,6 +2319,7 @@ function M.paint(spec, pt)
     -- at the edge.
     isolated = edgeinfo.isolated, edge_cells = edgeinfo.edge }
   -- For measuring (pattern_opts.measure): the kept cells' own edge.
+  if proto then pt.pattern.proto = proto.report end
   if opts.measure then
     local ki = M.field_edges(cells, kept, onpage)
     pt.pattern.isolated, pt.pattern.edge_cells = ki.isolated, ki.edge
