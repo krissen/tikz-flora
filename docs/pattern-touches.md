@@ -1,6 +1,6 @@
 # Pattern prototypes
 
-Three prototypes of the pattern field sit behind keys of `spec.pattern_opts` (lua/flora/pattern_proto.lua), not settings, each off unless set.
+Three prototypes of the pattern field sit behind keys of `spec.pattern_opts` (lua/flora/pattern_touches.lua), not settings, each off unless set.
 A page without the keys is painted byte for byte as before (`just bodies-compare`), a value that is none of the key's is logged and left off, and a pattern that cannot give a key what it needs says so in the page's log and is painted without it.
 Nothing here is a default: a variant is chosen from the sheets.
 
@@ -18,7 +18,7 @@ In a perimeter band whose edge is whole rows each side is painted as a strip of 
 
 ## Sheets
 
-`just pattern-proto OUT SET` (tools/pattern-proto.sh) bakes the layouts (tools/pattern-bake.sh: tex/lorem.tex and the 16:9 slide of tools/pattern-slide.tex), renders the variants of tools/pattern_variants.lua that carry that `set` with tools/pattern_roles.lua, and lays out OUT/sheets/:
+`just pattern-touches OUT SET` (tools/pattern-touches.sh) bakes the layouts (tools/pattern-bake.sh: tex/lorem.tex and the 16:9 slide of tools/pattern-slide.tex), renders the variants of tools/pattern_variants.lua that carry that `set` with tools/pattern_roles.lua, and lays out OUT/sheets/:
 
 - `gold`: per pattern, today's field and the five values side by side, field and hero, on paper and on the dark backdrop.
 - `deviant` and `loose`: per pattern, three seeds, the whole 16:9 page and a close-up, off and on.
@@ -26,4 +26,4 @@ In a perimeter band whose edge is whole rows each side is painted as a strip of 
 - `inventory`: inventory.tsv, one pattern a row: its roles, the field's ink, the gold's share of it and the places each key lays.
 
 Under each tile stand the gold's share of the field's ink (pixels at 50 dpi more than half opaque; the gold is painted again as pure magenta, in `probe/`, and counted) and the places laid.
-A new variant is a line in tools/pattern_variants.lua with `set`, `opts`, `seed` and the other fields tools/pattern_roles.lua lists; a new set needs a sheet function in tools/pattern-proto.sh.
+A new variant is a line in tools/pattern_variants.lua with `set`, `opts`, `seed` and the other fields tools/pattern_roles.lua lists; a new set needs a sheet function in tools/pattern-touches.sh.

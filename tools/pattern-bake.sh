@@ -1,6 +1,6 @@
 #!/bin/sh
 # The baked layouts the pattern sheets read (tools/pattern_roles.lua,
-# tools/pattern-proto.sh), in OUT/bake: tex/lorem.tex's spec-N.lua and
+# tools/pattern-touches.sh), in OUT/bake: tex/lorem.tex's spec-N.lua and
 # base.pdf, as `just site-bake` bakes them for the mixer, and the 16:9
 # slide's spec-slide.lua and slide.pdf (tools/pattern-slide.tex, 160 x 90
 # mm). Files already there are kept. Run from the repository root.

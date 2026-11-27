@@ -1,30 +1,27 @@
--- Prototypes for the pattern field (pattern.lua), each behind a key of
--- spec.pattern_opts (not a setting) that is off unless set: where the gold
--- lies, a deviant cell, and a loose plate. A page without the keys is
--- painted as it is without this module.
+-- The touches a pattern field may carry, each a setting that is off unless
+-- set (settings.lua): where gold lies in the field, gold on the hero, a
+-- deviant cell and a loose plate. A page without them is painted as it is
+-- without this module.
 --
---   gold      where the gold lies in the field (the role accent):
---               core       in the band's core (the accent and the core
---                          both gold)
---               cells      a few whole cells gilded, chosen by seed
---               knobs      a gold knob at the middle of every cell
---               crossings  a few glints where bands cross, chosen by seed
---               hero       none in the field; the hero's lines in gold
---             Every value but core takes the gold out of the field's own
---             colours (the accent turns to the core's), so the variants
---             do not add to gold that is there already; the hero, the
---             border's rule and the frame keep the accent they had.
---   deviant   true: at most one cell on each side of the text is turned
---             and painted in another colour, its place drawn by seed
---   loose     true: one cell has come loose from the field's edge and lies
---             a little way outside it, a dotted path leading back to the
---             gap it left
+--   glint      where gold lies in the field, in place of the pattern's own:
+--                on     a few glints where bands cross, spread by seed
+--                core   in the band's core (the accent and the core gold)
+--                cells  a few whole cells gilded, chosen by seed
+--                knobs  a gold knob at the middle of every cell
+--   herogold   the hero's lines in gold; it combines with any glint
+--   deviant    at most one whole cell on each side is turned and painted
+--              in another colour, its place drawn by seed
+--   loose      one cell has come loose from the field's edge and lies a
+--              little way outside it, a dotted path leading back to the
+--              gap it left
 --
 -- The places are drawn from the page's seed on a stream of their own
--- ("pattern proto"), so a page without the keys draws what it always did.
--- A pattern that cannot give a key what it needs says so in the page's log
--- and is painted without it. M.plan chooses the places once the field is
--- kept; M.painters paints a cell through its plan.
+-- ("pattern touches"), so a page without the keys draws what it always
+-- did. A pattern that cannot give a key what it needs says so in the page's
+-- log and is painted as it is without that key. M.plan chooses the places
+-- once the field is kept; M.painters paints a cell through its plan. The
+-- page keeps one report of what was laid (pt.touches_report), summed over
+-- the strips of a perimeter band.
 
 local Paint = require("flora.paint")
 local Color = require("flora.color")
@@ -33,9 +30,9 @@ local sqrt, sin, cos, pi = math.sqrt, math.sin, math.cos, math.pi
 
 local M = {}
 
-M.GOLD = { core = true, cells = true, knobs = true, crossings = true, hero = true }
--- The order the values are listed in.
-M.GOLD_ORDER = { "core", "cells", "knobs", "crossings", "hero" }
+-- The values of glint; "on" is the glints at crossings.
+M.GLINT = { off = true, on = true, core = true, cells = true, knobs = true }
+M.GLINT_ORDER = { "off", "on", "core", "cells", "knobs" }
 
 -- Patterns whose cells are not tiles a key can gild, turn or move, and why.
 M.NO_CELLS = {
@@ -64,61 +61,61 @@ M.SHARE = { cells = 0.04, crossings = 0.08 }
 M.MIN = { cells = 2, crossings = 5 }
 M.APART = { cells = 3.2, crossings = 2.6 }
 
-local function flag(v)
-  if v == nil or v == false or v == "off" then return false end
-  if v == true or v == "on" then return true end
-  return nil
-end
-
--- The prototype state for a page, or nil when no key is set. `warn` takes
--- a line for the page's log. Unknown values are logged and left off.
-function M.new(opts, p, warn)
-  local S = { pattern = p, notes = {}, report = {} }
-  local g = opts.gold
-  if g ~= nil then
-    if M.GOLD[g] then
-      S.gold = g
+-- The state for a page, or nil when no key is set. `want` holds the keys'
+-- values (glint, herogold, deviant, loose); `warn` takes a line for the
+-- page's log. A value that is none of the key's is logged and the key left
+-- off; so is a key the pattern cannot take.
+function M.new(want, p, warn)
+  local S = { pattern = p, report = {} }
+  local function no(k, v, list)
+    warn(string.format("%s=%s is not one of %s; it is left off", k, tostring(v), list))
+  end
+  local g = want.glint
+  if g ~= nil and g ~= "off" then
+    if not M.GLINT[g] then
+      no("glint", g, table.concat(M.GLINT_ORDER, ", "))
     else
-      warn(string.format("pattern_opts.gold=%s is not one of %s; it is left off", tostring(g), table.concat(M.GOLD_ORDER, ", ")))
+      local mode = g == "on" and "crossings" or g
+      local why
+      if mode == "cells" then why = M.NO_CELLS[p.name] and ("no cells to gild (" .. M.NO_CELLS[p.name] .. ")")
+      elseif mode == "knobs" then why = M.NO_CENTRES[p.name] and ("no cell middles the field knows (" .. M.NO_CENTRES[p.name] .. ")")
+      elseif mode == "crossings" then why = M.NO_CROSSINGS[p.name] and ("no crossings the field knows (" .. M.NO_CROSSINGS[p.name] .. ")") end
+      if why then
+        warn(string.format("glint=%s: %s has %s; it is painted as it is", g, p.name, why))
+      else
+        S.gold = mode
+      end
     end
   end
-  for _, k in ipairs({ "deviant", "loose" }) do
-    local f = flag(opts[k])
-    if f == nil then
-      warn(string.format("pattern_opts.%s=%s is not true or false; it is left off", k, tostring(opts[k])))
-    elseif f then
-      if M.NO_CELLS[p.name] then
-        warn(string.format("pattern_opts.%s: %s has no cells to turn or move (%s); it is painted as it is", k, p.name, M.NO_CELLS[p.name]))
+  for _, k in ipairs({ "herogold", "deviant", "loose" }) do
+    local v = want[k]
+    if v ~= nil and v ~= "off" then
+      if v ~= "on" then
+        no(k, v, "on, off")
+      elseif k ~= "herogold" and M.NO_CELLS[p.name] then
+        warn(string.format("%s=on: %s has no cells to %s (%s); it is painted as it is", k, p.name, k == "deviant" and "turn" or "move", M.NO_CELLS[p.name]))
       else
         S[k] = true
       end
     end
   end
-  if S.gold == "cells" and M.NO_CELLS[p.name] then
-    warn(string.format("pattern_opts.gold=cells: %s has no cells to gild (%s); the field has no gold", p.name, M.NO_CELLS[p.name]))
-    S.gold = "none"
-  end
-  if S.gold == "knobs" and M.NO_CENTRES[p.name] then
-    warn(string.format("pattern_opts.gold=knobs: %s has no cell middles the field knows (%s); the field has no gold", p.name, M.NO_CENTRES[p.name]))
-    S.gold = "none"
-  end
-  if S.gold == "crossings" and M.NO_CROSSINGS[p.name] then
-    warn(string.format("pattern_opts.gold=crossings: %s has no crossings the field knows (%s); the field has no gold", p.name, M.NO_CROSSINGS[p.name]))
-    S.gold = "none"
-  end
-  if not (S.gold or S.deviant or S.loose) then return nil end
+  if not (S.gold or S.herogold or S.deviant or S.loose) then return nil end
   return S
 end
 
--- The role colours the prototypes set on `base` (pattern.lua's role_inks).
--- Keeps a copy for what lies outside the field (the hero, the border's rule
--- and frame): S.outer, the colours as they were, the hero's lines gold for
--- gold=hero.
+-- The role colours the keys set on `base` (pattern.lua's role_inks). Keeps
+-- a copy for what lies outside the field (the hero, the border's rule and
+-- frame): S.outer, the colours as they were, the hero's lines gold for
+-- herogold.
 function M.colours(S, base)
   local pal = Paint.palette
   local outer = {}
   for k, v in pairs(base) do outer[k] = v end
   S.outer = outer
+  if S.herogold then
+    outer.band, outer.band0 = pal.gold, pal.gold
+    outer.line0 = Paint.mix(pal.gold, pal.paper, 0.45)
+  end
   local g = S.gold
   if not g then return end
   base.gold = pal.gold
@@ -128,10 +125,6 @@ function M.colours(S, base)
   end
   -- No gold of the pattern's own in the field.
   base.accent = base.core
-  if g == "hero" then
-    outer.band, outer.band0 = pal.gold, pal.gold
-    outer.line0 = Paint.mix(pal.gold, pal.paper, 0.45)
-  end
 end
 
 -- A colour with its hue turned a third of the way round the wheel.
@@ -302,7 +295,7 @@ end
 -- and `med`, the spacing of the cells.
 function M.plan(S, ctx)
   local kept, p = ctx.kept, S.pattern
-  local rng = ctx.rng:fork("pattern proto")
+  local rng = ctx.rng:fork("pattern touches")
   local plan = { at = {}, S = S, size = ctx.size }
   local rep = S.report
   rep.gold, rep.places = S.gold, 0
@@ -391,7 +384,7 @@ function M.plan(S, ctx)
       at(done.k).loose = done
       rep.loose = { x = ax, y = ay, to_x = bx, to_y = by, dots = #dots }
     else
-      ctx.warn(string.format("pattern_opts.loose: no cell of %s at the field's edge has room outside it; none is loosened", p.name))
+      ctx.warn(string.format("loose=on: no cell of %s at the field's edge has room outside it; none is loosened", p.name))
     end
   end
   -- Deviants: at most one on each side of the text, whole and clear of the
@@ -419,8 +412,9 @@ function M.plan(S, ctx)
         rep.deviants[#rep.deviants + 1] = { x = c.x, y = c.y, side = s }
       end
     end
-    if #rep.deviants == 0 then ctx.warn("pattern_opts.deviant: no whole cell lies beside the text; none is turned") end
+    if #rep.deviants == 0 then ctx.warn("deviant=on: no whole cell lies beside the text; none is turned") end
   end
+  if S.herogold and not ctx.hero then ctx.warn("herogold=on: the page has no hero to paint in gold") end
   -- Gold.
   local g = S.gold
   if g == "cells" then
@@ -455,8 +449,6 @@ function M.plan(S, ctx)
     local roles = {}
     for _, r in ipairs(p.roles or {}) do roles[r] = true end
     if roles.core or roles.accent then rep.places = #kept end
-  elseif g == "hero" then
-    rep.places = ctx.hero and 1 or 0
   end
   return plan
 end

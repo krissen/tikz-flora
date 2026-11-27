@@ -1,10 +1,10 @@
 #!/bin/sh
-# Sheets of the pattern prototypes (lua/flora/pattern_proto.lua's
+# Sheets of the pattern prototypes (lua/flora/pattern_touches.lua's
 # pattern_opts keys), the variants of tools/pattern_variants.lua that carry
 # a `set`, rendered by tools/pattern_roles.lua, each sheet one labelled
 # image per question.
 #
-#   tools/pattern-proto.sh OUT SET
+#   tools/pattern-touches.sh OUT SET
 #
 # SET is one of:
 #   gold       where the gold lies, per pattern: today's field, then
@@ -18,15 +18,15 @@
 # Writes OUT/sheets/<set>__<pattern>.png. Under each tile: the gold's share
 # of the field's ink (pixels at 50 dpi whose alpha is over a half, the gold
 # painted again as pure magenta, probe/*.pdf) and the places the prototype
-# laid. OUT/render/SET/proto.tsv has each page's numbers and log. OUT/bake
+# laid. OUT/render/SET/touches.tsv has each page's numbers and log. OUT/bake
 # holds the baked layouts (tools/pattern-bake.sh). PATTERN_PROTO_SHEETS_ONLY=1
 # lays out sheets from an earlier render. Needs lualatex, pdftocairo and
 # ImageMagick. Run from the repository root.
 set -eu
 LC_ALL=C
 export LC_ALL
-OUT=${1:?usage: tools/pattern-proto.sh OUT SET}
-SET=${2:?usage: tools/pattern-proto.sh OUT SET}
+OUT=${1:?usage: tools/pattern-touches.sh OUT SET}
+SET=${2:?usage: tools/pattern-touches.sh OUT SET}
 FONT=${PATTERN_AUDIT_FONT:-/System/Library/Fonts/Supplemental/Arial.ttf}
 DARK="#0a1014"
 DD=150
@@ -41,7 +41,7 @@ if [ -z "${PATTERN_PROTO_SHEETS_ONLY:-}" ]; then
   rm -rf "${R:?}"
   mkdir -p "$R"
   : > "$R/roles.tsv"
-  printf 'variant\tbackdrop\tpattern\tseed\tplaces\tspacing_mm\twidth_mm\theight_mm\tfocus_x_mm\tfocus_y_mm\tdeviants\tloose\troles\tlog\n' > "$R/proto.tsv"
+  printf 'variant\tbackdrop\tpattern\tseed\tplaces\tspacing_mm\twidth_mm\theight_mm\tfocus_x_mm\tfocus_y_mm\tdeviants\tloose\troles\tlog\n' > "$R/touches.tsv"
   texlua tools/pattern_roles.lua "$OUT/bake" "$R" tools/pattern_variants.lua "set:$SET"
 fi
 
@@ -83,9 +83,9 @@ share() {
   echo "$GOLD"
 }
 
-# tsv VARIANT BACKDROP NAME COLUMN: a field of proto.tsv.
+# tsv VARIANT BACKDROP NAME COLUMN: a field of touches.tsv.
 tsv() {
-  awk -F'\t' -v v="$1" -v b="$2" -v n="$3" -v c="$4" '$1 == v && $2 == b && $3 == n { print $c }' "$R/proto.tsv"
+  awk -F'\t' -v v="$1" -v b="$2" -v n="$3" -v c="$4" '$1 == v && $2 == b && $3 == n { print $c }' "$R/touches.tsv"
 }
 
 # caption IN OUT TEXT: the tile with its label under it.

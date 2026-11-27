@@ -2,7 +2,7 @@
 -- key list laid over the page, rendered on paper and on the dark backdrop.
 -- `slide` renders it on the 160 x 90 mm page too. A working list for
 -- comparison sheets, not settings. A variant with a `set` belongs to a
--- prototype sheet (tools/pattern-proto.sh) and is rendered only when that
+-- touches sheet (tools/pattern-touches.sh) and is rendered only when that
 -- set is asked for.
 
 local Inks = require("flora.inks")
@@ -23,27 +23,30 @@ add("lines-strap", "colourway=original, finish=lines, bands=strap")
 add("lines-line-1.5", "colourway=original, finish=lines, bands=line, bandwidth=1.5")
 add("lines-strap-1.5", "colourway=original, finish=lines, bands=strap, bandwidth=1.5")
 
--- The prototype sets (lua/flora/pattern_proto.lua's pattern_opts keys), one
--- variant per setting, laid out by tools/pattern-proto.sh.
+-- The touch sets (lua/flora/pattern_touches.lua's settings), one variant per
+-- setting, laid out by tools/pattern-touches.sh.
 local COLOURWAY = "colourway=original"
 
 -- gold: where the gold lies, on the same field and hero (paper and dark).
-local GOLD = { "off", "core", "cells", "knobs", "crossings", "hero" }
+local GLINTS = { off = "", on = ", glint=on", core = ", glint=core", cells = ", glint=cells", knobs = ", glint=knobs" }
+local GLINT_ORDER = { "off", "on", "core", "cells", "knobs" }
 local GOLD_PATTERNS = { stars_8_4 = true, overlapping_circles = true, celtic_knot = true, asanoha = true }
-for _, g in ipairs(GOLD) do
-  variants[#variants + 1] = { name = "gold-" .. g, set = "gold", setup = COLOURWAY, opts = g ~= "off" and { gold = g } or nil,
+for _, g in ipairs(GLINT_ORDER) do
+  variants[#variants + 1] = { name = "gold-" .. g, set = "gold", setup = COLOURWAY .. GLINTS[g],
     patterns = GOLD_PATTERNS, heroes = { "rosette" }, probe = true }
 end
+variants[#variants + 1] = { name = "gold-hero", set = "gold", setup = COLOURWAY .. ", herogold=on",
+  patterns = GOLD_PATTERNS, heroes = { "rosette" }, probe = true }
 
 -- inventory: every pattern, today's field and each key once, on paper, for
--- the table of what each pattern takes (tools/pattern-proto.sh inventory).
+-- the table of what each pattern takes (tools/pattern-touches.sh inventory).
 local Patterns = require("flora.patterns")
 local ALL = {}
 for _, p in ipairs(Patterns.list) do ALL[p.name] = true end
-for _, k in ipairs({ "off", "core", "cells", "knobs", "crossings", "deviant", "loose" }) do
-  local opts
-  if k == "deviant" or k == "loose" then opts = { [k] = true } elseif k ~= "off" then opts = { gold = k } end
-  variants[#variants + 1] = { name = "inventory-" .. k, set = "inventory", setup = COLOURWAY, opts = opts, patterns = ALL,
+for _, k in ipairs({ "off", "on", "core", "cells", "knobs", "deviant", "loose" }) do
+  local extra = ""
+  if k == "deviant" or k == "loose" then extra = ", " .. k .. "=on" else extra = GLINTS[k] end
+  variants[#variants + 1] = { name = "inventory-" .. k, set = "inventory", setup = COLOURWAY .. extra, patterns = ALL,
     backdrops = { "light" }, probe = true }
 end
 
@@ -53,20 +56,20 @@ local ONE_PATTERNS = { stars_8_4 = true, kikko = true }
 for _, key in ipairs({ "deviant", "loose" }) do
   for _, seed in ipairs(SEEDS) do
     for _, on in ipairs({ "off", "on" }) do
-      variants[#variants + 1] = { name = string.format("%s-%s-%d", key, on, seed), set = key, setup = COLOURWAY, seed = seed,
-        opts = on == "on" and { [key] = true } or nil, patterns = ONE_PATTERNS, slide = true, backdrops = { "light" } }
+      variants[#variants + 1] = { name = string.format("%s-%s-%d", key, on, seed), set = key,
+        setup = COLOURWAY .. (on == "on" and (", " .. key .. "=on") or ""), seed = seed,
+        patterns = ONE_PATTERNS, slide = true, backdrops = { "light" } }
     end
   end
 end
 
--- perimeter: the same keys in a 12 mm band round the paper (the hero is
--- not drawn there).
-local PERIMETER = { "off", "gold-core", "gold-cells", "gold-knobs", "gold-crossings", "deviant", "loose" }
-for _, k in ipairs(PERIMETER) do
-  local opts
-  if k:match("^gold%-") then opts = { gold = k:sub(6) } elseif k ~= "off" then opts = { [k] = true } end
-  variants[#variants + 1] = { name = "perimeter-" .. k, set = "perimeter", setup = COLOURWAY .. ", perimeterwidth=12",
-    layout = "perimeter", keep_text = true, opts = opts, patterns = { stars_8_4 = true, asanoha = true }, backdrops = { "light" }, probe = true }
+-- perimeter: the keys in a 12 mm band round the paper, a corner and a side
+-- in close-up (the hero is not drawn there).
+local PERIMETER = { off = "", glint = ", glint=on", knobs = ", glint=knobs", cells = ", glint=cells", deviant = ", deviant=on", loose = ", loose=on" }
+local PERIMETER_ORDER = { "off", "glint", "knobs", "cells", "deviant", "loose" }
+for _, k in ipairs(PERIMETER_ORDER) do
+  variants[#variants + 1] = { name = "perimeter-" .. k, set = "perimeter", setup = COLOURWAY .. ", perimeterwidth=12" .. PERIMETER[k],
+    layout = "perimeter", keep_text = true, patterns = { stars_8_4 = true, asanoha = true }, backdrops = { "light" }, probe = true }
 end
 
 return { variants = variants }

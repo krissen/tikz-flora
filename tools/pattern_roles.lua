@@ -16,15 +16,14 @@
 -- (comma-separated), or, as set:NAME, to the variants of that set; a
 -- variant with a `set` is left out of every other run.
 --
--- A variant of the prototype sets (pattern_proto.lua's keys) may also give:
---   opts     the page's pattern_opts
+-- A variant of the touch sets (pattern_touches.lua's keys) may also give:
 --   seed     the page's seed, in place of 11
 --   keep_text  its layout is kept without the text moved (layout=perimeter)
 --   heroes   hero names, each drawn over every pattern of the variant on
 --            page 3 as hero-NAME-PATTERN
 --   probe    render the gold as pure magenta again, as probe/NAME.pdf, for
---            tools/pattern-proto.sh to measure the gold's share by
--- and OUTDIR/proto.tsv gets a row for every page: what the prototype laid
+--            tools/pattern-touches.sh to measure the gold's share by
+-- and OUTDIR/touches.tsv gets a row for every page: what the touches laid
 -- (places, the cells' spacing, where the first deviant or loose plate lies
 -- in mm from the page's lower left corner), the pattern's roles and the
 -- page's log.
@@ -160,7 +159,7 @@ local function measure(vname, bd, p, spec)
   tsv:write(table.concat(row, "\t") .. "\n")
 end
 
-local ptsv = assert(io.open(outdir .. "/proto.tsv", "a"))
+local ptsv = assert(io.open(outdir .. "/touches.tsv", "a"))
 local MM = 25.4 / 72
 
 -- Render `spec` to `file`; returns the painter, or nil when it failed.
@@ -186,14 +185,14 @@ local function render_probe(spec, dir, name)
   gold[1], gold[2], gold[3] = was[1], was[2], was[3]
 end
 
--- A row of proto.tsv for the page just rendered: variant, backdrop, name,
--- seed, places the prototype laid, the cells' spacing (mm), the page's
+-- A row of touches.tsv for the page just rendered: variant, backdrop, name,
+-- seed, places the touches laid, the cells' spacing (mm), the page's
 -- size and where the first deviant or loose plate lies (mm, from the
 -- lower left corner), how many deviants, whether a plate is loose, the
 -- pattern's roles and the page's log.
-local function proto_row(v, bd, name, spec, pt, p)
+local function touches_row(v, bd, name, spec, pt, p)
   local pp = pt and pt.pattern
-  local r = pp and pp.proto or {}
+  local r = pp and pp.touches or {}
   local fx, fy
   if r.deviants and r.deviants[1] then fx, fy = r.deviants[1].x, r.deviants[1].y end
   if r.loose then fx, fy = (r.loose.x + r.loose.to_x) / 2, (r.loose.y + r.loose.to_y) / 2 end
@@ -221,21 +220,21 @@ for _, v in ipairs(V.variants) do
         spec.grow = v.grow
         local pt = render(spec, dir .. "/" .. p.name .. ".pdf")
         measure(v.name, bd, p, spec)
-        proto_row(v, bd, p.name, spec, pt, p)
+        touches_row(v, bd, p.name, spec, pt, p)
         if v.probe then render_probe(spec, dir, p.name) end
         if v.slide then
           local sspec = page_spec("slide", v.layout or "right", "pattern=" .. p.name .. ", " .. v.setup, bd, v.opts, v.seed)
           if v.layout and not v.keep_text then place_text(sspec, v.layout); write_text(sspec, dir .. "/slide-" .. p.name .. ".text") end
           sspec.grow = v.grow
           local spt = render(sspec, dir .. "/slide-" .. p.name .. ".pdf")
-          proto_row(v, bd, "slide-" .. p.name, sspec, spt, p)
+          touches_row(v, bd, "slide-" .. p.name, sspec, spt, p)
           if v.probe then render_probe(sspec, dir, "slide-" .. p.name) end
         end
         for _, h in ipairs(v.heroes or {}) do
           local hspec = page_spec("3", "right", "pattern=" .. p.name .. ", hero=" .. h .. ", " .. v.setup, bd, v.opts, v.seed)
           local name = "hero-" .. h .. "-" .. p.name
           local hpt = render(hspec, dir .. "/" .. name .. ".pdf")
-          proto_row(v, bd, name, hspec, hpt, p)
+          touches_row(v, bd, name, hspec, hpt, p)
           if v.probe then render_probe(hspec, dir, name) end
         end
         ::skip::

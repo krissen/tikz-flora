@@ -56,6 +56,11 @@ M.about = {
   { "starfill", "auto, whole, split", "How a star pattern's star is coloured (khatam): auto (the default) and whole lay the whole star in the first field; split lays the star's two squares in the two fields, its square on its point in the first and the other's four corners in the second." },
   { "gapfill", "auto, field, paper", "What fills the space between a star pattern's stars (khatam's crosses, hexagram_lattice's rhombs): auto (the default) and field the second field, paper the paper. Under starfill=split khatam's crosses are always the paper." },
   { "alternate", "auto, off, rows, three", "Whether a star pattern's stars take turns in the fields (hexagram_lattice): auto (the default) and off lay every star in the first field; rows alternate the first and second field row by row; three deal the first field, the second and the accent so that no two touching stars share one." },
+  { "glint", "off, on, core, cells, knobs",
+    "Where gold lies in a pattern's field, in place of the pattern's own (off, the default, leaves it as it is): on lays a few glints where the bands cross, spread by the page's seed; core makes the band's core gold (it shows only where the core is drawn, at least 0.6 pt wide, and the log says where it is not); cells gilds a few whole cells; knobs sets a gold knob at the middle of every cell. A pattern with nothing to lay it by (see the guide) is painted as it is, and the log says so." },
+  { "herogold", "on, off", "Paints the hero's lines in gold (off, the default). It combines with glint." },
+  { "deviant", "on, off", "Turns at most one whole cell on each side of the text, or of a perimeter band, and paints it in another colour, its place drawn by the page's seed (off, the default)." },
+  { "loose", "on, off", "Lets one cell come loose from the field's edge and lie a little way outside it, a dotted path leading back to the gap it left, clear of the text as the field is (off, the default)." },
   { "lighten", "0 to 1", "Lightens a pattern's fields toward the paper: 0 (the default) keeps their inks' lightness, 1 makes them nearly the paper." },
   { "bandwidth", "0.25 to 4", "The width of a pattern's bands and lines, as a factor of its own." },
   { Band.WIDTH, Band.WIDTH_MIN .. " to " .. Band.WIDTH_MAX, "The width in mm of a perimeter band (layout=" .. Band.LAYOUT .. "), the same on all four sides: " .. Band.WIDTH_DEFAULT .. " by default. Where a margin is narrower, the whole band narrows to what the narrowest side holds, the same all round and clear of the text block (none under 4 mm), and the log says so." },
@@ -293,6 +298,18 @@ M.define("alternate", function(v)
   for _, m in ipairs({ "auto", "off", "rows", "three" }) do if v == m then return v end end
   return nil, "alternate must be auto, off, rows or three"
 end)
+
+M.define("glint", function(v)
+  if require("flora.pattern_touches").GLINT[v] then return v end
+  return nil, "glint must be off, on, core, cells or knobs"
+end)
+
+for _, k in ipairs({ "herogold", "deviant", "loose" }) do
+  M.define(k, function(v)
+    if v == "on" or v == "off" then return v end
+    return nil, k .. " must be on or off"
+  end)
+end
 
 M.define("lighten", function(v)
   local n = tonumber(v)
@@ -607,6 +624,7 @@ M.SPEC = {
   finish = "pattern_finish", bands = "pattern_bands", bandwidth = "pattern_bandwidth", ground = "pattern_ground",
   ends = "pattern_ends", panels = "pattern_panels", lighten = "pattern_lighten",
   starfill = "pattern_starfill", gapfill = "pattern_gapfill", alternate = "pattern_alternate",
+  glint = "pattern_glint", herogold = "pattern_herogold", deviant = "pattern_deviant", loose = "pattern_loose",
   [Band.WIDTH] = "perimeter_width", [Band.FLORA] = "perimeter_flora", [Band.FLORA_DENSITY] = "perimeter_density",
 }
 -- The pattern keys besides `pattern` itself, by key -> default. A mixer's
@@ -618,7 +636,8 @@ M.SPEC = {
 -- palette, set role by role as palette is, so it is not one of them.
 M.PATTERN = { edge = "dissolve", hero = "none", outer = "bleed", scale = 1,
   saturation = 0.5, finish = "filled", bands = "auto", bandwidth = 1, ground = "auto",
-  ends = "auto", panels = "auto", lighten = 0, starfill = "auto", gapfill = "auto", alternate = "auto" }
+  ends = "auto", panels = "auto", lighten = 0, starfill = "auto", gapfill = "auto", alternate = "auto",
+  glint = "off", herogold = "off", deviant = "off", loose = "off" }
 M.OWN = { layout = true, header = true, seed = true, cache = true, density = true, visitors = true, colourway = true }
 
 -- What a "fresh" restyle (tools/preview.lua, the site's mixer) drops of a

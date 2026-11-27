@@ -34,7 +34,7 @@ local Mix = require("flora.mix")
 local Patterns = require("flora.patterns")
 local Progression = require("flora.progression")
 local Band = require("flora.band")
-local Proto = require("flora.pattern_proto")
+local Touches = require("flora.pattern_touches")
 
 local M = {}
 
@@ -1666,14 +1666,15 @@ function M.paint(spec, pt)
   local panels = key(spec, "panels")
   if panels == "auto" then panels = p.panels or "off" end
   if opts.symmetric == nil then opts.symmetric = panels == "on" end
-  -- Prototypes (pattern_proto.lua), off unless pattern_opts sets their
-  -- keys. What lies outside the field (the hero, the border's rule and
-  -- frame) keeps the colours it had.
-  local proto = Proto.new(opts, p, function(msg) M.warn(pt, msg) end)
+  -- The touches (pattern_touches.lua), off unless their keys are set. What
+  -- lies outside the field (the hero, the border's rule and frame) keeps
+  -- the colours it had.
+  local touches = Touches.new({ glint = key(spec, "glint"), herogold = key(spec, "herogold"),
+    deviant = key(spec, "deviant"), loose = key(spec, "loose") }, p, function(msg) M.warn(pt, msg) end)
   local outer_base = base
-  if proto then
-    Proto.colours(proto, base)
-    outer_base = proto.outer
+  if touches then
+    Touches.colours(touches, base)
+    outer_base = touches.outer
   end
   local ground_edges = { auto = "panel", panel = "panel", motif = "shape", round = "discs", cells = "cells" }
   if opts.ground_edge == nil then opts.ground_edge = ground_edges[M.ground_mode(spec)] or "cells" end
@@ -2031,7 +2032,7 @@ function M.paint(spec, pt)
     for _, v in ipairs(list) do kept[#kept + 1] = { cell = v.c, a = v.a, turn = v.turn, jitter = stagger:next() } end
   end
 
-  local plan = proto and Proto.plan(proto, { kept = kept, size = size, width = width, text = text, W = W, top = top,
+  local plan = touches and Touches.plan(touches, { kept = kept, size = size, width = width, text = text, W = W, top = top,
     hero = hero, fits = fits, rng = rng, warn = function(msg) M.warn(pt, msg) end })
 
   -- Growth starts at the page's outer edge, away from the text. A cell
@@ -2205,13 +2206,13 @@ function M.paint(spec, pt)
   for _, k in ipairs(kept) do
     local c, ink = k.cell, band_ink(M.cell_inks(base, k.a, nil, under_of(k)), p, spec, k_scale, ff)
     local birth, painted = k.birth, k.painted
-    -- A cell with a plan of its own (pattern_proto.lua) is painted through
+    -- A cell with a plan of its own (pattern_touches.lua) is painted through
     -- it: turned or moved, gilded, or with a knob or glints.
     local pl = plan and plan.at[k]
     local draw_lines, draw_cell = function() c.construct(pt, c, ink) end, function() c.paint(pt, c, ink) end
     local h
     if pl then
-      h = Proto.painters(plan, pl, c, ink, pt)
+      h = Touches.painters(plan, pl, c, ink, pt)
       draw_lines, draw_cell = h.construct, h.paint
       h.enter()
       if h.late then late[#late + 1] = { k = k, h = h } end
@@ -2319,7 +2320,7 @@ function M.paint(spec, pt)
     -- at the edge.
     isolated = edgeinfo.isolated, edge_cells = edgeinfo.edge }
   -- For measuring (pattern_opts.measure): the kept cells' own edge.
-  if proto then pt.pattern.proto = proto.report end
+  if touches then pt.pattern.touches = touches.report end
   if opts.measure then
     local ki = M.field_edges(cells, kept, onpage)
     pt.pattern.isolated, pt.pattern.edge_cells = ki.isolated, ki.edge
