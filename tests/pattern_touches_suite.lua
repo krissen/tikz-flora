@@ -293,7 +293,7 @@ function M.run(backdrop, mutations)
   end
   if os.getenv("FLORA_MATRIX_VERBOSE") then print(string.format("touches %s: %d pages, %.1f s", backdrop, total, os.clock() - t0)) end
   if not mutations then return end
-  local f = io.open("lua/flora/pattern_touches.lua")
+  local f = assert(io.open("lua/flora/pattern_touches.lua"))
   local src = f:read("a")
   f:close()
   local real, real_pattern = package.loaded["flora.pattern_touches"], package.loaded["flora.pattern"]
@@ -313,7 +313,7 @@ function M.run(backdrop, mutations)
           end
         end
         local c = k.cell]], "deviant", { "stars_8_4" } },
-    { "whole cells in the field", [[if deg[k] >= 0.6 * top and not taken[k] then]], [[if not taken[k] then]], "deviant", { "stars_8_4" }, { 1, 2, 3, 4, 5, 6, 7, 8, 9, 10 } },
+    { "whole cells in the field", [[if deg[k] >= 0.6 * top and area(k.cell) >= big and not taken[k] then]], [[if not taken[k] then]], "deviant", { "stars_8_4" }, { 1, 2, 3, 4, 5, 6, 7, 8, 9, 10 } },
     { "the plate's distance from the text", [[ny < ctx.top - med and text_dist(nx, ny) >= field]], [[ny < ctx.top - med]], "loose", { "stars_8_4" }, { 1, 2, 3, 4, 5, 6, 7, 8 } },
     { "the same seed", [[local rng = ctx.rng:fork("pattern touches")]], [[local rng = ctx.rng:fork("pattern touches" .. tostring({}))]], "seed", { "stars_8_4" } },
   }) do

@@ -437,6 +437,12 @@ function M.plan(S, ctx)
   -- whole rows.
   if S.deviant then
     local deg, top = degrees(whole, med)
+    -- No smaller than most: the small square star of stars_8_4 is no cell
+    -- to turn.
+    local areas = {}
+    for _, k in ipairs(whole) do areas[#areas + 1] = area(k.cell) end
+    table.sort(areas)
+    local big = 0.8 * (areas[math.ceil(#areas / 2)] or 0)
     local by_side = {}
     local function side_of(c)
       if strip then
@@ -457,7 +463,7 @@ function M.plan(S, ctx)
       elseif c.y > t.y1 then return "t" elseif c.y < t.y0 then return "b" end
     end
     for _, k in ipairs(whole) do
-      if deg[k] >= 0.6 * top and not taken[k] then
+      if deg[k] >= 0.6 * top and area(k.cell) >= big and not taken[k] then
         local s = side_of(k.cell)
         if s then
           by_side[s] = by_side[s] or {}
