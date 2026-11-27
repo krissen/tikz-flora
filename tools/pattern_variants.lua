@@ -50,14 +50,14 @@ for _, k in ipairs({ "off", "on", "core", "cells", "knobs", "deviant", "stray" }
     backdrops = { "light" }, probe = true }
 end
 
--- deviant and stray: three seeds, off and on, on the 16:9 slide.
+-- deviant (off, on, 3) and stray (off, on): three seeds, on the 16:9 slide.
 local SEEDS = { 11, 12, 13 }
 local ONE_PATTERNS = { stars_8_4 = true, kikko = true }
 for _, key in ipairs({ "deviant", "stray" }) do
   for _, seed in ipairs(SEEDS) do
-    for _, on in ipairs({ "off", "on" }) do
+    for _, on in ipairs(key == "deviant" and { "off", "on", "3" } or { "off", "on" }) do
       variants[#variants + 1] = { name = string.format("%s-%s-%d", key, on, seed), set = key,
-        setup = COLOURWAY .. (on == "on" and (", " .. key .. "=on") or ""), seed = seed,
+        setup = COLOURWAY .. (on ~= "off" and (", " .. key .. "=" .. on) or ""), seed = seed,
         patterns = ONE_PATTERNS, slide = true, backdrops = { "light" } }
     end
   end
@@ -65,8 +65,8 @@ end
 
 -- perimeter: the keys in a 12 mm band round the paper, a corner and a side
 -- in close-up (the hero is not drawn there).
-local PERIMETER = { off = "", glint = ", glint=on", knobs = ", glint=knobs", cells = ", glint=cells", deviant = ", deviant=on", stray = ", stray=on" }
-local PERIMETER_ORDER = { "off", "glint", "knobs", "cells", "deviant", "stray" }
+local PERIMETER = { off = "", glint = ", glint=on", knobs = ", glint=knobs", cells = ", glint=cells", deviant = ", deviant=on", deviant3 = ", deviant=3", stray = ", stray=on" }
+local PERIMETER_ORDER = { "off", "glint", "knobs", "cells", "deviant", "deviant3", "stray" }
 for _, k in ipairs(PERIMETER_ORDER) do
   variants[#variants + 1] = { name = "perimeter-" .. k, set = "perimeter", setup = COLOURWAY .. ", perimeterwidth=12" .. PERIMETER[k],
     layout = "perimeter", keep_text = true, patterns = { stars_8_4 = true, asanoha = true }, backdrops = { "light" }, probe = true }

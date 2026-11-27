@@ -8,8 +8,9 @@ This page is about the tools that draw them for comparison.
 `just pattern-touches OUT SET` (tools/pattern-touches.sh) bakes the layouts (tools/pattern-bake.sh: tex/lorem.tex and the 16:9 slide of tools/pattern-slide.tex), renders the variants of tools/pattern_variants.lua that carry that `set` with tools/pattern_roles.lua, and lays out OUT/sheets/:
 
 - `gold`: per pattern, today's field and `glint=on`, `core`, `cells`, `knobs` and `herogilding=on` side by side, field and hero, on paper and on the dark backdrop.
-- `deviant` and `stray`: per pattern, three seeds, the whole 16:9 page and a close-up, off and on.
-- `perimeter`: per pattern, a corner and a side of a 12 mm band, off and with each key.
+- `deviant`: per pattern, three seeds, the whole 16:9 page off, with `on` and with `3`, and a close-up of the first turned cell.
+- `stray`: per pattern, three seeds, the whole 16:9 page and a close-up, off and on.
+- `perimeter`: per pattern, a corner and a side of a 12 mm band, off and with each key (`deviant` on and as 3).
 - `inventory`: inventory.tsv, one pattern a row: its roles, the field's ink, the gold's share of it and the places each key lays.
 
 Under each tile stand the gold's share of the field's ink (pixels at 50 dpi more than half opaque; the gold is painted again as pure magenta, in `probe/`, and counted) and the places laid.

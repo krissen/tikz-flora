@@ -163,17 +163,20 @@ sheet_one() {
       H=$(tsv "$on" light "slide-$pat" 8)
       fx=$(tsv "$on" light "slide-$pat" 9)
       fy=$(tsv "$on" light "slide-$pat" 10)
-      n=$(tsv "$on" light "slide-$pat" 11)
-      l=$(tsv "$on" light "slide-$pat" 12)
-      log=$(tsv "$on" light "slide-$pat" 14 | cut -c1-70)
       row=""
-      for v in "$off" "$on"; do
+      # The page off, on and, for deviant, with three.
+      whole="$off $on"
+      [ "$key" = deviant ] && whole="$whole $key-3-$seed"
+      for v in $whole; do
         compose "$R/$v/light/slide-$pat.pdf" "$OUT/bake/text-slide-100.png" light "$T/s.png" 100
         magick "$T/s.png" -resize 560x "$T/whole.png"
-        if [ "$v" = "$on" ]; then
-          caption "$T/whole.png" "$T/w-$v.png" "seed $seed, on: $n turned, $l stray  $log"
-        else
+        if [ "$v" = "$off" ]; then
           caption "$T/whole.png" "$T/w-$v.png" "seed $seed, off"
+        else
+          cnt=$(tsv "$v" light "slide-$pat" 11)
+          st=$(tsv "$v" light "slide-$pat" 12)
+          lg=$(tsv "$v" light "slide-$pat" 14 | cut -c1-70)
+          caption "$T/whole.png" "$T/w-$v.png" "seed $seed, ${v%-*}: $cnt turned, $st stray  $lg"
         fi
         row="$row $T/w-$v.png"
       done
@@ -204,7 +207,7 @@ sheet_perimeter() {
   for pat in $(patterns_of perimeter-off); do
     corner=""
     side=""
-    for k in off glint knobs cells deviant stray; do
+    for k in off glint knobs cells deviant deviant3 stray; do
       v="perimeter-$k"
       compose "$R/$v/light/$pat.pdf" "$OUT/bake/text-4-$DD.png" light "$T/full.png" $DD
       places=$(tsv "$v" light "$pat" 5)
@@ -212,7 +215,8 @@ sheet_perimeter() {
       stray=$(tsv "$v" light "$pat" 12)
       s=$(share "$R/$v/light/probe/$pat.pdf")
       note="gold ${s}% of the ink, ${places:--} places"
-      [ "$k" = deviant ] && note="$devs turned"
+      [ "$k" = deviant ] && note="$devs turned (on)"
+      [ "$k" = deviant3 ] && note="$devs turned (3)"
       [ "$k" = stray ] && note="$stray stray"
       # The corner at the top left; the side, the left side's middle, or
       # for deviant and stray the cm mm round the first one's place.
