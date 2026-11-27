@@ -1,5 +1,5 @@
 -- The invariants of the pattern touches (lua/flora/pattern_touches.lua; the
--- settings glint, herogold, deviant and loose) over six patterns of
+-- settings glint, herogilding, deviant and stray) over six patterns of
 -- different kinds, a field beside the text and a perimeter band, on one
 -- backdrop, and proof that each fails when it is broken (the module's
 -- source mutated and the check run again). tests/test_pattern_touches_matrix_1.lua
@@ -10,7 +10,7 @@
 --                none elsewhere (counted from the painting); a core that is
 --                drawn is gold, one that is not is logged
 --   deviant      whole cells inside the field, at most one along a side
---   loose        at most one plate, in the page, keeping the field's own
+--   stray        at most one plate, in the page, keeping the field's own
 --                distance from what it keeps clear of
 --   unsupported  a pattern without what a key needs logs it and is painted
 --                as without the key
@@ -28,7 +28,7 @@ M.LAYOUTS = {
   perimeter = { width = 360, height = 480, text = { x0 = 60, y0 = 60, x1 = 300, y1 = 420 }, layout = "perimeter", perimeter_width = 24, seed = 5 },
 }
 M.LAYOUT_ORDER = { "field", "perimeter" }
-M.KEYS = { "glint", "herogold", "deviant", "loose" }
+M.KEYS = { "glint", "herogilding", "deviant", "stray" }
 
 local function dist(ax, ay, bx, by) return math.sqrt((ax - bx) ^ 2 + (ay - by) ^ 2) end
 local function rect_dist(x, y, r)
@@ -106,7 +106,7 @@ function M.off(backdrop, only)
   for _, name in ipairs(only or M.PATTERNS) do
     for _, layout in ipairs(M.LAYOUT_ORDER) do
       local plain = page(name, layout, backdrop):body()
-      local off = page(name, layout, backdrop, { glint = "off", herogold = "off", deviant = "off", loose = "off" })
+      local off = page(name, layout, backdrop, { glint = "off", herogilding = "off", deviant = "off", stray = "off" })
       pages = pages + 2
       if off:body() ~= plain then fs[#fs + 1] = string.format("%s %s %s: keys set to off change the page", name, layout, backdrop) end
       if off.pattern.touches then fs[#fs + 1] = string.format("%s %s %s: keys set to off leave a report", name, layout, backdrop) end
@@ -225,22 +225,22 @@ function M.deviant(backdrop, only, seeds)
   return pages, fs
 end
 
--- The loose plate: at most one, on the page, no nearer what the field keeps
+-- The stray plate: at most one, on the page, no nearer what the field keeps
 -- clear of than the field's own cells.
-function M.loose(backdrop, only, seeds)
+function M.stray(backdrop, only, seeds)
   local fs, pages = {}, 0
   for _, name in ipairs(only or M.PATTERNS) do
     for _, layout in ipairs(M.LAYOUT_ORDER) do
       for _, seed in ipairs(seeds or { M.LAYOUTS[layout].seed }) do
-        local tag = string.format("%s %s %s seed %d loose", name, layout, backdrop, seed)
+        local tag = string.format("%s %s %s seed %d stray", name, layout, backdrop, seed)
         local L = M.LAYOUTS[layout]
         local reserve = { { 20, 20, 50, 50 } }
-        local pt = page(name, layout, backdrop, { loose = "on" }, { seed = seed, reserve = reserve })
+        local pt = page(name, layout, backdrop, { stray = "on" }, { seed = seed, reserve = reserve })
         pages = pages + 1
         if require("flora.pattern_touches").NO_CELLS[name] then
           if pt:body() ~= page(name, layout, backdrop, nil, { seed = seed, reserve = reserve }):body() then fs[#fs + 1] = tag .. ": a pattern without cells changed the page" end
         else
-          local l = pt.pattern.touches and pt.pattern.touches.loose
+          local l = pt.pattern.touches and pt.pattern.touches.stray
           if l and layout == "field" then
             local keep = { { L.text.x0, L.text.y0, L.text.x1, L.text.y1 }, reserve[1] }
             local field = math.huge
@@ -267,7 +267,7 @@ end
 -- The same seed gives the same page, every key on.
 function M.seed(backdrop, only)
   local fs, pages = {}, 0
-  local all = { glint = "on", herogold = "on", deviant = "on", loose = "on" }
+  local all = { glint = "on", herogilding = "on", deviant = "on", stray = "on" }
   for _, name in ipairs(only or M.PATTERNS) do
     for _, layout in ipairs(M.LAYOUT_ORDER) do
       local a = page(name, layout, backdrop, all):body()
@@ -284,7 +284,7 @@ end
 function M.run(backdrop, mutations)
   local t0 = os.clock()
   local total = 0
-  for _, check in ipairs({ "off", "gold", "deviant", "loose", "seed" }) do
+  for _, check in ipairs({ "off", "gold", "deviant", "stray", "seed" }) do
     local pages, fs = M[check](backdrop)
     total = total + pages
     H.check(pages > 0, check .. ": no pages")
@@ -314,7 +314,7 @@ function M.run(backdrop, mutations)
         end
         local c = k.cell]], "deviant", { "stars_8_4" } },
     { "whole cells in the field", [[if deg[k] >= 0.6 * top and area(k.cell) >= big and not taken[k] then]], [[if not taken[k] then]], "deviant", { "stars_8_4" }, { 1, 2, 3, 4, 5, 6, 7, 8, 9, 10 } },
-    { "the plate's distance from the text", [[ny < ctx.top - med and text_dist(nx, ny) >= field]], [[ny < ctx.top - med]], "loose", { "stars_8_4" }, { 1, 2, 3, 4, 5, 6, 7, 8 } },
+    { "the plate's distance from the text", [[ny < ctx.top - med and text_dist(nx, ny) >= field]], [[ny < ctx.top - med]], "stray", { "stars_8_4" }, { 1, 2, 3, 4, 5, 6, 7, 8 } },
     { "the same seed", [[local rng = ctx.rng:fork("pattern touches")]], [[local rng = ctx.rng:fork("pattern touches" .. tostring({}))]], "seed", { "stars_8_4" } },
   }) do
     local i, j = src:find(m[2], 1, true)

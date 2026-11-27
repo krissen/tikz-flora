@@ -1,6 +1,6 @@
 -- The touches a pattern field may carry, each a setting that is off unless
 -- set (settings.lua): where gold lies in the field, gold on the hero, a
--- deviant cell and a loose plate. A page without them is painted as it is
+-- deviant cell and a stray plate. A page without them is painted as it is
 -- without this module.
 --
 --   glint      where gold lies in the field, in place of the pattern's own:
@@ -8,10 +8,10 @@
 --                core   in the band's core (the accent and the core gold)
 --                cells  a few whole cells gilded, chosen by seed
 --                knobs  a gold knob at the middle of every cell
---   herogold   the hero's lines in gold; it combines with any glint
+--   herogilding   the hero's lines in gold; it combines with any glint
 --   deviant    at most one whole cell on each side is turned and painted
 --              in another colour, its place drawn by seed
---   loose      one cell has come loose from the field's edge and lies a
+--   stray      one cell has come loose from the field's edge and lies a
 --              little way outside it, a dotted path leading back to the
 --              gap it left
 --
@@ -62,7 +62,7 @@ M.MIN = { cells = 2, crossings = 5 }
 M.APART = { cells = 3.2, crossings = 2.6 }
 
 -- The state for a page, or nil when no key is set. `want` holds the keys'
--- values (glint, herogold, deviant, loose); `warn` takes a line for the
+-- values (glint, herogilding, deviant, stray); `warn` takes a line for the
 -- page's log. A value that is none of the key's is logged and the key left
 -- off; so is a key the pattern cannot take.
 function M.new(want, p, warn, pt)
@@ -87,19 +87,19 @@ function M.new(want, p, warn, pt)
       end
     end
   end
-  for _, k in ipairs({ "herogold", "deviant", "loose" }) do
+  for _, k in ipairs({ "herogilding", "deviant", "stray" }) do
     local v = want[k]
     if v ~= nil and v ~= "off" then
       if v ~= "on" then
         no(k, v, "on, off")
-      elseif k ~= "herogold" and M.NO_CELLS[p.name] then
+      elseif k ~= "herogilding" and M.NO_CELLS[p.name] then
         warn(string.format("%s=on: %s has no cells to %s (%s); it is painted as it is", k, p.name, k == "deviant" and "turn" or "move", M.NO_CELLS[p.name]))
       else
         S[k] = true
       end
     end
   end
-  if not (S.gold or S.herogold or S.deviant or S.loose) then return nil end
+  if not (S.gold or S.herogilding or S.deviant or S.stray) then return nil end
   pt.touches_report = pt.touches_report or { places = 0, deviants = {} }
   S.report = pt.touches_report
   return S
@@ -108,13 +108,13 @@ end
 -- The role colours the keys set on `base` (pattern.lua's role_inks). Keeps
 -- a copy for what lies outside the field (the hero, the border's rule and
 -- frame): S.outer, the colours as they were, the hero's lines gold for
--- herogold.
+-- herogilding.
 function M.colours(S, base)
   local pal = Paint.palette
   local outer = {}
   for k, v in pairs(base) do outer[k] = v end
   S.outer = outer
-  if S.herogold then
+  if S.herogilding then
     outer.band, outer.band0 = pal.gold, pal.gold
     outer.line0 = Paint.mix(pal.gold, pal.paper, 0.45)
   end
@@ -336,14 +336,14 @@ function M.plan(S, ctx)
   rep.spacing = med
   rep.deviants = rep.deviants or {}
   rep.at = rep.at or {}
-  -- The loose plate first, so that a deviant is not the cell that leaves.
+  -- The stray plate first, so that a deviant is not the cell that leaves.
   -- Of the four strips of a band of whole rows one carries it, drawn by
   -- seed: one cell on the page.
   local taken = {}
-  if S.loose and strip and strip.side ~= ctx.rng:fork("loose strip"):int(1, 4) then
-    S.loose = false
+  if S.stray and strip and strip.side ~= ctx.rng:fork("stray strip"):int(1, 4) then
+    S.stray = false
   end
-  if S.loose then
+  if S.stray then
     -- A cell at the field's edge (few neighbours) that is no smaller than
     -- most: the small square star of stars_8_4 is not the plate to show.
     local areas = {}
@@ -416,7 +416,7 @@ function M.plan(S, ctx)
         end
       end
       done.dots = dots
-      at(done.k).loose = done
+      at(done.k).stray = done
       local points = {}
       local x1, y1 = page_xy(bx, by)
       points[1] = { x1, y1 }
@@ -425,13 +425,13 @@ function M.plan(S, ctx)
         points[#points + 1] = { x, y }
       end
       local gx, gy = page_xy(ax, ay)
-      rep.loose = { x = gx, y = gy, to_x = x1, to_y = y1, dots = #dots, points = points }
+      rep.stray = { x = gx, y = gy, to_x = x1, to_y = y1, dots = #dots, points = points }
     else
-      ctx.warn(string.format("loose=on: no cell of %s at the field's edge has room outside it, clear of the text as the field is; none is loosened", p.name))
+      ctx.warn(string.format("stray=on: no cell of %s at the field's edge has room outside it, clear of the text as the field is; none is loosened", p.name))
     end
   end
   -- Deviants: at most one on each side, a whole cell inside the field (not
-  -- a loose cell at its edge: it has most of the neighbours a cell of the
+  -- a stray cell at its edge: it has most of the neighbours a cell of the
   -- field has) and clear of the paper's edge. A side is a side of the
   -- text, of a perimeter band's inner rectangle, or the strip of a band of
   -- whole rows.
@@ -486,7 +486,7 @@ function M.plan(S, ctx)
     end
     if laid == 0 then ctx.warn("deviant=on: no whole cell inside the field lies beside the text; none is turned") end
   end
-  if S.herogold and not ctx.hero then ctx.warn("herogold=on: the page has no hero to paint in gold") end
+  if S.herogilding and not ctx.hero then ctx.warn("herogilding=on: the page has no hero to paint in gold") end
   -- Gold.
   local g = S.gold
   local laid = 0
@@ -573,7 +573,7 @@ function M.painters(plan, pl, c, ink, pt)
   end
   local project
   if pl.deviant then project = turn(pl.deviant.theta, c.x, c.y, 0, 0) end
-  if pl.loose then project = turn(pl.loose.turn, c.x, c.y, pl.loose.dx, pl.loose.dy) end
+  if pl.stray then project = turn(pl.stray.turn, c.x, c.y, pl.stray.dx, pl.stray.dy) end
   local prev
   local h = {}
   function h.enter()
@@ -596,9 +596,9 @@ function M.painters(plan, pl, c, ink, pt)
       if path then pt:fill(path, ink.gold, 1) end
     end
     c.paint(pt, c, ink2)
-    if pl.loose then
+    if pl.stray then
       local r, circles = math.max(0.6, 0.055 * med), {}
-      for _, d in ipairs(pl.loose.dots) do circles[#circles + 1] = disc(d[1], d[2], r) end
+      for _, d in ipairs(pl.stray.dots) do circles[#circles + 1] = disc(d[1], d[2], r) end
       if #circles > 0 then
         pt:project(prev)
         pt:fill(circles, ink.band, 1, { many = true })

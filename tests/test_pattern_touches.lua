@@ -1,5 +1,5 @@
 -- The pattern touches (lua/flora/pattern_touches.lua; the settings glint,
--- herogold, deviant and loose): off unless set, a log line for a value or a
+-- herogilding, deviant and stray): off unless set, a log line for a value or a
 -- pattern they cannot take, and the places they lay.
 local H = dofile("tests/helper.lua")
 local Compose = require("flora.compose")
@@ -32,7 +32,7 @@ end
 
 -- The keys are settings: they parse, default to off, and an unknown value
 -- is an error as any key's.
-for _, k in ipairs({ "glint", "herogold", "deviant", "loose" }) do
+for _, k in ipairs({ "glint", "herogilding", "deviant", "stray" }) do
   H.check(Settings.PATTERN[k] == "off", k .. " is not off by default")
   H.check(Settings.parse(k .. "=off")[k] == "off", k .. "=off does not parse")
   H.check(not pcall(Settings.parse, k .. "=silver"), k .. "=silver was accepted")
@@ -44,7 +44,7 @@ H.check(not pcall(Settings.parse, "glint=crossings"), "glint=crossings was accep
 -- them paints, and the page keeps no report.
 for _, p in ipairs(Patterns.list) do
   local plain = page(p.name):body()
-  local off = page(p.name, { glint = "off", herogold = "off", deviant = "off", loose = "off" })
+  local off = page(p.name, { glint = "off", herogilding = "off", deviant = "off", stray = "off" })
   H.check(off:body() == plain, p.name .. ": keys set to off change the page")
   H.check(off.pattern.touches == nil, p.name .. ": keys set to off leave a report")
 end
@@ -56,7 +56,7 @@ do
   local g = page(nil, { glint = "silver" })
   H.check(warned(g, "glint=silver is not one of off, on, core, cells, knobs"), "unknown glint value not logged")
   H.check(g:body() == plain, "an unknown glint value changed the page")
-  for _, key in ipairs({ "herogold", "deviant", "loose" }) do
+  for _, key in ipairs({ "herogilding", "deviant", "stray" }) do
     local d = page(nil, { [key] = "maybe" })
     H.check(warned(d, key .. "=maybe is not one of on, off"), key .. ": unknown value not logged")
     H.check(d:body() == plain, key .. ": an unknown value changed the page")
@@ -84,7 +84,7 @@ end
 -- A pattern a key cannot use says so, and is painted as without the key.
 for name, why in pairs(Touches.NO_CELLS) do
   local plain = page(name):body()
-  for _, key in ipairs({ "deviant", "loose" }) do
+  for _, key in ipairs({ "deviant", "stray" }) do
     local pt = page(name, { [key] = "on" })
     H.check(warned(pt, key .. "=on: " .. name .. " has no cells to " .. (key == "deviant" and "turn" or "move") .. " (" .. why .. ")"), name .. ": " .. key .. " not logged")
     H.check(pt:body() == plain, name .. ": " .. key .. " changed the page")
@@ -104,22 +104,22 @@ for name in pairs(Touches.NO_CENTRES) do
   H.check(pt:body() == page(name):body(), name .. ": glint=knobs changed the page")
 end
 
--- herogold paints the hero's lines in gold and combines with a glint; with no
+-- herogilding paints the hero's lines in gold and combines with a glint; with no
 -- hero on the page it logs that and paints the page as it is.
 do
   local with_hero = { pattern_hero = "rosette", layout = "right", text = { x0 = 40, y0 = 40, x1 = 200, y1 = 230 }, width = 453, height = 256 }
   local plain = page("stars_8_4", nil, with_hero)
-  local gold = page("stars_8_4", { herogold = "on" }, with_hero)
-  H.check(plain.pattern.hero ~= nil, "the page has no hero to test herogold on")
-  H.check(gold:body() ~= plain:body() and gold.pattern_warnings == nil, "herogold=on did not paint the hero in gold")
-  local both = page("stars_8_4", { herogold = "on", glint = "on" }, with_hero)
-  H.check(both:body() ~= gold:body() and both.pattern.touches.places > 0, "herogold and glint do not combine")
-  local none = page("stars_8_4", { herogold = "on" })
-  H.check(warned(none, "herogold=on: the page has no hero") and none:body() == page("stars_8_4"):body(), "herogold without a hero is not logged and painted as it is")
+  local gold = page("stars_8_4", { herogilding = "on" }, with_hero)
+  H.check(plain.pattern.hero ~= nil, "the page has no hero to test herogilding on")
+  H.check(gold:body() ~= plain:body() and gold.pattern_warnings == nil, "herogilding=on did not paint the hero in gold")
+  local both = page("stars_8_4", { herogilding = "on", glint = "on" }, with_hero)
+  H.check(both:body() ~= gold:body() and both.pattern.touches.places > 0, "herogilding and glint do not combine")
+  local none = page("stars_8_4", { herogilding = "on" })
+  H.check(warned(none, "herogilding=on: the page has no hero") and none:body() == page("stars_8_4"):body(), "herogilding without a hero is not logged and painted as it is")
 end
 
 -- The last frame of a growth is the page, with the keys on.
-for _, set in ipairs({ { glint = "knobs" }, { glint = "on" }, { deviant = "on" }, { loose = "on" } }) do
+for _, set in ipairs({ { glint = "knobs" }, { glint = "on" }, { deviant = "on" }, { stray = "on" } }) do
   Paint.reset_resources()
   local plan = P.plan(spec("stars_8_4", set), { resolution = 1 })
   H.check(plan.final:body() == page("stars_8_4", set):body(), "growth: the last frame differs from the page")
@@ -158,7 +158,7 @@ end
 
 local SLIDE = { width = 453, height = 256, text = { x0 = 34, y0 = 30, x1 = 256, y1 = 225 }, layout = "right" }
 
--- A deviant is a whole cell inside the field, never a loose edge cell or a
+-- A deviant is a whole cell inside the field, never a stray edge cell or a
 -- fragment of one: at least 60 % of the neighbours a cell has in the field.
 for _, name in ipairs({ "stars_8_4", "kikko", "asanoha" }) do
   for seed = 1, 20 do
@@ -210,13 +210,13 @@ do
   rawset(Touches, "painters", painters)
 end
 
--- A loose plate and its path keep the field's own distance from the text
+-- A stray plate and its path keep the field's own distance from the text
 -- and clear of every reserved rectangle, or none is laid.
 for _, name in ipairs({ "stars_8_4", "kikko" }) do
   for seed = 1, 12 do
     local reserve = { { 300, 60, 340, 100 } }
-    local pt = page(name, { loose = "on" }, { width = SLIDE.width, height = SLIDE.height, text = SLIDE.text, layout = SLIDE.layout, seed = seed, reserve = reserve })
-    local l = pt.pattern.touches.loose
+    local pt = page(name, { stray = "on" }, { width = SLIDE.width, height = SLIDE.height, text = SLIDE.text, layout = SLIDE.layout, seed = seed, reserve = reserve })
+    local l = pt.pattern.touches.stray
     if l then
       local keep = { { 34, 30, 256, 225 }, reserve[1] }
       local field = math.huge
@@ -227,7 +227,7 @@ for _, name in ipairs({ "stars_8_4", "kikko" }) do
       for _, q in ipairs(l.points or {}) do
         for _, r in ipairs(keep) do
           H.check(rect_dist(q[1], q[2], r) >= field - 0.5 * pt.pattern.touches.spacing - 1e-6,
-            string.format("%s seed %d: a point of the loose plate %.1f from a rectangle the field keeps %.1f from", name, seed, rect_dist(q[1], q[2], r), field))
+            string.format("%s seed %d: a point of the stray plate %.1f from a rectangle the field keeps %.1f from", name, seed, rect_dist(q[1], q[2], r), field))
         end
       end
     end

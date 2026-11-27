@@ -24,7 +24,7 @@
 --   probe    render the gold as pure magenta again, as probe/NAME.pdf, for
 --            tools/pattern-touches.sh to measure the gold's share by
 -- and OUTDIR/touches.tsv gets a row for every page: what the touches laid
--- (places, the cells' spacing, where the first deviant or loose plate lies
+-- (places, the cells' spacing, where the first deviant or stray plate lies
 -- in mm from the page's lower left corner), the pattern's roles and the
 -- page's log.
 --
@@ -187,18 +187,18 @@ end
 
 -- A row of touches.tsv for the page just rendered: variant, backdrop, name,
 -- seed, places the touches laid, the cells' spacing (mm), the page's
--- size and where the first deviant or loose plate lies (mm, from the
--- lower left corner), how many deviants, whether a plate is loose, the
+-- size and where the first deviant or stray plate lies (mm, from the
+-- lower left corner), how many deviants, whether a plate is stray, the
 -- pattern's roles and the page's log.
 local function touches_row(v, bd, name, spec, pt, p)
   local pp = pt and pt.pattern
   local r = pp and pp.touches or {}
   local fx, fy
   if r.deviants and r.deviants[1] then fx, fy = r.deviants[1].x, r.deviants[1].y end
-  if r.loose then fx, fy = (r.loose.x + r.loose.to_x) / 2, (r.loose.y + r.loose.to_y) / 2 end
+  if r.stray then fx, fy = (r.stray.x + r.stray.to_x) / 2, (r.stray.y + r.stray.to_y) / 2 end
   local function mm(x) return x and string.format("%.1f", x * MM) or "" end
   ptsv:write(table.concat({ v.name, bd, name, tostring(v.seed or SEED), tostring(r.places or ""), mm(r.spacing),
-    mm(spec.width), mm(spec.height), mm(fx), mm(fy), tostring(r.deviants and #r.deviants or 0), r.loose and "1" or "0",
+    mm(spec.width), mm(spec.height), mm(fx), mm(fy), tostring(r.deviants and #r.deviants or 0), r.stray and "1" or "0",
     table.concat(p.roles, ","), table.concat(pp and pp.warnings or {}, " | ") }, "\t") .. "\n")
 end
 

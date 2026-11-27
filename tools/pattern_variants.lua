@@ -35,7 +35,7 @@ for _, g in ipairs(GLINT_ORDER) do
   variants[#variants + 1] = { name = "gold-" .. g, set = "gold", setup = COLOURWAY .. GLINTS[g],
     patterns = GOLD_PATTERNS, heroes = { "rosette" }, probe = true }
 end
-variants[#variants + 1] = { name = "gold-hero", set = "gold", setup = COLOURWAY .. ", herogold=on",
+variants[#variants + 1] = { name = "gold-hero", set = "gold", setup = COLOURWAY .. ", herogilding=on",
   patterns = GOLD_PATTERNS, heroes = { "rosette" }, probe = true }
 
 -- inventory: every pattern, today's field and each key once, on paper, for
@@ -43,17 +43,17 @@ variants[#variants + 1] = { name = "gold-hero", set = "gold", setup = COLOURWAY 
 local Patterns = require("flora.patterns")
 local ALL = {}
 for _, p in ipairs(Patterns.list) do ALL[p.name] = true end
-for _, k in ipairs({ "off", "on", "core", "cells", "knobs", "deviant", "loose" }) do
+for _, k in ipairs({ "off", "on", "core", "cells", "knobs", "deviant", "stray" }) do
   local extra = ""
-  if k == "deviant" or k == "loose" then extra = ", " .. k .. "=on" else extra = GLINTS[k] end
+  if k == "deviant" or k == "stray" then extra = ", " .. k .. "=on" else extra = GLINTS[k] end
   variants[#variants + 1] = { name = "inventory-" .. k, set = "inventory", setup = COLOURWAY .. extra, patterns = ALL,
     backdrops = { "light" }, probe = true }
 end
 
--- deviant and loose: three seeds, off and on, on the 16:9 slide.
+-- deviant and stray: three seeds, off and on, on the 16:9 slide.
 local SEEDS = { 11, 12, 13 }
 local ONE_PATTERNS = { stars_8_4 = true, kikko = true }
-for _, key in ipairs({ "deviant", "loose" }) do
+for _, key in ipairs({ "deviant", "stray" }) do
   for _, seed in ipairs(SEEDS) do
     for _, on in ipairs({ "off", "on" }) do
       variants[#variants + 1] = { name = string.format("%s-%s-%d", key, on, seed), set = key,
@@ -65,8 +65,8 @@ end
 
 -- perimeter: the keys in a 12 mm band round the paper, a corner and a side
 -- in close-up (the hero is not drawn there).
-local PERIMETER = { off = "", glint = ", glint=on", knobs = ", glint=knobs", cells = ", glint=cells", deviant = ", deviant=on", loose = ", loose=on" }
-local PERIMETER_ORDER = { "off", "glint", "knobs", "cells", "deviant", "loose" }
+local PERIMETER = { off = "", glint = ", glint=on", knobs = ", glint=knobs", cells = ", glint=cells", deviant = ", deviant=on", stray = ", stray=on" }
+local PERIMETER_ORDER = { "off", "glint", "knobs", "cells", "deviant", "stray" }
 for _, k in ipairs(PERIMETER_ORDER) do
   variants[#variants + 1] = { name = "perimeter-" .. k, set = "perimeter", setup = COLOURWAY .. ", perimeterwidth=12" .. PERIMETER[k],
     layout = "perimeter", keep_text = true, patterns = { stars_8_4 = true, asanoha = true }, backdrops = { "light" }, probe = true }

@@ -93,7 +93,7 @@ frame-flora set="measure" out="build/frame-flora" seeds="11" opts="":
     {{PYTHON}} -I tools/frame_flora.py "{{out}}/{{set}}" "{{set}}"
 
 # Sheets of the pattern touches (docs/pattern-touches.md): SET is gold,
-# deviant, loose, perimeter or inventory; OUT gets the baked layouts, the
+# deviant, stray, perimeter or inventory; OUT gets the baked layouts, the
 # renders and sheets/. E.g. `just pattern-touches build/pattern-touches gold`.
 pattern-touches out set:
     tools/pattern-touches.sh "{{out}}" "{{set}}"

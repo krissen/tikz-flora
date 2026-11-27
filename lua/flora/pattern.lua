@@ -1669,8 +1669,8 @@ function M.paint(spec, pt)
   -- The touches (pattern_touches.lua), off unless their keys are set. What
   -- lies outside the field (the hero, the border's rule and frame) keeps
   -- the colours it had.
-  local touches = Touches.new({ glint = key(spec, "glint"), herogold = key(spec, "herogold"),
-    deviant = key(spec, "deviant"), loose = key(spec, "loose") }, p, function(msg) M.warn(pt, msg) end, pt)
+  local touches = Touches.new({ glint = key(spec, "glint"), herogilding = key(spec, "herogilding"),
+    deviant = key(spec, "deviant"), stray = key(spec, "stray") }, p, function(msg) M.warn(pt, msg) end, pt)
   local outer_base = base
   if touches then
     Touches.colours(touches, base)

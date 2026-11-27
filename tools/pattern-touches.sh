@@ -1,6 +1,6 @@
 #!/bin/sh
 # Sheets of the pattern touches (lua/flora/pattern_touches.lua's settings
-# glint, herogold, deviant and loose): the variants of
+# glint, herogilding, deviant and stray): the variants of
 # tools/pattern_variants.lua that carry a `set`, rendered by
 # tools/pattern_roles.lua, each sheet one labelled image per question.
 #
@@ -8,11 +8,11 @@
 #
 # SET is one of:
 #   gold       where the gold lies, per pattern: today's field, then
-#              glint=on, core, cells, knobs and herogold=on side by side, the
+#              glint=on, core, cells, knobs and herogilding=on side by side, the
 #              field and the hero, on paper and on the dark backdrop
 #   deviant    one cell turned and in another colour, per pattern: three
 #              seeds, each the whole 16:9 page and a close-up, off and on
-#   loose      one cell come loose with a dotted path back, as deviant
+#   stray      one cell come loose with a dotted path back, as deviant
 #   perimeter  the keys in a 12 mm band round the paper, per pattern: a
 #              corner and a side in close-up, off and each key on
 #   inventory  inventory.tsv: what each pattern takes, one pattern a row
@@ -35,7 +35,7 @@ DD=150
 SD=300
 R="$OUT/render/$SET"
 T="$OUT/tmp"
-case "$SET" in gold | deviant | loose | perimeter | inventory) ;; *) echo "unknown set $SET" >&2; exit 2 ;; esac
+case "$SET" in gold | deviant | stray | perimeter | inventory) ;; *) echo "unknown set $SET" >&2; exit 2 ;; esac
 mkdir -p "$R" "$OUT/sheets" "$T"
 tools/pattern-bake.sh "$OUT"
 
@@ -132,7 +132,7 @@ sheet_gold() {
           s=$(share "$R/$v/light/probe/$page.pdf")
           label=$g
           case "$g" in
-            off) label="today" ;; on) label="glint=on" ;; hero) label="herogold=on" ;; *) label="glint=$g" ;;
+            off) label="today" ;; on) label="glint=on" ;; hero) label="herogilding=on" ;; *) label="glint=$g" ;;
           esac
           [ "$kind" = hero ] && label="$label, hero"
           caption "$t" "$T/cap-$kind-$bd-$g.png" "$label\\ngold ${s}% of the ink, ${places:--} places"
@@ -150,7 +150,7 @@ sheet_gold() {
 }
 
 # One variant's slide in whole (100 dpi) and a close-up of mm square about
-# the first deviant or loose plate of the "on" row (300 dpi).
+# the first deviant or stray plate of the "on" row (300 dpi).
 sheet_one() {
   key=$1
   mm=$2
@@ -171,7 +171,7 @@ sheet_one() {
         compose "$R/$v/light/slide-$pat.pdf" "$OUT/bake/text-slide-100.png" light "$T/s.png" 100
         magick "$T/s.png" -resize 560x "$T/whole.png"
         if [ "$v" = "$on" ]; then
-          caption "$T/whole.png" "$T/w-$v.png" "seed $seed, on: $n turned, $l loose  $log"
+          caption "$T/whole.png" "$T/w-$v.png" "seed $seed, on: $n turned, $l stray  $log"
         else
           caption "$T/whole.png" "$T/w-$v.png" "seed $seed, off"
         fi
@@ -204,18 +204,18 @@ sheet_perimeter() {
   for pat in $(patterns_of perimeter-off); do
     corner=""
     side=""
-    for k in off glint knobs cells deviant loose; do
+    for k in off glint knobs cells deviant stray; do
       v="perimeter-$k"
       compose "$R/$v/light/$pat.pdf" "$OUT/bake/text-4-$DD.png" light "$T/full.png" $DD
       places=$(tsv "$v" light "$pat" 5)
       devs=$(tsv "$v" light "$pat" 11)
-      loose=$(tsv "$v" light "$pat" 12)
+      stray=$(tsv "$v" light "$pat" 12)
       s=$(share "$R/$v/light/probe/$pat.pdf")
       note="gold ${s}% of the ink, ${places:--} places"
       [ "$k" = deviant ] && note="$devs turned"
-      [ "$k" = loose ] && note="$loose loose"
+      [ "$k" = stray ] && note="$stray stray"
       # The corner at the top left; the side, the left side's middle, or
-      # for deviant and loose the cm mm round the first one's place.
+      # for deviant and stray the cm mm round the first one's place.
       magick "$T/full.png" -crop "${cp}x${cp}+0+0" +repage -resize 300x300 "$T/c.png"
       caption "$T/c.png" "$T/pc-$k.png" "$k, corner\\n$note"
       fx=$(tsv "$v" light "$pat" 9)
@@ -258,10 +258,10 @@ sheet_inventory() {
     today=$GOLD
     measure "$R/inventory-core/light/probe/$pat.pdf" > /dev/null
     core=$GOLD
-    log=$( { for k in on core cells knobs deviant loose; do tsv "inventory-$k" light "$pat" 14; done; } | grep . | tr '\n' ' ' | cut -c1-200)
+    log=$( { for k in on core cells knobs deviant stray; do tsv "inventory-$k" light "$pat" 14; done; } | grep . | tr '\n' ' ' | cut -c1-200)
     printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' "$pat" "$(tsv inventory-off light "$pat" 13)" "$ink" "$today" "$core" \
       "$(tsv inventory-core light "$pat" 5)" "$(tsv inventory-cells light "$pat" 5)" "$(tsv inventory-knobs light "$pat" 5)" \
-      "$(tsv inventory-on light "$pat" 5)" "$(tsv inventory-deviant light "$pat" 11)" "$(tsv inventory-loose light "$pat" 12)" "$log" >> "$f"
+      "$(tsv inventory-on light "$pat" 5)" "$(tsv inventory-deviant light "$pat" 11)" "$(tsv inventory-stray light "$pat" 12)" "$log" >> "$f"
   done
   echo "table: $f"
 }
@@ -270,6 +270,6 @@ case "$SET" in
   inventory) sheet_inventory ;;
   gold) sheet_gold ;;
   deviant) sheet_one deviant 40 ;;
-  loose) sheet_one loose 56 ;;
+  stray) sheet_one stray 56 ;;
   perimeter) sheet_perimeter ;;
 esac
