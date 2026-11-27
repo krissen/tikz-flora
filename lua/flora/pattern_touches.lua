@@ -65,8 +65,8 @@ M.APART = { cells = 3.2, crossings = 2.6 }
 -- values (glint, herogold, deviant, loose); `warn` takes a line for the
 -- page's log. A value that is none of the key's is logged and the key left
 -- off; so is a key the pattern cannot take.
-function M.new(want, p, warn)
-  local S = { pattern = p, report = {} }
+function M.new(want, p, warn, pt)
+  local S = { pattern = p }
   local function no(k, v, list)
     warn(string.format("%s=%s is not one of %s; it is left off", k, tostring(v), list))
   end
@@ -100,6 +100,8 @@ function M.new(want, p, warn)
     end
   end
   if not (S.gold or S.herogold or S.deviant or S.loose) then return nil end
+  pt.touches_report = pt.touches_report or { places = 0, deviants = {} }
+  S.report = pt.touches_report
   return S
 end
 
@@ -280,25 +282,47 @@ local function shape_at(c, dx, dy, pad)
   return { verts = P }
 end
 
--- Which side of the text a cell lies on.
-local function side_of(c, t)
-  if c.x < t.x0 then return "left" end
-  if c.x > t.x1 then return "right" end
-  if c.y > t.y1 then return "above" end
-  if c.y < t.y0 then return "below" end
-  return "beside"
+local function rect_dist(x, y, r)
+  local dx, dy = math.max(r[1] - x, 0, x - r[3]), math.max(r[2] - y, 0, y - r[4])
+  return sqrt(dx * dx + dy * dy)
+end
+
+-- The most neighbours (cells within 1.5 spacings) a cell of `list` has,
+-- and each cell's count.
+local function degrees(list, med)
+  local out, top = {}, 0
+  for _, k in ipairs(list) do
+    local n = #near(list, k, med)
+    out[k] = n
+    if n > top then top = n end
+  end
+  return out, top
 end
 
 -- Choose the places, once the field is kept. `ctx`: kept, size, width,
--- text, W, top, hero, fits (pattern.lua's precondition), rng, warn.
--- Returns the plan: at[k] for each kept cell with something of its own,
--- and `med`, the spacing of the cells.
+-- text, W, top, hero, fits (pattern.lua's precondition), keep (the
+-- rectangles the field keeps clear of), band (a perimeter band's, with its
+-- strip for whole rows), core (whether a band's core is drawn), pt, rng,
+-- warn. Returns the plan: at[k] for each kept cell with something of its
+-- own, and `med`, the spacing of the cells. What is laid goes to the
+-- page's report (S.report), in page coordinates.
 function M.plan(S, ctx)
   local kept, p = ctx.kept, S.pattern
   local rng = ctx.rng:fork("pattern touches")
   local plan = { at = {}, S = S, size = ctx.size }
   local rep = S.report
-  rep.gold, rep.places = S.gold, 0
+  local keep = ctx.keep or {}
+  local pt = ctx.pt
+  local strip = ctx.band and ctx.band.strip
+  local function page_xy(x, y)
+    if pt.frame_fn then return pt.frame_fn(x, y) end
+    return x, y
+  end
+  local function text_dist(x, y)
+    local d = math.huge
+    for _, r in ipairs(keep) do d = math.min(d, rect_dist(x, y, r)) end
+    return d
+  end
   local function at(k)
     plan.at[k] = plan.at[k] or {}
     return plan.at[k]
@@ -310,8 +334,14 @@ function M.plan(S, ctx)
   local med = spacing(kept)
   plan.med = med
   rep.spacing = med
+  rep.deviants = rep.deviants or {}
   -- The loose plate first, so that a deviant is not the cell that leaves.
+  -- Of the four strips of a band of whole rows one carries it, drawn by
+  -- seed: one cell on the page.
   local taken = {}
+  if S.loose and strip and strip.side ~= ctx.rng:fork("loose strip"):int(1, 4) then
+    S.loose = false
+  end
   if S.loose then
     -- A cell at the field's edge (few neighbours) that is no smaller than
     -- most: the small square star of stars_8_4 is not the plate to show.
@@ -330,6 +360,10 @@ function M.plan(S, ctx)
       local j = rng:int(1, i)
       edge[i], edge[j] = edge[j], edge[i]
     end
+    -- The plate lies no nearer what the field keeps clear of than the
+    -- field's own nearest cell does.
+    local field = math.huge
+    for _, k in ipairs(kept) do field = math.min(field, text_dist(k.cell.x, k.cell.y)) end
     local done
     for _, k in ipairs(edge) do
       local c = k.cell
@@ -342,7 +376,7 @@ function M.plan(S, ctx)
         for _, f in ipairs({ 2.8, 2.3, 1.8, 1.4 }) do
           local dx, dy = ux * f * med, uy * f * med
           local nx, ny = c.x + dx, c.y + dy
-          local ok = nx > med and nx < ctx.W - med and ny > med and ny < ctx.top - med
+          local ok = nx > med and nx < ctx.W - med and ny > med and ny < ctx.top - med and text_dist(nx, ny) >= field
           if ok then
             ok = ctx.fits("cell", { shape_at(c, dx, dy, 0) }, ctx.width / 2 + (c.pad or 0) + 0.2 * med)
           end
@@ -376,47 +410,79 @@ function M.plan(S, ctx)
         run = run + dist(px, py, x, y)
         px, py = x, y
         if run >= next_at and dist(x, y, bx, by) > 0.55 * med then
-          if ctx.fits("cell", { { circle = { x, y, 0.3 } } }, 0) then dots[#dots + 1] = { x, y } end
+          if ctx.fits("cell", { { circle = { x, y, 0.3 } } }, 0) and text_dist(x, y) >= field - 0.3 * med then dots[#dots + 1] = { x, y } end
           next_at = next_at + 0.26 * med
         end
       end
       done.dots = dots
       at(done.k).loose = done
-      rep.loose = { x = ax, y = ay, to_x = bx, to_y = by, dots = #dots }
+      local points = {}
+      local x1, y1 = page_xy(bx, by)
+      points[1] = { x1, y1 }
+      for _, d in ipairs(dots) do
+        local x, y = page_xy(d[1], d[2])
+        points[#points + 1] = { x, y }
+      end
+      local gx, gy = page_xy(ax, ay)
+      rep.loose = { x = gx, y = gy, to_x = x1, to_y = y1, dots = #dots, points = points }
     else
-      ctx.warn(string.format("loose=on: no cell of %s at the field's edge has room outside it; none is loosened", p.name))
+      ctx.warn(string.format("loose=on: no cell of %s at the field's edge has room outside it, clear of the text as the field is; none is loosened", p.name))
     end
   end
-  -- Deviants: at most one on each side of the text, whole and clear of the
-  -- paper's edge.
+  -- Deviants: at most one on each side, a whole cell inside the field (not
+  -- a loose cell at its edge: it has most of the neighbours a cell of the
+  -- field has) and clear of the paper's edge. A side is a side of the
+  -- text, of a perimeter band's inner rectangle, or the strip of a band of
+  -- whole rows.
   if S.deviant then
+    local deg, top = degrees(whole, med)
     local by_side = {}
+    local function side_of(c)
+      if strip then
+        if c.x > 2.5 * strip.w and c.x < ctx.W - 2.5 * strip.w and c.y > 0 and c.y < strip.w then return "strip" end
+        return nil
+      end
+      local m = med
+      if not (c.x > m and c.x < ctx.W - m and c.y > m and c.y < ctx.top - m) then return nil end
+      local I = ctx.band and ctx.band.I
+      if I then
+        local out = { l = I[1] - c.x, r = c.x - I[3], b = I[2] - c.y, t = c.y - I[4] }
+        local best, v = nil, 0
+        for k, d in pairs(out) do if d > v then best, v = k, d end end
+        return best
+      end
+      local t = ctx.text
+      if c.x < t.x0 then return "l" elseif c.x > t.x1 then return "r"
+      elseif c.y > t.y1 then return "t" elseif c.y < t.y0 then return "b" end
+    end
     for _, k in ipairs(whole) do
-      local c, m = k.cell, med
-      if c.x > m and c.x < ctx.W - m and c.y > m and c.y < ctx.top - m and not taken[k] then
-        local s = side_of(c, ctx.text)
-        if s ~= "beside" then
+      if deg[k] >= 0.6 * top and not taken[k] then
+        local s = side_of(k.cell)
+        if s then
           by_side[s] = by_side[s] or {}
           table.insert(by_side[s], k)
         end
       end
     end
-    rep.deviants = {}
-    for _, s in ipairs({ "left", "right", "above", "below" }) do
+    local laid = 0
+    for _, s in ipairs({ "l", "r", "t", "b", "strip" }) do
       local list = by_side[s]
       if list and #list > 0 then
         local k = list[rng:int(1, #list)]
         local c = k.cell
         local n = c.circle and 0 or #(c.tile or c.verts)
         at(k).deviant = { theta = n > 0 and pi / n or 0 }
-        rep.deviants[#rep.deviants + 1] = { x = c.x, y = c.y, side = s }
+        local x, y = page_xy(c.x, c.y)
+        rep.deviants[#rep.deviants + 1] = { x = x, y = y, side = s }
+        laid = laid + 1
       end
     end
-    if #rep.deviants == 0 then ctx.warn("deviant=on: no whole cell lies beside the text; none is turned") end
+    if laid == 0 then ctx.warn("deviant=on: no whole cell inside the field lies beside the text; none is turned") end
   end
   if S.herogold and not ctx.hero then ctx.warn("herogold=on: the page has no hero to paint in gold") end
   -- Gold.
   local g = S.gold
+  local laid = 0
   if g == "cells" then
     local items = {}
     for _, k in ipairs(whole) do
@@ -425,12 +491,12 @@ function M.plan(S, ctx)
     local n = math.max(M.MIN.cells, math.floor(M.SHARE.cells * #whole + .5))
     for _, it in ipairs(spread(rng:fork("cells"), items, n, M.APART.cells * med)) do
       at(it.k).gilt = true
-      rep.places = rep.places + 1
+      laid = laid + 1
     end
   elseif g == "knobs" then
     for _, k in ipairs(kept) do
       at(k).knob = true
-      rep.places = rep.places + 1
+      laid = laid + 1
     end
   elseif g == "crossings" then
     local all = {}
@@ -442,14 +508,25 @@ function M.plan(S, ctx)
       local pl = at(c.owner)
       pl.glints = pl.glints or {}
       pl.glints[#pl.glints + 1] = { c.x, c.y }
-      rep.places = rep.places + 1
+      laid = laid + 1
     end
-    rep.crossings = #all
   elseif g == "core" then
     local roles = {}
     for _, r in ipairs(p.roles or {}) do roles[r] = true end
-    if roles.core or roles.accent then rep.places = #kept end
+    local core = ctx.core or {}
+    if not (roles.core or roles.accent) then
+      ctx.warn(string.format("glint=core: %s paints no core down its bands, so the gold shows nowhere", p.name))
+    elseif core.line then
+      ctx.warn(string.format("glint=core: %s's bands are drawn as lines here, with no core, so the gold shows nowhere", p.name))
+    elseif core.drawn == false then
+      ctx.warn(string.format("glint=core: %s's band core is %.2f pt wide, under the %.1f pt it takes to be drawn, so the gold shows nowhere; a larger scale or bandwidth widens it",
+        p.name, core.width or 0, K.CORE_MIN))
+    else
+      laid = #kept
+    end
   end
+  rep.places = (rep.places or 0) + laid
+  rep.gold = g
   return plan
 end
 

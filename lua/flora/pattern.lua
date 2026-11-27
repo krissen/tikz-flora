@@ -1564,7 +1564,7 @@ function M.paint_rows(spec, pt, p, band)
       p.name, plan.n, plan.f, plan.floor, 100 * share))
   end
   pt.pattern = { name = p.name, size = size, factor = plan.f, rows = plan.n, cover = share, cells = cells, kept = kept,
-    reach = q.reach, gap = q.gap, warnings = pt.pattern_warnings, unfit = unfit, inks = q.inks,
+    reach = q.reach, gap = q.gap, warnings = pt.pattern_warnings, unfit = unfit, inks = q.inks, touches = pt.touches_report,
     inner = "rows", w = w, band = { w = w, inner = "rows", I = band.I } }
   return true
 end
@@ -1670,7 +1670,7 @@ function M.paint(spec, pt)
   -- lies outside the field (the hero, the border's rule and frame) keeps
   -- the colours it had.
   local touches = Touches.new({ glint = key(spec, "glint"), herogold = key(spec, "herogold"),
-    deviant = key(spec, "deviant"), loose = key(spec, "loose") }, p, function(msg) M.warn(pt, msg) end)
+    deviant = key(spec, "deviant"), loose = key(spec, "loose") }, p, function(msg) M.warn(pt, msg) end, pt)
   local outer_base = base
   if touches then
     Touches.colours(touches, base)
@@ -2032,8 +2032,18 @@ function M.paint(spec, pt)
     for _, v in ipairs(list) do kept[#kept + 1] = { cell = v.c, a = v.a, turn = v.turn, jitter = stagger:next() } end
   end
 
+  -- Whether a band's core is drawn (pat_kit.lua's K.band): wide enough, and
+  -- not a line.
+  local core_info
+  if touches and touches.gold == "core" then
+    local K = require("flora.pat_kit")
+    local ik = band_ink({}, p, spec, k_scale, ff)
+    core_info = { line = ik.bands == "line" or base.lines, width = K.core_width(ik.width, ik.corefrac) }
+    core_info.drawn = K.core_shows(ik.width, ik.corefrac)
+  end
   local plan = touches and Touches.plan(touches, { kept = kept, size = size, width = width, text = text, W = W, top = top,
-    hero = hero, fits = fits, rng = rng, warn = function(msg) M.warn(pt, msg) end })
+    hero = hero, fits = fits, rng = rng, warn = function(msg) M.warn(pt, msg) end,
+    keep = keep_rects, band = band, pt = pt, core = core_info })
 
   -- Growth starts at the page's outer edge, away from the text. A cell
   -- whose centre lies off the page (outer=bleed) starts with the edge,
@@ -2320,7 +2330,7 @@ function M.paint(spec, pt)
     -- at the edge.
     isolated = edgeinfo.isolated, edge_cells = edgeinfo.edge }
   -- For measuring (pattern_opts.measure): the kept cells' own edge.
-  if touches then pt.pattern.touches = touches.report end
+  if touches then pt.pattern.touches = pt.touches_report end
   if opts.measure then
     local ki = M.field_edges(cells, kept, onpage)
     pt.pattern.isolated, pt.pattern.edge_cells = ki.isolated, ki.edge

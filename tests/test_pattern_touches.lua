@@ -111,4 +111,122 @@ for _, set in ipairs({ { glint = "knobs" }, { glint = "on" }, { deviant = "on" }
   H.check(plan.final:body() == page("stars_8_4", set):body(), "growth: the last frame differs from the page")
 end
 
+-- The invariants of the places, measured on the pages' own cells.
+local function dist(ax, ay, bx, by) return math.sqrt((ax - bx) ^ 2 + (ay - by) ^ 2) end
+local function rect_dist(x, y, r)
+  local dx, dy = math.max(r[1] - x, 0, x - r[3]), math.max(r[2] - y, 0, y - r[4])
+  return math.sqrt(dx * dx + dy * dy)
+end
+
+-- The kept cells' typical spacing, and each one's neighbours within 1.5 of it.
+local function neighbours(kept)
+  local nn = {}
+  for i, k in ipairs(kept) do
+    local best = math.huge
+    for j, o in ipairs(kept) do
+      if i ~= j then best = math.min(best, dist(k.cell.x, k.cell.y, o.cell.x, o.cell.y)) end
+    end
+    nn[#nn + 1] = best
+  end
+  table.sort(nn)
+  local med = nn[math.ceil(#nn / 2)]
+  local degree, top = {}, 0
+  for i, k in ipairs(kept) do
+    local n = 0
+    for j, o in ipairs(kept) do
+      if i ~= j and dist(k.cell.x, k.cell.y, o.cell.x, o.cell.y) < 1.5 * med then n = n + 1 end
+    end
+    degree[i] = n
+    top = math.max(top, n)
+  end
+  return med, degree, top
+end
+
+local SLIDE = { width = 453, height = 256, text = { x0 = 34, y0 = 30, x1 = 256, y1 = 225 }, layout = "right" }
+
+-- A deviant is a whole cell inside the field, never a loose edge cell or a
+-- fragment of one: at least 60 % of the neighbours a cell has in the field.
+for _, name in ipairs({ "stars_8_4", "kikko", "asanoha" }) do
+  for seed = 1, 20 do
+    local pt = page(name, { deviant = "on" }, { width = SLIDE.width, height = SLIDE.height, text = SLIDE.text, layout = SLIDE.layout, seed = seed })
+    local kept = pt.pattern.kept
+    local _, degree, top = neighbours(kept)
+    for _, d in ipairs(pt.pattern.touches.deviants) do
+      for i, k in ipairs(kept) do
+        if dist(k.cell.x, k.cell.y, d.x, d.y) < 1e-6 then
+          H.check(degree[i] >= 0.6 * top, string.format("%s seed %d: a deviant with %d of %d neighbours", name, seed, degree[i], top))
+        end
+      end
+    end
+  end
+end
+
+-- In a perimeter band at most one deviant lies along each side of the
+-- paper, whatever the edge and the pattern: the places the painting turns
+-- (Touches.painters), by the paper's edge nearest each.
+do
+  local turned
+  local painters = Touches.painters
+  rawset(Touches, "painters", function(plan, pl, c, ink, pt)
+    if pl.deviant then
+      local x, y = c.x, c.y
+      if pt.frame_fn then x, y = pt.frame_fn(x, y) end
+      turned[#turned + 1] = { x, y }
+    end
+    return painters(plan, pl, c, ink, pt)
+  end)
+  for _, name in ipairs({ "stars_8_4", "kikko", "asanoha", "overlapping_circles" }) do
+    for _, edge in ipairs({ "auto", "cell", "border" }) do
+      turned = {}
+      local extra = { width = 360, height = 480, text = { x0 = 60, y0 = 60, x1 = 300, y1 = 420 }, layout = "perimeter", perimeter_width = 24, seed = 5 }
+      if edge ~= "auto" then extra.pattern_edge = edge end
+      page(name, { deviant = "on" }, extra)
+      local per = { l = 0, r = 0, b = 0, t = 0 }
+      for _, q in ipairs(turned) do
+        local d = { l = q[1], r = 360 - q[1], b = q[2], t = 480 - q[2] }
+        local best = "l"
+        for k, v in pairs(d) do if v < d[best] then best = k end end
+        per[best] = per[best] + 1
+      end
+      for side, n in pairs(per) do
+        H.check(n <= 1, string.format("%s edge=%s: %d deviants along side %s", name, edge, n, side))
+      end
+    end
+  end
+  rawset(Touches, "painters", painters)
+end
+
+-- A loose plate and its path keep the field's own distance from the text
+-- and clear of every reserved rectangle, or none is laid.
+for _, name in ipairs({ "stars_8_4", "kikko" }) do
+  for seed = 1, 12 do
+    local reserve = { { 300, 60, 340, 100 } }
+    local pt = page(name, { loose = "on" }, { width = SLIDE.width, height = SLIDE.height, text = SLIDE.text, layout = SLIDE.layout, seed = seed, reserve = reserve })
+    local l = pt.pattern.touches.loose
+    if l then
+      local keep = { { 34, 30, 256, 225 }, reserve[1] }
+      local field = math.huge
+      for _, k in ipairs(pt.pattern.kept) do
+        for _, r in ipairs(keep) do field = math.min(field, rect_dist(k.cell.x, k.cell.y, r)) end
+      end
+      H.check(l.points and #l.points > 0, name .. " seed " .. seed .. ": the report keeps no points")
+      for _, q in ipairs(l.points or {}) do
+        for _, r in ipairs(keep) do
+          H.check(rect_dist(q[1], q[2], r) >= field - 0.5 * pt.pattern.touches.spacing - 1e-6,
+            string.format("%s seed %d: a point of the loose plate %.1f from a rectangle the field keeps %.1f from", name, seed, rect_dist(q[1], q[2], r), field))
+        end
+      end
+    end
+  end
+end
+
+-- A core too narrow to be drawn (under 0.6 pt) lays no gold, and the log
+-- says so.
+for _, name in ipairs({ "asanoha", "overlapping_circles", "shippo" }) do
+  local pt = page(name, { glint = "core" })
+  H.check(warned(pt, "glint=core: " .. name .. "'s band core"), name .. ": a core that is not drawn is not logged")
+  H.check(pt.pattern.touches.places == 0, name .. ": places counted for a core that is not drawn")
+end
+H.check(not warned(page("stars_8_4", { glint = "core" }), "glint=core"), "stars_8_4: logged a core that is drawn")
+
 H.done("pattern_touches")
