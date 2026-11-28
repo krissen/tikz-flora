@@ -66,6 +66,11 @@ M.APART = { cells = 3.2, crossings = 2.6 }
 -- overlapping_circles, whose plates had lain 0.7 to 2.4 widths away, and
 -- the least that reads as moved (tests/pattern_touches_suite.lua holds it).
 M.MIN_MOVE = 1.15
+-- How clear of every cell the page draws a stray plate's outline lies at the
+-- least, in cell widths. Measured on twelve seeds of stars_8_4, kikko,
+-- asanoha and overlapping_circles, the plates had lain 0.00 to 0.82 widths
+-- from the nearest cell, 0.00 on 33 of the 48 (touching or over it).
+M.MIN_CLEAR = 0.2
 
 -- The state for a page, or nil when no key is set. `want` holds the keys'
 -- values (glint, herogilding, deviant, stray); `warn` takes a line for the
@@ -293,6 +298,74 @@ local function near(list, k, med)
   return out
 end
 
+-- Distances between the outlines of two cells, each { verts = polygon } or
+-- { circle = { x, y, r } }: 0 when they meet or one holds the other.
+local function seg_dist(px, py, a, b)
+  local vx, vy = b[1] - a[1], b[2] - a[2]
+  local l2 = vx * vx + vy * vy
+  local t = l2 > 0 and math.max(0, math.min(1, ((px - a[1]) * vx + (py - a[2]) * vy) / l2)) or 0
+  return dist(px, py, a[1] + t * vx, a[2] + t * vy)
+end
+
+local function inside(px, py, P)
+  local c, j = false, #P
+  for i = 1, #P do
+    local a, b = P[i], P[j]
+    if (a[2] > py) ~= (b[2] > py) and px < (b[1] - a[1]) * (py - a[2]) / (b[2] - a[2]) + a[1] then c = not c end
+    j = i
+  end
+  return c
+end
+
+local function point_poly(px, py, P)
+  if inside(px, py, P) then return 0 end
+  local d, j = math.huge, #P
+  for i = 1, #P do
+    d = math.min(d, seg_dist(px, py, P[j], P[i]))
+    j = i
+  end
+  return d
+end
+
+local function crosses(a, b, c, d)
+  local function o(p, q, r) return (q[1] - p[1]) * (r[2] - p[2]) - (q[2] - p[2]) * (r[1] - p[1]) end
+  return o(a, b, c) * o(a, b, d) < 0 and o(c, d, a) * o(c, d, b) < 0
+end
+
+local function shape_gap(A, B)
+  if A.circle and B.circle then
+    return math.max(0, dist(A.circle[1], A.circle[2], B.circle[1], B.circle[2]) - A.circle[3] - B.circle[3])
+  end
+  if A.circle then return math.max(0, point_poly(A.circle[1], A.circle[2], B.verts) - A.circle[3]) end
+  if B.circle then return shape_gap(B, A) end
+  local d = math.huge
+  for _, v in ipairs(A.verts) do d = math.min(d, point_poly(v[1], v[2], B.verts)) end
+  for _, v in ipairs(B.verts) do d = math.min(d, point_poly(v[1], v[2], A.verts)) end
+  if d == 0 then return 0 end
+  local ja = #A.verts
+  for i = 1, #A.verts do
+    local jb = #B.verts
+    for k = 1, #B.verts do
+      if crosses(A.verts[ja], A.verts[i], B.verts[jb], B.verts[k]) then return 0 end
+      jb = k
+    end
+    ja = i
+  end
+  return d
+end
+
+-- cell c's outline moved by (dx, dy) and turned by `turn` about its new middle.
+local function placed(c, dx, dy, turn)
+  if c.circle then return { circle = { c.circle[1] + dx, c.circle[2] + dy, c.circle[3] } } end
+  local s, co = sin(turn or 0), cos(turn or 0)
+  local P = {}
+  for i, v in ipairs(c.verts) do
+    local u, w = v[1] - c.x, v[2] - c.y
+    P[i] = { c.x + dx + u * co - w * s, c.y + dy + u * s + w * co }
+  end
+  return { verts = P }
+end
+
 local function shape_at(c, dx, dy, pad)
   if c.circle then return { circle = { c.circle[1] + dx, c.circle[2] + dy, c.circle[3] + pad } } end
   local P = {}
@@ -401,7 +474,7 @@ function M.plan(S, ctx)
         -- Straight out first, then slid along the edge either way.
         for _, ang in ipairs({ 0, 0.6, -0.6, 1.2, -1.2 }) do
           local vx, vy = ux * cos(ang) - uy * sin(ang), ux * sin(ang) + uy * cos(ang)
-          for _, f in ipairs({ 3.2, 2.8, 2.4, 2.0, 1.7, 1.4 }) do
+          for _, f in ipairs({ 4.0, 3.5, 3.2, 2.8, 2.4, 2.0, 1.7, 1.4 }) do
             if f * med < M.MIN_MOVE * 2 * reach then goto too_near end
             local dx, dy = vx * f * med, vy * f * med
             local nx, ny = c.x + dx, c.y + dy
@@ -410,13 +483,19 @@ function M.plan(S, ctx)
               ok = ctx.fits("cell", { shape_at(c, dx, dy, 0) }, ctx.width / 2 + (c.pad or 0) + 0.2 * med)
             end
             if ok then
+              local turn = (rng:next() < 0.5 and -1 or 1) * 12 * pi / 180
+              local pose = placed(c, dx, dy, turn)
               for _, o in ipairs(kept) do
-                if o ~= k and dist(nx, ny, o.cell.x, o.cell.y) < 0.85 * med then ok = false break end
+                if o ~= k and dist(nx, ny, o.cell.x, o.cell.y) < 4 * med
+                  and shape_gap(pose, o.cell.circle and { circle = o.cell.circle } or { verts = o.cell.verts }) < M.MIN_CLEAR * 2 * reach then
+                  ok = false
+                  break
+                end
               end
-            end
-            if ok then
-              done = { k = k, dx = dx, dy = dy, turn = (rng:next() < 0.5 and -1 or 1) * 12 * pi / 180 }
-              break
+              if ok then
+                done = { k = k, dx = dx, dy = dy, turn = turn }
+                break
+              end
             end
             ::too_near::
           end
@@ -456,9 +535,21 @@ function M.plan(S, ctx)
         points[#points + 1] = { x, y }
       end
       local gx, gy = page_xy(ax, ay)
-      rep.stray = { x = gx, y = gy, to_x = x1, to_y = y1, dots = #dots, points = points }
+      -- How near its outline lies to the nearest cell the page draws, and
+      -- the cell's width, for the report.
+      local pose, near_gap = placed(c, done.dx, done.dy, done.turn), math.huge
+      for _, o in ipairs(kept) do
+        if o ~= done.k and dist(o.cell.x, o.cell.y, pose.circle and pose.circle[1] or c.x + done.dx, pose.circle and pose.circle[2] or c.y + done.dy) < 4 * med then
+          near_gap = math.min(near_gap, shape_gap(pose, o.cell.circle and { circle = o.cell.circle } or { verts = o.cell.verts }))
+        end
+      end
+      local radius = 0
+      if c.circle then radius = c.circle[3] else
+        for _, v in ipairs(c.tile or c.verts) do radius = math.max(radius, dist(v[1], v[2], c.x, c.y)) end
+      end
+      rep.stray = { x = gx, y = gy, to_x = x1, to_y = y1, dots = #dots, points = points, clear = near_gap, width = 2 * radius }
     else
-      ctx.warn(string.format("stray=on: no cell of %s at the field's edge has room at least a cell's width from its gap, clear of the text as the field is; none is moved", p.name))
+      ctx.warn(string.format("stray=on: no cell of %s at the field's edge has room at least a cell's width from its gap, clear of the text as the field is and of every cell drawn; none is moved", p.name))
     end
   end
   -- Deviants: at most one on each side, a whole cell inside the field (not
@@ -477,7 +568,13 @@ function M.plan(S, ctx)
     local by_side = {}
     local function side_of(c)
       if strip then
-        if c.x > 2.5 * strip.w and c.x < ctx.W - 2.5 * strip.w and c.y > 0 and c.y < strip.w then return "strip" end
+        -- The whole cell on the paper: its middle further from the paper's
+        -- edge than its farthest corner.
+        local r = 0
+        if c.circle then r = c.circle[3] else
+          for _, v in ipairs(c.tile or c.verts) do r = math.max(r, dist(v[1], v[2], c.x, c.y)) end
+        end
+        if c.x > 2.5 * strip.w and c.x < ctx.W - 2.5 * strip.w and c.y >= r and c.y < strip.w then return "strip" end
         return nil
       end
       local m = med

@@ -2120,7 +2120,7 @@ function M.paint(spec, pt)
   end
   local holes = 0
   local ge = opts.ground_edge or "cells"
-  -- A1 (a prototype's dark): the ground only on a dark backdrop.
+  -- A1 (a trial of the dark): the ground only on a dark backdrop.
   if ge == "dark" and not pt.backdrop then base.ground = nil end
   -- The field's edge is measured only where something follows it.
   local need = base.ground or opts.measure
@@ -2261,7 +2261,7 @@ function M.paint(spec, pt)
     end
     if h then h.leave() end
   end
-  -- What a prototype lays over every cell (a knob, glints), as its cell is
+  -- What a touch lays over every cell (a knob, glints), as its cell is
   -- painted.
   for _, l in ipairs(late) do
     local c = l.k.cell

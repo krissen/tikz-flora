@@ -220,22 +220,24 @@ sheet_perimeter() {
       [ "$k" = stray ] && note="$stray stray"
       # The corner at the top left; the side, the left side's middle, or
       # for deviant and stray the cm mm round the first one's place.
-      magick "$T/full.png" -crop "${cp}x${cp}+0+0" +repage -resize 300x300 "$T/c.png"
-      caption "$T/c.png" "$T/pc-$k.png" "$k, corner\\n$note"
+      # The page with a margin of its own as wide as a crop, so a close-up
+      # centred on a cell at the paper's edge keeps the whole cell.
+      magick "$T/full.png" -bordercolor '#d8d4cc' -border "${cp}x${cp}" "$T/pad.png"
+      magick "$T/pad.png" -crop "${cp}x${cp}+${cp}+${cp}" +repage -resize 300x300 "$T/c.png"
+      caption "$T/c.png" "$T/pc-$k.png" "$k, corner\n$note"
       fx=$(tsv "$v" light "$pat" 9)
       fy=$(tsv "$v" light "$pat" 10)
       H=$(tsv "$v" light "$pat" 8)
-      W=$(tsv "$v" light "$pat" 7)
       label="side"
       if [ -n "$fx" ]; then
         label="close-up at the one"
-        cx=$(awk -v f="$fx" -v m="$cm" -v w="$W" -v d=$DD 'BEGIN { x = f - m / 2; if (x < 0) x = 0; if (x > w - m) x = w - m; print int(x / 25.4 * d) }')
-        cy=$(awk -v f="$fy" -v m="$cm" -v h="$H" -v d=$DD 'BEGIN { y = h - f - m / 2; if (y < 0) y = 0; if (y > h - m) y = h - m; print int(y / 25.4 * d) }')
+        cx=$(awk -v f="$fx" -v m="$cm" -v d=$DD -v p="$cp" 'BEGIN { print int((f - m / 2) / 25.4 * d) + p }')
+        cy=$(awk -v f="$fy" -v m="$cm" -v h="$H" -v d=$DD -v p="$cp" 'BEGIN { print int((h - f - m / 2) / 25.4 * d) + p }')
       else
-        cx=0
-        cy=$(awk -v h="$H" -v m="$cm" -v d=$DD 'BEGIN { print int((h - m) / 2 / 25.4 * d) }')
+        cx=$cp
+        cy=$(awk -v h="$H" -v m="$cm" -v d=$DD -v p="$cp" 'BEGIN { print int((h - m) / 2 / 25.4 * d) + p }')
       fi
-      magick "$T/full.png" -crop "${cp}x${cp}+${cx}+${cy}" +repage -resize 300x300 "$T/s.png"
+      magick "$T/pad.png" -crop "${cp}x${cp}+${cx}+${cy}" +repage -resize 300x300 "$T/s.png"
       caption "$T/s.png" "$T/ps-$k.png" "$k, $label\\n$note"
       corner="$corner $T/pc-$k.png"
       side="$side $T/ps-$k.png"

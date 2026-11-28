@@ -273,6 +273,10 @@ function M.stray(backdrop, only, seeds)
             for _, k in ipairs(pt.pattern.kept) do
               for _, r in ipairs(keep) do field = math.min(field, rect_dist(k.cell.x, k.cell.y, r)) end
             end
+            -- Clear of every cell the page draws, by a fraction of its width.
+            if l.clear < require("flora.pattern_touches").MIN_CLEAR * l.width - 1e-6 then
+              fs[#fs + 1] = string.format("%s: the plate lies %.2f cell widths from the nearest cell", tag, l.clear / l.width)
+            end
             -- It lies about a cell's width or more from its gap.
             for _, k in ipairs(pt.pattern.kept) do
               if dist(k.cell.x, k.cell.y, l.x, l.y) < 1e-6 then
@@ -348,6 +352,7 @@ function M.run(backdrop, mutations)
           if #picked < N then]], "deviant", { "stars_8_4" }, nil, { "2" } },
     { "never close together", [[local function free(k)]], [[local function free(k)
         if true then return true end]], "deviant", { "stars_8_4", "kikko" }, { 1, 2, 3, 4, 5, 6, 7, 8 }, { "4" } },
+    { "a plate clear of the cells", [[< M.MIN_CLEAR * 2 * reach then]], [[< -1 then]], "stray", { "kikko", "stars_8_4" }, { 7, 8, 9, 10, 11, 12 } },
     { "a plate a cell's width away", [[if f * med < M.MIN_MOVE * 2 * reach then goto too_near end]], [[f = 1.0]], "stray", { "stars_8_4" } },
     { "whole cells in the field", [[if deg[k] >= 0.6 * top and area(k.cell) >= big and not taken[k] then]], [[if not taken[k] then]], "deviant", { "stars_8_4" }, { 1, 2, 3, 4, 5, 6, 7, 8, 9, 10 } },
     { "the plate's distance from the text", [[and text_dist(nx, ny) >= field
