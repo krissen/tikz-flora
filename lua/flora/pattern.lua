@@ -1638,7 +1638,7 @@ function M.paint(spec, pt)
   -- clip and no cell is measured against them.
   local cut = band and band.inner == "rule"
 
-  -- Prototype options (spec.pattern_opts, ORDER #9 of the geometry work;
+  -- Trial options (spec.pattern_opts, ORDER #9 of the geometry work;
   -- not settings): how the ground and the fields end where the pattern
   -- ends (ground_edge), and whether the cells fall away as the pattern's
   -- own units (units) or the field closes its strands at its edge
