@@ -402,7 +402,7 @@ local function touched_ink(name, layout, backdrop, set, extra)
       if g then
         h[f] = function(...)
           local was = flag
-          flag = { kind = f == "late" and (pl.glints and "glint" or "knob") or kind, gilt = pl.gilt, stray = pl.stray }
+          flag = { kind = f == "late" and (pl.glints and "glint" or "knob") or kind, gilt = pl.gilt, stray = pl.stray, pl = pl, c = c }
           local r = g(...)
           flag = was
           return r
@@ -416,7 +416,6 @@ local function touched_ink(name, layout, backdrop, set, extra)
   local fill, stroke = Paint.fill, Paint.stroke
   local function record(self, cmds, width, rgb)
     if not flag then return end
-    local pj = self:_pj()
     local paths = cmds
     if not (type(cmds[1]) == "table" and type(cmds[1][1]) == "table") then paths = { cmds } end
     local points = {}
@@ -427,16 +426,20 @@ local function touched_ink(name, layout, backdrop, set, extra)
         elseif c[1] == "c" then pts = { { c[2], c[3] }, { c[4], c[5] }, { c[6], c[7] } }
         elseif c[1] == "m" or c[1] == "l" then pts[1] = { c[2], c[3] } end
         for _, q in ipairs(pts) do
-          local x, y = q[1], q[2]
-          if pj then x, y = pj(x, y) end
-          points[#points + 1] = { x, y, r, width }
+          -- Where the plan sees the point (after a turn or a move) and where
+          -- the page does (after a strip's frame).
+          local rx, ry = q[1], q[2]
+          if self.projection then rx, ry = self.projection(rx, ry) end
+          local x, y = rx, ry
+          if self.frame_fn then x, y = self.frame_fn(rx, ry) end
+          points[#points + 1] = { x, y, r, width, raw = { rx, ry } }
         end
       end
     end
     local kind = flag.kind
     if flag.gilt and rgb == Paint.palette.gold and kind == "cell" then kind = "gilt" end
     if flag.stray and paths[1] and paths[1][1] and paths[1][1][1] == "o" and #paths > 1 then kind = "dots" end
-    found[#found + 1] = { kind = kind, points = points }
+    found[#found + 1] = { kind = kind, points = points, pl = flag.pl, c = flag.c }
   end
   rawset(Paint, "fill", function(self, cmds, rgb, ...) record(self, cmds, 0, rgb); return fill(self, cmds, rgb, ...) end)
   rawset(Paint, "stroke", function(self, cmds, rgb, width, ...) record(self, cmds, width or 0, rgb); return stroke(self, cmds, rgb, width, ...) end)
@@ -448,6 +451,81 @@ local function touched_ink(name, layout, backdrop, set, extra)
   if not ok then error(pt, 0) end
   return pt, found, hero
 end
+
+
+-- Where a touch's ink may lie: the shapes (with their reach) the plan passed
+-- through the field's rule for it (pl.tested), and for a plan that records
+-- none the shapes the first version tested.
+local function point_in(px, py, P)
+  local c, j = false, #P
+  for i = 1, #P do
+    local a, b = P[i], P[j]
+    if (a[2] > py) ~= (b[2] > py) and px < (b[1] - a[1]) * (py - a[2]) / (b[2] - a[2]) + a[1] then c = not c end
+    j = i
+  end
+  return c
+end
+local function seg_d(px, py, a, b)
+  local vx, vy = b[1] - a[1], b[2] - a[2]
+  local l2 = vx * vx + vy * vy
+  local u = l2 > 0 and math.max(0, math.min(1, ((px - a[1]) * vx + (py - a[2]) * vy) / l2)) or 0
+  return dist(px, py, a[1] + u * vx, a[2] + u * vy)
+end
+-- The signed distance from a point to a shape's outline: negative inside.
+local function to_shape(px, py, S)
+  if S.circle then return dist(px, py, S.circle[1], S.circle[2]) - S.circle[3] end
+  local d, j = math.huge, #S.verts
+  for i = 1, #S.verts do d = math.min(d, seg_d(px, py, S.verts[j], S.verts[i])); j = i end
+  if point_in(px, py, S.verts) then return -d end
+  return d
+end
+local function moved(c, dx, dy, turn)
+  if c.circle then return { circle = { c.circle[1] + dx, c.circle[2] + dy, c.circle[3] } } end
+  local s, co = math.sin(turn), math.cos(turn)
+  local P = {}
+  for i, v in ipairs(c.verts) do
+    local u, w = v[1] - c.x, v[2] - c.y
+    P[i] = { c.x + dx + u * co - w * s, c.y + dy + u * s + w * co }
+  end
+  return { verts = P }
+end
+local function tested_of(f, rep, reach)
+  local pl, c = f.pl, f.c
+  if pl.tested then return pl.tested end
+  local out = {}
+  local cell = c.circle and { circle = c.circle } or { verts = c.verts }
+  if pl.stray then
+    out[1] = { moved(c, pl.stray.dx, pl.stray.dy, pl.stray.turn), reach }
+    for _, d in ipairs(pl.stray.dots or {}) do out[#out + 1] = { { circle = { d[1], d[2], math.max(0.6, 0.055 * rep.spacing) } }, 0 } end
+  elseif pl.deviant then
+    local n = c.circle and 0 or #(c.tile or c.verts)
+    out[1] = { moved(c, 0, 0, n > 0 and math.pi / n or 0), reach }
+  else
+    out[1] = { cell, reach }
+  end
+  for _, q in ipairs(pl.glints or {}) do out[#out + 1] = { { circle = { q[1], q[2], 0.42 * rep.spacing } }, 0.15 } end
+  if pl.knob then out[#out + 1] = { { circle = { c.x, c.y, 0.16 * rep.spacing } }, 0.15 } end
+  return out
+end
+
+-- How far beyond what was tested a path's ink reaches (its points, radius
+-- and half stroke, past the nearest tested shape and its reach); negative
+-- inside.
+local function overshoot(f, rep, reach)
+  local tested = tested_of(f, rep, reach)
+  local worst = -math.huge
+  for _, q in ipairs(f.points) do
+    local best = math.huge
+    for _, ts in ipairs(tested) do
+      -- Page coordinates of the tested shape: the strip's frame maps them.
+      best = math.min(best, to_shape(q.raw[1], q.raw[2], ts[1]) + q[3] + q[4] / 2 - ts[2])
+    end
+    worst = math.max(worst, best)
+  end
+  return worst
+end
+
+M.touched_ink = touched_ink
 
 -- The protections the field keeps (pattern.lua's M.measure, which M.lays
 -- and so the cells' fits ask), and what each is measured by on the page:
@@ -493,6 +571,11 @@ function M.ink(backdrop, only, seeds, values, report, guards)
               worst.margin = math.min(worst.margin, x - r - w / 2 - 4, y - r - w / 2 - 4, L.width - x - r - w / 2 - 4, L.height - y - r - w / 2 - 4)
             end
             local tag = string.format("%s %s%s %s seed %d %s %s=%s %s", name, layout, edge and ("/" .. edge) or "", backdrop, seed, what, kv[1], kv[2], f.kind)
+            if what == "text" and f.kind ~= "cell" then
+              local over = overshoot(f, pt.pattern.touches, (pt.pattern.reach or 0) + (f.c.pad or 0))
+              if report then report["over " .. name .. " " .. f.kind] = math.max(report["over " .. name .. " " .. f.kind] or -math.huge, over) end
+              if over > 0.05 then fs[#fs + 1] = string.format("%s: ink %.2f pt beyond the outline that was tested", tag, over) end
+            end
             local margin_of = what == "hero" and worst.hero or what == "margin" and worst.margin or worst.text
             if report then report[what .. " " .. f.kind] = math.min(report[what .. " " .. f.kind] or math.huge, margin_of) end
             if f.kind ~= "cell" and margin_of < -0.3 then
@@ -607,6 +690,12 @@ function M.run(backdrop, mutations)
     { "the plate's distance from the text", [[ok = ctx.place({ pose }, reach_of(c)) and measure(pose, reach_of(c)) >= field]], [[ok = true]], "stray", { "stars_8_4", "kikko" }, { 1, 2, 3, 4, 5, 6, 7, 8 } },
     { "a glint keeps the field's distance", [[not plan.at[c.owner] and ctx.place({ ring(c.x, c.y, 0.42 * med) }, 0.15) then]], [[not plan.at[c.owner] then]], "ink", { "stars_8_4", "kikko" }, { 7 }, { { "glint", "on" } } },
     { "the plate clear of text and reservations", [[ok = ctx.place({ pose }, reach_of(c)) and measure(pose, reach_of(c)) >= field]], [[ok = measure(pose, reach_of(c)) >= field]], "ink", { "overlapping_circles", "kikko" }, { 7, 8, 9 }, { { "stray", "on" } } },
+    { "a gilded fill held to what was tested", { [[note(it.k, fill_outline(it.k.cell), reach_of(it.k.cell))]], [[local function gilt_ok(c) return ctx.place({ fill_outline(c) }, reach_of(c)) end]] }, { [[]], [[local function gilt_ok(c) return ctx.place({ cell_shape(c) }, reach_of(c)) end]] }, "ink", { "stars_8_4" }, nil, { { "glint", "cells" } }, "touches", { { "text", "field" } } },
+    { "a glint painted as tested", [[pt:fill(glint(q[1], q[2], 0.42 * med), ink.gold, 1)]], [[pt:fill(glint(q[1], q[2], 0.7 * med), ink.gold, 1)]], "ink", { "stars_8_4" }, nil, { { "glint", "on" } }, "touches", { { "text", "field" } } },
+    { "a knob painted as tested", [[pt:fill(disc(c.x, c.y, 0.16 * med), ink.gold, 1)]], [[pt:fill(disc(c.x, c.y, 0.4 * med), ink.gold, 1)]], "ink", { "stars_8_4" }, nil, { { "glint", "knobs" } }, "touches", { { "text", "field" } } },
+    { "a turned cell painted as tested", [[project = turn(pl.deviant.theta, c.x, c.y, 0, 0)]], [[project = turn(pl.deviant.theta, c.x, c.y, 3, 0)]], "ink", { "stars_8_4" }, nil, { { "deviant", "4" } }, "touches", { { "text", "field" } } },
+    { "a stray plate painted as tested", [[project = turn(pl.stray.turn, c.x, c.y, pl.stray.dx, pl.stray.dy)]], [[project = turn(pl.stray.turn, c.x, c.y, pl.stray.dx + 3, pl.stray.dy)]], "ink", { "stars_8_4", "kikko" }, nil, { { "stray", "on" } }, "touches", { { "text", "field" } } },
+    { "the dots painted as tested", [[local r, circles = math.max(0.6, 0.055 * med), {}]], [[local r, circles = math.max(1.6, 0.12 * med), {}]], "ink", { "stars_8_4", "kikko" }, nil, { { "stray", "on" } }, "touches", { { "text", "field" } } },
     { "a touch keeps off the text", [[local touch_field = { keep = keep_rects,]], [[local touch_field = { keep = {},]], "ink", { "stars_8_4", "kikko" }, { 7 }, { { "glint", "on" }, { "glint", "cells" } }, "pattern", { { "text", "field" }, { "reserve", "field" }, { "reserve", "perimeter", "cell" } } },
     { "a touch keeps off the hero", [[hero = hero, gap = gap, outer = outer, page = page }
   local function place]], [[hero = nil, gap = gap, outer = outer, page = page }

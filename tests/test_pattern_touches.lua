@@ -121,6 +121,28 @@ do
   H.check(warned(none, "herogilding=on: the page has no hero") and none:body() == page("stars_8_4"):body(), "herogilding without a hero is not logged and painted as it is")
 end
 
+-- The gold of a gilded cell lies within the outline the field's rule was asked
+-- about: in an enlarged stars_8_4 band a reservation in the void at an
+-- octagon tile's corner clears the star and its strokes, but cut the gold
+-- fill, which covers the whole tile. Seeds 24, 25 and 34 gild that cell.
+do
+  local M = dofile("tests/pattern_touches_suite.lua").M
+  local rect = { 16.54, 253.0, 17.54, 254.0 }
+  for _, seed in ipairs({ 24, 25, 34 }) do
+    local pt, found = M.touched_ink("stars_8_4", "perimeter", "light", { glint = "cells" }, {
+      seed = seed, width = 360, height = 480, text = { x0 = 100, y0 = 100, x1 = 300, y1 = 400 }, layout = "perimeter",
+      perimeter_width = 40, pattern_scale = 6, pattern_edge = "cell", reserve = { rect } })
+    local near = math.huge
+    for _, f in ipairs(found) do
+      for _, q in ipairs(f.points) do
+        local dx, dy = math.max(rect[1] - q[1], 0, q[1] - rect[3]), math.max(rect[2] - q[2], 0, q[2] - rect[4])
+        near = math.min(near, math.sqrt(dx * dx + dy * dy) - q[3] - q[4] / 2)
+      end
+    end
+    H.check(near >= pt.pattern.gap - 0.05, string.format("seed %d: gold lies %.2f pt from the reservation, the gap is %.1f", seed, near, pt.pattern.gap))
+  end
+end
+
 -- The last frame of a growth is the page, with the keys on.
 for _, set in ipairs({ { glint = "knobs" }, { glint = "on" }, { deviant = "on" }, { stray = "on" } }) do
   Paint.reset_resources()

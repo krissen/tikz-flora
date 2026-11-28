@@ -169,10 +169,21 @@ end
 local function dist(ax, ay, bx, by) return sqrt((ax - bx) ^ 2 + (ay - by) ^ 2) end
 
 -- The cell's outline as path commands, or nil.
-local function region(c)
-  if c.circle then return { { "o", c.circle[1], c.circle[2], c.circle[3] } } end
+-- The outline a gilded cell's fill covers, as a shape: the polygon it is
+-- painted over (the tile where the cell has one, else its outline), or its
+-- circle. region() paints exactly this and the field's rule is asked about
+-- exactly this, so what is painted is what was tested.
+local function fill_outline(c)
+  if c.circle then return { circle = c.circle } end
   local P = c.tile or c.verts
-  if P and #P >= 3 then return K.path(P) end
+  if P and #P >= 3 then return { verts = P } end
+end
+
+local function region(c)
+  local o = fill_outline(c)
+  if not o then return nil end
+  if o.circle then return { { "o", o.circle[1], o.circle[2], o.circle[3] } } end
+  return K.path(o.verts)
 end
 
 -- The area of a cell's outline.
@@ -417,7 +428,7 @@ function M.plan(S, ctx)
   local function ring(x, y, r) return { circle = { x, y, r } } end
   local function cell_shape(c) return c.circle and { circle = c.circle } or { verts = c.verts } end
   local function reach_of(c) return ctx.width / 2 + (c.pad or 0) end
-  local function cell_ok(c) return ctx.place({ cell_shape(c) }, reach_of(c)) end
+  local function gilt_ok(c) return ctx.place({ fill_outline(c) }, reach_of(c)) end
   local function turned_ok(c)
     local n = c.circle and 0 or #(c.tile or c.verts)
     return ctx.place({ placed(c, 0, 0, n > 0 and pi / n or 0) }, reach_of(c))
@@ -429,6 +440,13 @@ function M.plan(S, ctx)
   local function at(k)
     plan.at[k] = plan.at[k] or {}
     return plan.at[k]
+  end
+  -- What a place was tested as, kept with it so that the painting can be
+  -- held to it (pl.tested: { shape, reach } pairs).
+  local function note(k, shape, reach)
+    local pl = at(k)
+    pl.tested = pl.tested or {}
+    pl.tested[#pl.tested + 1] = { shape, reach }
   end
   local whole = {}
   for _, k in ipairs(kept) do
@@ -540,6 +558,8 @@ function M.plan(S, ctx)
       end
       done.dots = dots
       at(done.k).stray = done
+      note(done.k, placed(c, done.dx, done.dy, done.turn), reach_of(c))
+      for _, d in ipairs(dots) do note(done.k, ring(d[1], d[2], math.max(0.6, 0.055 * med)), 0) end
       local points = {}
       local x1, y1 = page_xy(bx, by)
       points[1] = { x1, y1 }
@@ -621,6 +641,7 @@ function M.plan(S, ctx)
       local c = k.cell
       local n = c.circle and 0 or #(c.tile or c.verts)
       at(k).deviant = { theta = n > 0 and pi / n or 0 }
+      note(k, placed(c, 0, 0, at(k).deviant.theta), reach_of(c))
       local x, y = page_xy(c.x, c.y)
       rep.deviants[#rep.deviants + 1] = { x = x, y = y, side = s }
     end
@@ -681,11 +702,13 @@ function M.plan(S, ctx)
   if g == "cells" then
     local items = {}
     for _, k in ipairs(whole) do
-      if not plan.at[k] and cell_ok(k.cell) then items[#items + 1] = { x = k.cell.x, y = k.cell.y, k = k } end
+      if not plan.at[k] and gilt_ok(k.cell) then items[#items + 1] = { x = k.cell.x, y = k.cell.y, k = k } end
     end
     local n = math.max(M.MIN.cells, math.floor(M.SHARE.cells * #whole + .5))
     for _, it in ipairs(spread(rng:fork("cells"), items, n, M.APART.cells * med)) do
       at(it.k).gilt = true
+      note(it.k, fill_outline(it.k.cell), reach_of(it.k.cell))
+      note(it.k, cell_shape(it.k.cell), reach_of(it.k.cell))
       laid = laid + 1
       rep.at[#rep.at + 1] = { page_xy(it.x, it.y) }
     end
@@ -693,6 +716,7 @@ function M.plan(S, ctx)
     for _, k in ipairs(kept) do
       if ctx.place({ ring(k.cell.x, k.cell.y, 0.16 * med) }, 0.15) then
         at(k).knob = true
+        note(k, ring(k.cell.x, k.cell.y, 0.16 * med), 0.15)
         laid = laid + 1
         rep.at[#rep.at + 1] = { page_xy(k.cell.x, k.cell.y) }
       end
@@ -707,6 +731,7 @@ function M.plan(S, ctx)
       local pl = at(c.owner)
       pl.glints = pl.glints or {}
       pl.glints[#pl.glints + 1] = { c.x, c.y }
+      note(c.owner, ring(c.x, c.y, 0.42 * med), 0.15)
       laid = laid + 1
       rep.at[#rep.at + 1] = { page_xy(c.x, c.y) }
     end
