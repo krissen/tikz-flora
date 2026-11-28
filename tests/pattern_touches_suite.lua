@@ -472,6 +472,44 @@ function M.ink(backdrop, only, seeds, values, report, combos)
   return pages, fs
 end
 
+-- Fields of 0, 1 and 2 cells (a narrow strip beside the text, or none at
+-- all): every key and value leaves no number that is not finite in the
+-- painting, does not fail, and says so in the log where nothing can be laid.
+M.TINY = {
+  { "stars_8_4", 4 }, { "stars_8_4", 8 }, { "kikko", 4 }, { "kikko", 8 }, { "kikko", 12 },
+  { "asanoha", 4 }, { "asanoha", 8 }, { "overlapping_circles", 4 }, { "celtic_knot", 8 }, { "sikku_kolam", 8 },
+}
+M.ALL_VALUES = {
+  { "glint", "on" }, { "glint", "core" }, { "glint", "cells" }, { "glint", "knobs" }, { "herogilding", "on" },
+  { "deviant", "on" }, { "deviant", "2" }, { "deviant", "4" }, { "stray", "on" },
+}
+
+function M.finite(backdrop, only)
+  local fs, pages = {}, 0
+  for _, case in ipairs(only or M.TINY) do
+    local name, x0 = case[1], case[2]
+    for _, kv in ipairs(M.ALL_VALUES) do
+      local tag = string.format("%s text from %d %s %s=%s", name, x0, backdrop, kv[1], kv[2])
+      local sp = { width = 200, height = 120, text = { x0 = x0, y0 = 10, x1 = 190, y1 = 110 }, seed = 3, layout = "left",
+        pattern = { [name] = 1 }, backdrop = backdrop, [Settings.SPEC[kv[1]]] = kv[2] }
+      Paint.reset_resources()
+      local ok, pt = pcall(Compose.page, sp)
+      pages = pages + 1
+      if not ok then
+        fs[#fs + 1] = tag .. ": " .. tostring(pt)
+      else
+        local body = pt:body()
+        if body:find("%f[%w]inf%f[%W]") or body:find("%f[%w]nan%f[%W]") or body:find("%-inf") then fs[#fs + 1] = tag .. ": a number that is not finite in the painting" end
+        local rep = pt.pattern and pt.pattern.touches
+        if rep and rep.spacing and (rep.spacing ~= rep.spacing or rep.spacing == math.huge) then fs[#fs + 1] = tag .. ": a spacing that is not finite" end
+        local laid = rep and (rep.places > 0 or #rep.deviants > 0 or rep.stray)
+        if rep and not laid and not pt.pattern_warnings then fs[#fs + 1] = tag .. ": nothing laid and no line says why" end
+      end
+    end
+  end
+  return pages, fs
+end
+
 -- The same seed gives the same page, every key on.
 function M.seed(backdrop, only)
   local fs, pages = {}, 0
@@ -487,12 +525,20 @@ function M.seed(backdrop, only)
   return pages, fs
 end
 
+-- A string, or a list of them, as a list.
+---@param v any
+---@return string[]
+local function as_list(v)
+  if type(v) == "table" then return v end
+  return { v }
+end
+
 -- Run the checks on `backdrop`; with `mutations`, prove each fails when its
 -- invariant is broken.
 function M.run(backdrop, mutations)
   local t0 = os.clock()
   local total = 0
-  for _, check in ipairs({ "off", "gold", "deviant", "stray", "seed", "target", "ink" }) do
+  for _, check in ipairs({ "off", "gold", "deviant", "stray", "seed", "target", "ink", "finite" }) do
     local pages, fs = M[check](backdrop)
     total = total + pages
     H.check(pages > 0, check .. ": no pages")
@@ -531,13 +577,21 @@ function M.run(backdrop, mutations)
     { "the plate clear of text and reservations", [[
               and clear(nx, ny, reach, ctx.width / 2 + (c.pad or 0))]], "", "ink", { "overlapping_circles", "kikko" }, { 7, 8, 9 }, { { "stray", "on" } } },
     { "the frame keeps its colours", [[hero.band, hero.band0 = pal.gold, pal.gold]], [[hero.band, hero.band0, outer.band = pal.gold, pal.gold, pal.gold]], "target", { "stars_8_4" } },
+    { "a spacing that is finite", { [[if best < math.huge then nn[#nn + 1] = best end]], [[if med <= 0 or med > 4 * ctx.size then med = ctx.size end]] }, { [[nn[#nn + 1] = best]], "" }, "finite", { { "stars_8_4", 8 }, { "kikko", 8 } } },
     { "the same seed", [[local rng = ctx.rng:fork("pattern touches")]], [[local rng = ctx.rng:fork("pattern touches" .. tostring({}))]], "seed", { "stars_8_4" } },
   }) do
-    local i, j = src:find(m[2], 1, true)
-    H.check(i ~= nil, "mutation: the line is gone from pattern_touches.lua: " .. m[2])
-    if i then
+    -- One replacement, or a list of them (a guard held twice is broken twice).
+    local from, to = as_list(m[2]), as_list(m[3])
+    local mutated, found = src, true
+    for n, line in ipairs(from) do
+      local i, j = mutated:find(line, 1, true)
+      H.check(i ~= nil, "mutation: the line is gone from pattern_touches.lua: " .. line)
+      if not i then found = false break end
+      mutated = mutated:sub(1, i - 1) .. to[n] .. mutated:sub(j + 1)
+    end
+    if found then
       -- pattern.lua holds the module it loaded: load it again over the mutant.
-      package.loaded["flora.pattern_touches"] = assert(load(src:sub(1, i - 1) .. m[3] .. src:sub(j + 1), "@pattern_touches.lua (mutated)"))()
+      package.loaded["flora.pattern_touches"] = assert(load(mutated, "@pattern_touches.lua (mutated)"))()
       package.loaded["flora.pattern"] = nil
       local ok, a, fs = pcall(M[m[4]], backdrop, m[5], m[6], m[7])
       package.loaded["flora.pattern_touches"], package.loaded["flora.pattern"] = real, real_pattern

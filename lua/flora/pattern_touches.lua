@@ -94,7 +94,7 @@ function M.new(want, p, warn, pt)
       if why then
         warn(string.format("glint=%s: %s has %s; it is painted as it is", g, p.name, why))
       else
-        S.gold = mode
+        S.gold, S.asked_glint = mode, g
       end
     end
   end
@@ -284,7 +284,8 @@ local function spacing(list)
         if d < best then best = d end
       end
     end
-    nn[#nn + 1] = best
+    -- A field of one cell has no neighbour: no spacing to take.
+    if best < math.huge then nn[#nn + 1] = best end
   end
   table.sort(nn)
   return nn[math.ceil(#nn / 2)] or 0
@@ -445,7 +446,11 @@ function M.plan(S, ctx)
   for _, k in ipairs(kept) do
     if k.a >= 1 and not k.turn and region(k.cell) then whole[#whole + 1] = k end
   end
+  -- The cells' spacing, or the nominal size of one where there are fewer
+  -- than two cells, or two far apart (the pair is no field's spacing): no
+  -- measure taken from it is then infinite or out of scale.
   local med = spacing(kept)
+  if med <= 0 or med > 4 * ctx.size then med = ctx.size end
   plan.med = med
   rep.spacing = med
   rep.deviants = rep.deviants or {}
@@ -686,6 +691,7 @@ function M.plan(S, ctx)
   -- Gold.
   local g = S.gold
   local laid = 0
+  local core_logged = false
   if g == "cells" then
     local items = {}
     for _, k in ipairs(whole) do
@@ -723,15 +729,21 @@ function M.plan(S, ctx)
     for _, r in ipairs(p.roles or {}) do roles[r] = true end
     local core = ctx.core or {}
     if not (roles.core or roles.accent) then
+      core_logged = true
       ctx.warn(string.format("glint=core: %s paints no core down its bands, so the gold shows nowhere", p.name))
     elseif core.line then
+      core_logged = true
       ctx.warn(string.format("glint=core: %s's bands are drawn as lines here, with no core, so the gold shows nowhere", p.name))
     elseif core.drawn == false then
+      core_logged = true
       ctx.warn(string.format("glint=core: %s's band core is %.2f pt wide, under the %.1f pt it takes to be drawn, so the gold shows nowhere; a larger scale or bandwidth widens it",
         p.name, core.width or 0, K.CORE_MIN))
     else
       laid = #kept
     end
+  end
+  if g and not core_logged and laid == 0 then
+    ctx.warn(string.format("glint=%s: %s has nothing in this field to lay it by; the field has no gold", S.asked_glint or g, p.name))
   end
   rep.places = (rep.places or 0) + laid
   rep.gold = g
