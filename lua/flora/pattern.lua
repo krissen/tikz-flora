@@ -702,6 +702,39 @@ M.band_ink = band_ink
 -- A cell's position as a key, for finding it again in a second drawing.
 function M.cell_key(c) return string.format("%.1f,%.1f", c.x, c.y) end
 
+-- A grid of buckets nd wide over `items`, each placed by at(item) -> x, y: the
+-- one building block of the field's neighbour searches (M.field_edges here,
+-- pattern_touches.lua's). g.buckets[g.key(x, y)] lists a bucket's items in
+-- the order given; g:within(x, y, r) lists the items of the buckets a disc of
+-- radius r reaches, a superset of the items within r, in no order, and
+-- g.order[item] is the item's place in the list (to put them in order
+-- again); g:add(item) puts one more in. `counter`, if given, counts in
+-- counter.n each item a search lists, which is what a search costs.
+function M.cell_grid(items, nd, at, counter)
+  local g = { nd = nd, buckets = {}, order = {}, n = 0 }
+  function g.key(x, y) return math.floor(x / nd) .. "," .. math.floor(y / nd) end
+  function g:add(item)
+    local x, y = at(item)
+    local k = g.key(x, y)
+    g.buckets[k] = g.buckets[k] or {}
+    table.insert(g.buckets[k], item)
+    g.n = g.n + 1
+    g.order[item] = g.n
+  end
+  function g:within(x, y, r)
+    local out = {}
+    for ix = math.floor((x - r) / nd), math.floor((x + r) / nd) do
+      for iy = math.floor((y - r) / nd), math.floor((y + r) / nd) do
+        for _, it in ipairs(g.buckets[ix .. "," .. iy] or {}) do out[#out + 1] = it end
+      end
+    end
+    if counter then counter.n = counter.n + #out end
+    return out
+  end
+  for _, it in ipairs(items) do g:add(it) end
+  return g
+end
+
 -- The grounded cells' neighbours: for each cell (by its record), the share
 -- of its neighbours on the page that are grounded too (1 inside the field,
 -- less at its edge) and its depth, how many steps it lies from the edge
@@ -729,13 +762,7 @@ function M.field_edges(cells, grounded, onpage)
     return ds[math.max(1, math.floor(#ds / 2))] or 1
   end
   local nd = 1.6 * nearest_scale()
-  local grid = {}
-  local function gk(x, y) return math.floor(x / nd) .. "," .. math.floor(y / nd) end
-  for _, c in ipairs(cells) do
-    local at = gk(c.x, c.y)
-    grid[at] = grid[at] or {}
-    table.insert(grid[at], c)
-  end
+  local grid = M.cell_grid(cells, nd, function(c) return c.x, c.y end).buckets
   local info = { nd = nd, share = {}, depth = {}, isolated = 0, edge = 0 }
   local neighbours = {}
   for _, k in ipairs(grounded) do
@@ -2040,7 +2067,7 @@ function M.paint(spec, pt)
   end
 
   local plan = touches and Touches.plan(touches, { kept = kept, size = size, width = width, text = text, W = W, top = top,
-    hero = hero, rng = rng, warn = function(msg) M.warn(pt, msg) end,
+    hero = hero, rng = rng, warn = function(msg) M.warn(pt, msg) end, grid = M.cell_grid,
     place = place, measure = measure_touch, band = band, pt = pt })
 
   -- Growth starts at the page's outer edge, away from the text. A cell

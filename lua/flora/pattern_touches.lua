@@ -202,7 +202,7 @@ end
 
 -- n of items spread by seed: the first drawn that keep `apart` from those
 -- drawn already, as many as there are room for.
-local function spread(rng, items, n, apart)
+local function spread(rng, items, n, apart, make)
   local order = {}
   for i = 1, #items do order[i] = i end
   for i = #order, 2, -1 do
@@ -210,14 +210,16 @@ local function spread(rng, items, n, apart)
     order[i], order[j] = order[j], order[i]
   end
   local out = {}
+  local taken = make({}, apart, function(o) return o.x, o.y end)
   for _, i in ipairs(order) do
     local it = items[i]
     local ok = true
-    for _, o in ipairs(out) do
+    for _, o in ipairs(taken:within(it.x, it.y, apart)) do
       if dist(it.x, it.y, o.x, o.y) < apart then ok = false break end
     end
     if ok then
       out[#out + 1] = it
+      taken:add(it)
       if #out >= n then break end
     end
   end
@@ -229,7 +231,7 @@ local function key2(x, y) return string.format("%d,%d", math.floor(x * 10 + .5),
 -- The points where bands cross, from the kept cells: the corners of
 -- polygons that two cells share, and where two circles meet. Each is
 -- owned by the first cell that has it: { x, y, owner }.
-local function crossings(kept)
+local function crossings(kept, make)
   local seen, out = {}, {}
   local function add(x, y, k)
     local key = key2(x, y)
@@ -250,9 +252,19 @@ local function crossings(kept)
   -- Circles about centres within two radii meet at two points; the lattice
   -- points, where every circle passes through its neighbours' centres, are
   -- found as the meeting of the pairs.
+  local reach = 0
+  for _, k in ipairs(circles) do reach = math.max(reach, k.cell.circle[3]) end
+  local grid = make(circles, math.max(2 * reach, 1e-6), function(k) return k.cell.circle[1], k.cell.circle[2] end)
   for i = 1, #circles do
     local a = circles[i].cell.circle
-    for j = i + 1, #circles do
+    -- Only the circles near enough to meet this one, the later ones, in order.
+    local later = {}
+    for _, o in ipairs(grid:within(a[1], a[2], 2 * reach)) do
+      if grid.order[o] > i then later[#later + 1] = o end
+    end
+    table.sort(later, function(x, y) return grid.order[x] < grid.order[y] end)
+    for _, other in ipairs(later) do
+      local j = grid.order[other]
       local b = circles[j].cell.circle
       local d = dist(a[1], a[2], b[1], b[2])
       if d > 1e-6 and d < a[3] + b[3] - 1e-6 and d > math.abs(a[3] - b[3]) + 1e-6 then
@@ -287,16 +299,30 @@ end
 
 -- The typical distance between the centres of neighbouring cells, taken
 -- over a sample of at most 300 of them.
-local function spacing(list)
+local function spacing(list, size, make)
   local step = math.max(1, math.floor(#list / 300))
   local nn = {}
+  local grid = make(list, 2 * size, function(k) return k.cell.x, k.cell.y end)
+  -- No neighbour lies farther than the field is wide.
+  local x0, y0, x1, y1 = math.huge, math.huge, -math.huge, -math.huge
+  for _, k in ipairs(list) do
+    x0, y0, x1, y1 = math.min(x0, k.cell.x), math.min(y0, k.cell.y), math.max(x1, k.cell.x), math.max(y1, k.cell.y)
+  end
+  local span = (x1 - x0) + (y1 - y0)
   for i = 1, #list, step do
     local c, best = list[i].cell, math.huge
-    for j, o in ipairs(list) do
-      if i ~= j then
-        local d = dist(c.x, c.y, o.cell.x, o.cell.y)
-        if d < best then best = d end
+    -- The nearest other cell, found within a radius that doubles until it
+    -- holds one (a disc of radius r holds every cell nearer than r).
+    local r = 2 * size
+    while true do
+      for _, o in ipairs(grid:within(c.x, c.y, r)) do
+        if o ~= list[i] then
+          local d = dist(c.x, c.y, o.cell.x, o.cell.y)
+          if d < best then best = d end
+        end
       end
+      if best <= r or r > span then break end
+      r = r * 2
     end
     -- A field of one cell has no neighbour: no spacing to take.
     if best < math.huge then nn[#nn + 1] = best end
@@ -306,11 +332,12 @@ local function spacing(list)
 end
 
 -- The cells of `list` within 1.5 spacings of cell k's centre.
-local function near(list, k, med)
+local function near(grid, k, med)
   local out = {}
-  for _, o in ipairs(list) do
+  for _, o in ipairs(grid:within(k.cell.x, k.cell.y, 1.5 * med)) do
     if o ~= k and dist(k.cell.x, k.cell.y, o.cell.x, o.cell.y) < 1.5 * med then out[#out + 1] = o end
   end
+  table.sort(out, function(a, b) return grid.order[a] < grid.order[b] end)
   return out
 end
 
@@ -394,15 +421,17 @@ end
 
 -- The most neighbours (cells within 1.5 spacings) a cell of `list` has,
 -- and each cell's count.
-local function degrees(list, med)
+local function degrees(grid, list, med)
   local out, top = {}, 0
   for _, k in ipairs(list) do
-    local n = #near(list, k, med)
+    local n = #near(grid, k, med)
     out[k] = n
     if n > top then top = n end
   end
   return out, top
 end
+
+local function cell_at(k) return k.cell.x, k.cell.y end
 
 -- Choose the places, once the field is kept. `ctx`: kept, size, width,
 -- text, W, top, hero, place (pattern.lua's rule for what a cell lays, held to
@@ -415,6 +444,10 @@ function M.plan(S, ctx)
   local kept, p = ctx.kept, S.pattern
   local rng = ctx.rng:fork("pattern touches")
   local plan = { at = {}, S = S, size = ctx.size }
+  -- Every neighbour search goes through one kind of grid (pattern.lua's
+  -- M.cell_grid), and what the searches list is counted (plan.looked).
+  local counter = { n = 0 }
+  local function make(items, nd, at) return ctx.grid(items, nd, at, counter) end
   local rep = S.report
   local pt = ctx.pt
   local strip = ctx.band and ctx.band.strip
@@ -458,10 +491,11 @@ function M.plan(S, ctx)
   -- The cells' spacing, or the nominal size of one where there are fewer
   -- than two cells, or two far apart (the pair is no field's spacing): no
   -- measure taken from it is then infinite or out of scale.
-  local med = spacing(kept)
+  local med = spacing(kept, ctx.size, make)
   if med <= 0 or med > 4 * ctx.size then med = ctx.size end
   plan.med = med
   rep.spacing = med
+  local kept_grid = make(kept, 1.5 * med, cell_at)
   rep.deviants = rep.deviants or {}
   rep.at = rep.at or {}
   -- The stray plate first, so that a deviant is not the cell that leaves.
@@ -481,7 +515,7 @@ function M.plan(S, ctx)
     local edge, around = {}, {}
     for _, k in ipairs(whole) do
       if area(k.cell) >= big then
-        local list = near(kept, k, med)
+        local list = near(kept_grid, k, med)
         if #list > 0 and #list <= 4 then edge[#edge + 1] = k; around[k] = list end
       end
     end
@@ -518,7 +552,7 @@ function M.plan(S, ctx)
               ok = ctx.place({ pose }, reach_of(c)) and measure(pose, reach_of(c)) >= field
             end
             if ok then
-              for _, o in ipairs(kept) do
+              for _, o in ipairs(kept_grid:within(nx, ny, 4 * med)) do
                 if o ~= k and dist(nx, ny, o.cell.x, o.cell.y) < 4 * med
                   and shape_gap(pose, o.cell.circle and { circle = o.cell.circle } or { verts = o.cell.verts }) < M.MIN_CLEAR * 2 * reach then
                   ok = false
@@ -594,7 +628,7 @@ function M.plan(S, ctx)
   -- text, of a perimeter band's inner rectangle, or the strip of a band of
   -- whole rows.
   if S.deviant then
-    local deg, top = degrees(whole, med)
+    local deg, top = degrees(make(whole, 1.5 * med, cell_at), whole, med)
     -- No smaller than most: the small square star of stars_8_4 is no cell
     -- to turn.
     local areas = {}
@@ -708,7 +742,7 @@ function M.plan(S, ctx)
       if not plan.at[k] and gilt_ok(k.cell) then items[#items + 1] = { x = k.cell.x, y = k.cell.y, k = k } end
     end
     local n = math.max(M.MIN.cells, math.floor(M.SHARE.cells * #whole + .5))
-    for _, it in ipairs(spread(rng:fork("cells"), items, n, M.APART.cells * med)) do
+    for _, it in ipairs(spread(rng:fork("cells"), items, n, M.APART.cells * med, make)) do
       at(it.k).gilt = true
       note(it.k, fill_outline(it.k.cell), reach_of(it.k.cell))
       note(it.k, cell_shape(it.k.cell), reach_of(it.k.cell))
@@ -726,11 +760,11 @@ function M.plan(S, ctx)
     end
   elseif g == "crossings" then
     local all = {}
-    for _, c in ipairs(crossings(whole)) do
+    for _, c in ipairs(crossings(whole, make)) do
       if not plan.at[c.owner] and ctx.place({ ring(c.x, c.y, 0.42 * med) }, 0.15) then all[#all + 1] = c end
     end
     local n = math.max(M.MIN.crossings, math.floor(M.SHARE.crossings * #all + .5))
-    for _, c in ipairs(spread(rng:fork("crossings"), all, n, M.APART.crossings * med)) do
+    for _, c in ipairs(spread(rng:fork("crossings"), all, n, M.APART.crossings * med, make)) do
       local pl = at(c.owner)
       pl.glints = pl.glints or {}
       pl.glints[#pl.glints + 1] = { c.x, c.y }
@@ -749,6 +783,7 @@ function M.plan(S, ctx)
   end
   rep.places = (rep.places or 0) + laid
   rep.gold = g
+  plan.looked = counter.n
   return plan
 end
 

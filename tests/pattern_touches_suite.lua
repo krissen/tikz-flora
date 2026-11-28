@@ -769,6 +769,43 @@ function M.leaks(backdrop, only)
   return pages, fs
 end
 
+-- The plan's neighbour searches grow linearly with the cells: on fields of
+-- about 250 and 1000 cells of one pattern (laid out without painting), the cells
+-- the searches list, per key and value, are at most 400 a cell and grow by
+-- no more than 1.5 times the cells do. A search that looks at every cell
+-- for every cell lists n squared.
+M.LINEAR_KEYS = { { "deviant", "4" }, { "stray", "on" }, { "glint", "on" }, { "glint", "cells" }, { "glint", "knobs" } }
+
+local function looked_for(pattern_name, size_factor, key, value)
+  local Pattern = require("flora.pattern")
+  local Touches = require("flora.pattern_touches")
+  local Rng = require("flora.rng")
+  local p = Patterns.by_name[pattern_name]
+  local size = p.scale * size_factor
+  local cells = p.cells({ x0 = 0, y0 = 0, x1 = 300, y1 = 300, size = size, rng = Rng.new(3), opts = {}, style = {} })
+  local kept = {}
+  for _, c in ipairs(cells) do kept[#kept + 1] = { cell = c, a = 1 } end
+  local pt = {}
+  local S = Touches.new({ [key] = value }, p, function() end, pt)
+  local ctx = { kept = kept, size = size, width = 2, text = { x0 = -1e6, y0 = -1e6, x1 = -1e6 + 1, y1 = -1e6 + 1 },
+    W = 300, top = 300, rng = Rng.new(7), warn = function() end, grid = Pattern.cell_grid,
+    place = function() return true end, measure = function() return 100, true end, pt = pt }
+  return Touches.plan(S, ctx).looked, #kept
+end
+
+function M.linear()
+  local fs, pages = {}, 0
+  for _, key in ipairs(M.LINEAR_KEYS) do
+    local small, n1 = looked_for("kikko", 1, key[1], key[2])
+    local large, n2 = looked_for("kikko", 0.5, key[1], key[2])
+    pages = pages + 2
+    local tag = string.format("%s=%s: %d cells list %d, %d cells list %d", key[1], key[2], n1, small, n2, large)
+    if large > 400 * n2 then fs[#fs + 1] = tag .. ": more than 400 a cell" end
+    if large > 1.5 * small * n2 / n1 then fs[#fs + 1] = tag .. ": grows faster than the cells" end
+  end
+  return pages, fs
+end
+
 -- The same seed gives the same page, every key on.
 function M.seed(backdrop, only)
   local fs, pages = {}, 0
@@ -797,7 +834,7 @@ end
 function M.run(backdrop, mutations)
   local t0 = os.clock()
   local total = 0
-  for _, check in ipairs({ "off", "gold", "deviant", "stray", "seed", "target", "ink", "finite", "leaks" }) do
+  for _, check in ipairs({ "off", "gold", "deviant", "stray", "seed", "target", "ink", "finite", "leaks", "linear" }) do
     local pages, fs = M[check](backdrop)
     total = total + pages
     H.check(pages > 0, check .. ": no pages")
@@ -847,6 +884,13 @@ function M.run(backdrop, mutations)
   local function place]], "ink", { "stars_8_4", "kikko" }, { 7 }, { { "glint", "on" } }, "pattern", { { "margin", "field" } } },
     { "glint=core changes only the band's core", [[base.bandcore = pal.gold]], [[base.core, base.accent = pal.gold, pal.gold]], "leaks", { seigaiha = true, greek_crosses = true, rosette_lattice = true } },
     { "a glint takes out only the gold there was", [[if base.accent == pal.gold then base.accent = base.core end]], [[base.accent = base.core]], "leaks", { asanoha = true, overlapping_circles = true } },
+    { "searches that grow with the cells", [[    for ix = math.floor((x - r) / nd), math.floor((x + r) / nd) do
+      for iy = math.floor((y - r) / nd), math.floor((y + r) / nd) do
+        for _, it in ipairs(g.buckets[ix .. "," .. iy] or {}) do out[#out + 1] = it end
+      end
+    end]], [[    for _, bucket in pairs(g.buckets) do
+      for _, it in ipairs(bucket) do out[#out + 1] = it end
+    end]], "linear", nil, nil, nil, "pattern" },
     { "the frame keeps its colours", [[hero.band, hero.band0 = pal.gold, pal.gold]], [[hero.band, hero.band0, outer.band = pal.gold, pal.gold, pal.gold]], "target", { "stars_8_4" } },
     { "a spacing that is finite", { [[if best < math.huge then nn[#nn + 1] = best end]], [[if med <= 0 or med > 4 * ctx.size then med = ctx.size end]] }, { [[nn[#nn + 1] = best]], "" }, "finite", { { "stars_8_4", 8 }, { "kikko", 8 } } },
     { "the same seed", [[local rng = ctx.rng:fork("pattern touches")]], [[local rng = ctx.rng:fork("pattern touches" .. tostring({}))]], "seed", { "stars_8_4" } },
