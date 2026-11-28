@@ -1778,6 +1778,12 @@ function M.paint(spec, pt)
   local onpage = {}
   local page = { 0, 0, W, top }
   local field = { keep = cut and {} or keep_rects, hero = hero, gap = gap, outer = outer, page = page }
+  -- What a touch paints is held to the same rule as a cell (M.measure, M.lays),
+  -- but the rectangles are always kept: a touch that lay in a band's cut
+  -- would be half cut by the clip.
+  local touch_field = { keep = keep_rects, hero = hero, gap = gap, outer = outer, page = page }
+  local function place(shapes, reach) return M.lays("touch", shapes, reach, touch_field) end
+  local function measure_touch(shapes, reach) return M.measure(shapes, reach, touch_field) end
   local function measure(shapes, reach) return M.measure(shapes, reach, field) end
   local function fits(form, shapes, reach) return M.lays(form, shapes, reach, field) end
   -- Whether each cell is placed, and the share it keeps (0 drops it).
@@ -2043,8 +2049,8 @@ function M.paint(spec, pt)
     core_info.drawn = K.core_shows(ik.width, ik.corefrac)
   end
   local plan = touches and Touches.plan(touches, { kept = kept, size = size, width = width, text = text, W = W, top = top,
-    hero = hero, fits = fits, rng = rng, warn = function(msg) M.warn(pt, msg) end,
-    keep = keep_rects, gap = gap, band = band, pt = pt, core = core_info })
+    hero = hero, rng = rng, warn = function(msg) M.warn(pt, msg) end,
+    place = place, measure = measure_touch, band = band, pt = pt, core = core_info })
 
   -- Growth starts at the page's outer edge, away from the text. A cell
   -- whose centre lies off the page (outer=bleed) starts with the edge,

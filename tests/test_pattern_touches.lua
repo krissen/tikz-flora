@@ -224,7 +224,14 @@ for _, name in ipairs({ "stars_8_4", "kikko" }) do
       local keep = { { 34, 30, 256, 225 }, reserve[1] }
       local field = math.huge
       for _, k in ipairs(pt.pattern.kept) do
-        for _, r in ipairs(keep) do field = math.min(field, rect_dist(k.cell.x, k.cell.y, r)) end
+        -- The nearest the cell's outline comes (the field's own distance is
+        -- an outline's, the plate's is held to it).
+        local c = k.cell
+        local corners = c.circle and { { c.circle[1], c.circle[2] } } or c.verts
+        local rad = c.circle and c.circle[3] or 0
+        for _, r in ipairs(keep) do
+          for _, v in ipairs(corners) do field = math.min(field, rect_dist(v[1], v[2], r) - rad) end
+        end
       end
       H.check(l.points and #l.points > 0, name .. " seed " .. seed .. ": the report keeps no points")
       for _, q in ipairs(l.points or {}) do

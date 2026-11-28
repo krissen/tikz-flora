@@ -368,17 +368,6 @@ local function placed(c, dx, dy, turn)
   return { verts = P }
 end
 
-local function shape_at(c, dx, dy, pad)
-  if c.circle then return { circle = { c.circle[1] + dx, c.circle[2] + dy, c.circle[3] + pad } } end
-  local P = {}
-  for i, v in ipairs(c.verts) do P[i] = { v[1] + dx, v[2] + dy } end
-  return { verts = P }
-end
-
-local function rect_dist(x, y, r)
-  local dx, dy = math.max(r[1] - x, 0, x - r[3]), math.max(r[2] - y, 0, y - r[4])
-  return sqrt(dx * dx + dy * dy)
-end
 
 -- How far a cell's outline reaches from its middle: the farthest corner, or
 -- the radius.
@@ -402,10 +391,10 @@ local function degrees(list, med)
 end
 
 -- Choose the places, once the field is kept. `ctx`: kept, size, width,
--- text, W, top, hero, fits (pattern.lua's precondition), keep (the
--- rectangles the field keeps clear of), band (a perimeter band's, with its
--- strip for whole rows), core (whether a band's core is drawn), pt, rng,
--- warn. Returns the plan: at[k] for each kept cell with something of its
+-- text, W, top, hero, place (pattern.lua's rule for what a cell lays, held to
+-- what a touch paints) and measure (its distance), band (a perimeter band's,
+-- with its strip for whole rows), core (whether a band's core is drawn), pt,
+-- rng, warn. Returns the plan: at[k] for each kept cell with something of its
 -- own, and `med`, the spacing of the cells. What is laid goes to the
 -- page's report (S.report), in page coordinates.
 function M.plan(S, ctx)
@@ -413,31 +402,30 @@ function M.plan(S, ctx)
   local rng = ctx.rng:fork("pattern touches")
   local plan = { at = {}, S = S, size = ctx.size }
   local rep = S.report
-  local keep = ctx.keep or {}
   local pt = ctx.pt
   local strip = ctx.band and ctx.band.strip
   local function page_xy(x, y)
     if pt.frame_fn then return pt.frame_fn(x, y) end
     return x, y
   end
-  local function text_dist(x, y)
-    local d = math.huge
-    for _, r in ipairs(keep) do d = math.min(d, rect_dist(x, y, r)) end
+  -- Everything a touch paints is held to the field's own rule, the one the
+  -- cells' footprints are measured by (pattern.lua's M.measure, through
+  -- ctx.place): the text, a reservation, the hero, and under outer=margin the
+  -- page's margin, at the gap the field keeps. The shape is the whole outline
+  -- painted, its strokes reaching `reach` further. A place that fails is not
+  -- chosen and not counted. This module lists no protected surface of its own.
+  local function ring(x, y, r) return { circle = { x, y, r } } end
+  local function cell_shape(c) return c.circle and { circle = c.circle } or { verts = c.verts } end
+  local function reach_of(c) return ctx.width / 2 + (c.pad or 0) end
+  local function cell_ok(c) return ctx.place({ cell_shape(c) }, reach_of(c)) end
+  local function turned_ok(c)
+    local n = c.circle and 0 or #(c.tile or c.verts)
+    return ctx.place({ placed(c, 0, 0, n > 0 and pi / n or 0) }, reach_of(c))
+  end
+  local function measure(shape, reach)
+    local d = ctx.measure({ shape }, reach)
     return d
   end
-  -- The one check of everything a touch paints beyond a cell's own approved
-  -- footprint: a disc of radius r about (x, y), its strokes reaching `reach`
-  -- further, lies at least the field's gap from every rectangle the field
-  -- keeps clear of (the text, a reservation), whether the field cuts there by
-  -- clip or keeps off. A place that fails it is not chosen and not counted.
-  local gap = ctx.gap or 0
-  local function clear(x, y, r, reach)
-    for _, rc in ipairs(keep) do
-      if rect_dist(x, y, rc) - r - reach < gap - 1e-6 then return false end
-    end
-    return true
-  end
-  local function cell_clear(c) return clear(c.x, c.y, cell_radius(c), ctx.width / 2 + (c.pad or 0)) end
   local function at(k)
     plan.at[k] = plan.at[k] or {}
     return plan.at[k]
@@ -483,7 +471,7 @@ function M.plan(S, ctx)
     -- The plate lies no nearer what the field keeps clear of than the
     -- field's own nearest cell does.
     local field = math.huge
-    for _, k in ipairs(kept) do field = math.min(field, text_dist(k.cell.x, k.cell.y)) end
+    for _, k in ipairs(kept) do field = math.min(field, measure(cell_shape(k.cell), reach_of(k.cell))) end
     local done
     for _, k in ipairs(edge) do
       local c = k.cell
@@ -501,14 +489,14 @@ function M.plan(S, ctx)
             if f * med < M.MIN_MOVE * 2 * reach then goto too_near end
             local dx, dy = vx * f * med, vy * f * med
             local nx, ny = c.x + dx, c.y + dy
-            local ok = nx > med and nx < ctx.W - med and ny > med and ny < ctx.top - med and text_dist(nx, ny) >= field
-              and clear(nx, ny, reach, ctx.width / 2 + (c.pad or 0))
+            local ok = nx > med and nx < ctx.W - med and ny > med and ny < ctx.top - med
+            local turn, pose
             if ok then
-              ok = ctx.fits("cell", { shape_at(c, dx, dy, 0) }, ctx.width / 2 + (c.pad or 0) + 0.2 * med)
+              turn = (rng:next() < 0.5 and -1 or 1) * 12 * pi / 180
+              pose = placed(c, dx, dy, turn)
+              ok = ctx.place({ pose }, reach_of(c)) and measure(pose, reach_of(c)) >= field
             end
             if ok then
-              local turn = (rng:next() < 0.5 and -1 or 1) * 12 * pi / 180
-              local pose = placed(c, dx, dy, turn)
               for _, o in ipairs(kept) do
                 if o ~= k and dist(nx, ny, o.cell.x, o.cell.y) < 4 * med
                   and shape_gap(pose, o.cell.circle and { circle = o.cell.circle } or { verts = o.cell.verts }) < M.MIN_CLEAR * 2 * reach then
@@ -545,10 +533,8 @@ function M.plan(S, ctx)
         run = run + dist(px, py, x, y)
         px, py = x, y
         if run >= next_at and dist(x, y, bx, by) > 0.55 * med then
-          if ctx.fits("cell", { { circle = { x, y, 0.3 } } }, 0) and text_dist(x, y) >= field - 0.3 * med
-            and clear(x, y, math.max(0.6, 0.055 * med), 0) then
-            dots[#dots + 1] = { x, y }
-          end
+          local dot = ring(x, y, math.max(0.6, 0.055 * med))
+          if ctx.place({ dot }, 0) and measure(dot, 0) >= field - 0.3 * med then dots[#dots + 1] = { x, y } end
           next_at = next_at + 0.26 * med
         end
       end
@@ -615,7 +601,7 @@ function M.plan(S, ctx)
       elseif c.y > t.y1 then return "t" elseif c.y < t.y0 then return "b" end
     end
     for _, k in ipairs(whole) do
-      if deg[k] >= 0.6 * top and area(k.cell) >= big and not taken[k] and cell_clear(k.cell) then
+      if deg[k] >= 0.6 * top and area(k.cell) >= big and not taken[k] and turned_ok(k.cell) then
         local s = side_of(k.cell)
         if s then
           by_side[s] = by_side[s] or {}
@@ -695,7 +681,7 @@ function M.plan(S, ctx)
   if g == "cells" then
     local items = {}
     for _, k in ipairs(whole) do
-      if not plan.at[k] and cell_clear(k.cell) then items[#items + 1] = { x = k.cell.x, y = k.cell.y, k = k } end
+      if not plan.at[k] and cell_ok(k.cell) then items[#items + 1] = { x = k.cell.x, y = k.cell.y, k = k } end
     end
     local n = math.max(M.MIN.cells, math.floor(M.SHARE.cells * #whole + .5))
     for _, it in ipairs(spread(rng:fork("cells"), items, n, M.APART.cells * med)) do
@@ -705,7 +691,7 @@ function M.plan(S, ctx)
     end
   elseif g == "knobs" then
     for _, k in ipairs(kept) do
-      if clear(k.cell.x, k.cell.y, 0.16 * med, 0.15) then
+      if ctx.place({ ring(k.cell.x, k.cell.y, 0.16 * med) }, 0.15) then
         at(k).knob = true
         laid = laid + 1
         rep.at[#rep.at + 1] = { page_xy(k.cell.x, k.cell.y) }
@@ -714,7 +700,7 @@ function M.plan(S, ctx)
   elseif g == "crossings" then
     local all = {}
     for _, c in ipairs(crossings(whole)) do
-      if not plan.at[c.owner] and clear(c.x, c.y, 0.42 * med, 0.15) then all[#all + 1] = c end
+      if not plan.at[c.owner] and ctx.place({ ring(c.x, c.y, 0.42 * med) }, 0.15) then all[#all + 1] = c end
     end
     local n = math.max(M.MIN.crossings, math.floor(M.SHARE.crossings * #all + .5))
     for _, c in ipairs(spread(rng:fork("crossings"), all, n, M.APART.crossings * med)) do
