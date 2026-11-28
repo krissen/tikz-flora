@@ -19,6 +19,7 @@ local H = dofile("tests/helper.lua")
 local Compose = require("flora.compose")
 local Paint = require("flora.paint")
 local Settings = require("flora.settings")
+local Patterns = require("flora.patterns")
 
 local M = {}
 
@@ -627,6 +628,147 @@ function M.finite(backdrop, only)
   return pages, fs
 end
 
+-- What a glint value may change: only its own target, over every pattern of
+-- the catalog. A page with the value and one without are painted as lists
+-- of operations (kind, path, width, colour); each operation is told by what
+-- drew it (the contour of a band, the core of a band, a fill, anything
+-- else), and an operation present in both whose colour differs is a change.
+--   core                only the core of a band
+--   on, cells, knobs    only gold the pattern had of its own, to the core's
+--                       colour (the gold taken out in their place)
+-- Ink of the touched cells themselves (a knob, glints, a gilded cell) is
+-- the touch, not a change.
+local function ops_of(name, set, backdrop)
+  local K = require("flora.pat_kit")
+  local Touches = require("flora.pattern_touches")
+  local ops, group, touched = {}, nil, false
+  local band, fillk, core_stroke = K.band, K.fill, K.core_stroke
+  local painters = Touches.painters
+  rawset(K, "band", function(pt, path, ink, opt)
+    local was = group
+    group = { fn = "band", n = 0 }
+    band(pt, path, ink, opt)
+    group = was
+  end)
+  rawset(K, "fill", function(...)
+    local was = group
+    group = { fn = "fill" }
+    fillk(...)
+    group = was
+  end)
+  if core_stroke then
+    rawset(K, "core_stroke", function(...)
+      local was = group
+      group = { fn = "core" }
+      core_stroke(...)
+      group = was
+    end)
+  end
+  rawset(Touches, "painters", function(plan, pl, c, ink, pt)
+    local h = painters(plan, pl, c, ink, pt)
+    for _, f in ipairs({ "construct", "paint", "late" }) do
+      local g = h[f]
+      if g then
+        h[f] = function(...)
+          local was = touched
+          touched = true
+          local r = g(...)
+          touched = was
+          return r
+        end
+      end
+    end
+    return h
+  end)
+  local fill, stroke = Paint.fill, Paint.stroke
+  local function sig(kind, cmds, width)
+    local first = cmds
+    if type(cmds[1]) == "table" and type(cmds[1][1]) == "table" then first = cmds[1] end
+    local c = first[1] or {}
+    return string.format("%s %d %.1f %.1f %.1f %s", kind, #cmds, c[2] or 0, c[3] or 0, width, tostring(#first))
+  end
+  local function record(kind, cmds, rgb, width)
+    local g = "direkt"
+    if group then
+      if group.fn == "core" then g = "bandkärna"
+      elseif group.fn == "band" then
+        group.n = group.n + 1
+        g = group.n == 1 and "bandkant" or "bandkärna"
+      elseif group.fn == "fill" then g = "fyllning" end
+    end
+    ops[#ops + 1] = { sig = sig(kind, cmds, width), group = g, rgb = rgb, touched = touched }
+  end
+  rawset(Paint, "fill", function(self, cmds, rgb, ...) record("f", cmds, rgb, 0); return fill(self, cmds, rgb, ...) end)
+  rawset(Paint, "stroke", function(self, cmds, rgb, width, ...) record("s", cmds, rgb, width or 0); return stroke(self, cmds, rgb, width, ...) end)
+  local ok, err = pcall(function()
+    Paint.reset_resources()
+    Compose.page(spec(name, "field", backdrop, set))
+  end)
+  rawset(Paint, "fill", fill)
+  rawset(Paint, "stroke", stroke)
+  rawset(K, "band", band)
+  rawset(K, "fill", fillk)
+  if core_stroke then rawset(K, "core_stroke", core_stroke) end
+  rawset(Touches, "painters", painters)
+  if not ok then error(err, 0) end
+  return ops
+end
+
+local function rgb_key(c) return c and string.format("%.3f,%.3f,%.3f", c[1], c[2], c[3]) or "nil" end
+
+-- The changes of colour between the page without the value and with it:
+-- { group = { count, from, to } }, keyed by group and the colours' names.
+function M.changes(name, value, backdrop, palette)
+  local gold = Paint.palette.gold
+  -- Bands three times as wide, so that every pattern draws its cores.
+  local off = ops_of(name, { bandwidth = 3, patternpalette = palette }, backdrop)
+  local on = ops_of(name, { glint = value, bandwidth = 3, patternpalette = palette }, backdrop)
+  local pool = {}
+  for _, o in ipairs(off) do
+    pool[o.sig] = pool[o.sig] or {}
+    table.insert(pool[o.sig], o)
+  end
+  local out, leaks = {}, {}
+  for _, o in ipairs(on) do
+    local list = pool[o.sig]
+    local match = list and table.remove(list, 1)
+    if match and not o.touched and rgb_key(match.rgb) ~= rgb_key(o.rgb) then
+      local key = o.group .. ": " .. (match.rgb == gold and "gold" or rgb_key(match.rgb)) .. " -> " .. (o.rgb == gold and "gold" or rgb_key(o.rgb))
+      out[key] = (out[key] or 0) + 1
+      local own_gold_out = match.rgb == gold and value ~= "core"
+      local core_gold = value == "core" and o.group == "bandkärna" and o.rgb == gold
+      if not (own_gold_out or core_gold) then leaks[#leaks + 1] = key end
+    end
+  end
+  return out, leaks
+end
+
+-- Over the whole catalog, with the accent gold (the default) and with an
+-- accent of another colour, which a glint leaves as it is.
+M.PALETTES = { { "gold accent", nil }, { "coloured accent", { accent = "fuyu-gaki:0.64:0.4" } } }
+
+function M.leaks(backdrop, only)
+  local fs, pages = {}, 0
+  for _, p in ipairs(Patterns.list) do
+    for _, value in ipairs({ "on", "core", "cells", "knobs" }) do
+      for _, pal in ipairs(M.PALETTES) do
+        if not only or only[p.name] then
+          local _, leaks = M.changes(p.name, value, backdrop, pal[2])
+          pages = pages + 2
+          local seen = {}
+          for _, key in ipairs(leaks) do
+            if not seen[key] then
+              seen[key] = true
+              fs[#fs + 1] = string.format("%s glint=%s (%s): %s", p.name, value, pal[1], key)
+            end
+          end
+        end
+      end
+    end
+  end
+  return pages, fs
+end
+
 -- The same seed gives the same page, every key on.
 function M.seed(backdrop, only)
   local fs, pages = {}, 0
@@ -655,7 +797,7 @@ end
 function M.run(backdrop, mutations)
   local t0 = os.clock()
   local total = 0
-  for _, check in ipairs({ "off", "gold", "deviant", "stray", "seed", "target", "ink", "finite" }) do
+  for _, check in ipairs({ "off", "gold", "deviant", "stray", "seed", "target", "ink", "finite", "leaks" }) do
     local pages, fs = M[check](backdrop)
     total = total + pages
     H.check(pages > 0, check .. ": no pages")
@@ -703,6 +845,8 @@ function M.run(backdrop, mutations)
     { "a touch keeps off the page's margin", [[hero = hero, gap = gap, outer = outer, page = page }
   local function place]], [[hero = hero, gap = gap, outer = "bleed", page = page }
   local function place]], "ink", { "stars_8_4", "kikko" }, { 7 }, { { "glint", "on" } }, "pattern", { { "margin", "field" } } },
+    { "glint=core changes only the band's core", [[base.bandcore = pal.gold]], [[base.core, base.accent = pal.gold, pal.gold]], "leaks", { seigaiha = true, greek_crosses = true, rosette_lattice = true } },
+    { "a glint takes out only the gold there was", [[if base.accent == pal.gold then base.accent = base.core end]], [[base.accent = base.core]], "leaks", { asanoha = true, overlapping_circles = true } },
     { "the frame keeps its colours", [[hero.band, hero.band0 = pal.gold, pal.gold]], [[hero.band, hero.band0, outer.band = pal.gold, pal.gold, pal.gold]], "target", { "stars_8_4" } },
     { "a spacing that is finite", { [[if best < math.huge then nn[#nn + 1] = best end]], [[if med <= 0 or med > 4 * ctx.size then med = ctx.size end]] }, { [[nn[#nn + 1] = best]], "" }, "finite", { { "stars_8_4", 8 }, { "kikko", 8 } } },
     { "the same seed", [[local rng = ctx.rng:fork("pattern touches")]], [[local rng = ctx.rng:fork("pattern touches" .. tostring({}))]], "seed", { "stars_8_4" } },

@@ -266,11 +266,13 @@ for _, name in ipairs({ "stars_8_4", "kikko" }) do
   end
 end
 
--- A core too narrow to be drawn (under 0.6 pt) lays no gold, and the log
--- says so.
-for _, name in ipairs({ "asanoha", "overlapping_circles", "shippo" }) do
+-- A pattern that draws no band core (its bands have none, as seigaiha's
+-- discs; or a core under 0.6 pt) is painted as without the key, and the log
+-- says so: glint=core changes the core of a band and nothing else.
+for _, name in ipairs({ "asanoha", "overlapping_circles", "shippo", "seigaiha", "penrose_rhombs" }) do
   local pt = page(name, { glint = "core" })
-  H.check(warned(pt, "glint=core: " .. name .. "'s band core"), name .. ": a core that is not drawn is not logged")
+  H.check(pt:body() == page(name):body(), name .. ": glint=core changed a page that draws no band core")
+  H.check(warned(pt, "glint=core: " .. name .. " draws no band core"), name .. ": a core that is not drawn is not logged")
   H.check(pt.pattern.touches.places == 0, name .. ": places counted for a core that is not drawn")
 end
 H.check(not warned(page("stars_8_4", { glint = "core" }), "glint=core"), "stars_8_4: logged a core that is drawn")

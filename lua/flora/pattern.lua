@@ -666,7 +666,7 @@ function M.cell_inks(base, a, hero, to)
   local function f(c) return c and (a >= 1 and c or Paint.mix(to, c, a)) end
   return {
     band = f(hero and base.band0 or base.band), core = f(base.core), accent = f(base.accent),
-    line = f(hero and base.line0 or base.line), gold = f(base.gold),
+    line = f(hero and base.line0 or base.line), gold = f(base.gold), bandcore = f(base.bandcore),
     fill = { f(base.fill1), f(base.fill2) },
     ground = f(base.ground), dark = f(base.dark), paper = f(pal.paper),
     lines = base.lines,
@@ -2039,18 +2039,9 @@ function M.paint(spec, pt)
     for _, v in ipairs(list) do kept[#kept + 1] = { cell = v.c, a = v.a, turn = v.turn, jitter = stagger:next() } end
   end
 
-  -- Whether a band's core is drawn (pat_kit.lua's K.band): wide enough, and
-  -- not a line.
-  local core_info
-  if touches and touches.gold == "core" then
-    local K = require("flora.pat_kit")
-    local ik = band_ink({}, p, spec, k_scale, ff)
-    core_info = { line = ik.bands == "line" or base.lines, width = K.core_width(ik.width, ik.corefrac) }
-    core_info.drawn = K.core_shows(ik.width, ik.corefrac)
-  end
   local plan = touches and Touches.plan(touches, { kept = kept, size = size, width = width, text = text, W = W, top = top,
     hero = hero, rng = rng, warn = function(msg) M.warn(pt, msg) end,
-    place = place, measure = measure_touch, band = band, pt = pt, core = core_info })
+    place = place, measure = measure_touch, band = band, pt = pt })
 
   -- Growth starts at the page's outer edge, away from the text. A cell
   -- whose centre lies off the page (outer=bleed) starts with the edge,
@@ -2338,7 +2329,10 @@ function M.paint(spec, pt)
     isolated = edgeinfo.isolated, edge_cells = edgeinfo.edge }
   -- For measuring (pattern_opts.measure): the kept cells' own edge.
   pt.pattern.edge_inks, pt.pattern.hero_inks = outer_base, hero_base
-  if touches then pt.pattern.touches = pt.touches_report end
+  if touches then
+    Touches.finish(touches, pt, function(msg) M.warn(pt, msg) end)
+    pt.pattern.touches = pt.touches_report
+  end
   if opts.measure then
     local ki = M.field_edges(cells, kept, onpage)
     pt.pattern.isolated, pt.pattern.edge_cells = ki.isolated, ki.edge

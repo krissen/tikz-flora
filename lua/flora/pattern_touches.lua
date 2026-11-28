@@ -146,11 +146,14 @@ function M.colours(S, base)
   if not g then return end
   base.gold = pal.gold
   if g == "core" then
-    base.core, base.accent = pal.gold, pal.gold
+    -- Only the stroke down a band's middle (pat_kit.lua's K.core_stroke) is
+    -- gold: the core and accent roles keep what else they paint.
+    base.bandcore = pal.gold
     return
   end
-  -- No gold of the pattern's own in the field.
-  base.accent = base.core
+  -- The pattern's own gold, where its accent is gold, is taken out in
+  -- favour of the glints; an accent of another colour stays.
+  if base.accent == pal.gold then base.accent = base.core end
 end
 
 -- A colour with its hue turned a third of the way round the wheel.
@@ -736,22 +739,10 @@ function M.plan(S, ctx)
       rep.at[#rep.at + 1] = { page_xy(c.x, c.y) }
     end
   elseif g == "core" then
-    local roles = {}
-    for _, r in ipairs(p.roles or {}) do roles[r] = true end
-    local core = ctx.core or {}
-    if not (roles.core or roles.accent) then
-      core_logged = true
-      ctx.warn(string.format("glint=core: %s paints no core down its bands, so the gold shows nowhere", p.name))
-    elseif core.line then
-      core_logged = true
-      ctx.warn(string.format("glint=core: %s's bands are drawn as lines here, with no core, so the gold shows nowhere", p.name))
-    elseif core.drawn == false then
-      core_logged = true
-      ctx.warn(string.format("glint=core: %s's band core is %.2f pt wide, under the %.1f pt it takes to be drawn, so the gold shows nowhere; a larger scale or bandwidth widens it",
-        p.name, core.width or 0, K.CORE_MIN))
-    else
-      laid = #kept
-    end
+    -- The gold goes down the band's core where the pattern draws one
+    -- (K.core_stroke); counted, and a line if none, once the page is
+    -- painted (M.finish).
+    core_logged = true
   end
   if g and not core_logged and laid == 0 then
     ctx.warn(string.format("glint=%s: %s has nothing in this field to lay it by; the field has no gold", S.asked_glint or g, p.name))
@@ -759,6 +750,19 @@ function M.plan(S, ctx)
   rep.places = (rep.places or 0) + laid
   rep.gold = g
   return plan
+end
+
+-- Once the page is painted: how many band cores were laid in gold
+-- (glint=core), and a line when the pattern draws none (its bands have no
+-- core, as seigaiha's, or none that is wide enough): it is then painted as
+-- without the key, for only a band's core is changed.
+function M.finish(S, pt, warn)
+  if S.gold ~= "core" then return end
+  local n = pt.band_cores or 0
+  S.report.places = n
+  if n == 0 then
+    warn(string.format("glint=core: %s draws no band core here (its bands have none, or the core is under %.1f pt wide, or the bands are lines), so the gold shows nowhere and it is painted as without the key; a larger scale or bandwidth widens a narrow core", S.pattern.name, K.CORE_MIN))
+  end
 end
 
 local function disc(x, y, r) return { { "o", x, y, r } } end

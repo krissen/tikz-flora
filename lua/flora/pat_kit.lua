@@ -115,7 +115,18 @@ function K.band(pt, path, ink, opt)
   end
   local core = K.core_width(W, ink.corefrac)
   pt:stroke(path, ink.band, W, 1, o)
-  if core >= K.CORE_MIN then pt:stroke(path, ink[opt.core or "core"], core, 1, o) end
+  if core >= K.CORE_MIN then K.core_stroke(pt, path, ink, opt.core or "core", core, o) end
+end
+
+-- The core of a band, drawn: the stroke down its middle, in the role's
+-- colour, or in ink.bandcore where the page asks for the band cores gold
+-- (glint=core). Every pattern draws a band's core through this, and only the
+-- band's core is drawn so: no other use of the core or accent role
+-- (a field of one of them, a disc) takes ink.bandcore.
+function K.core_stroke(pt, path, ink, role, w, opts)
+  local colour = ink.bandcore
+  if colour then pt.band_cores = (pt.band_cores or 0) + 1 else colour = ink[role] end
+  pt:stroke(path, colour, w, 1, opts)
 end
 
 -- The core's width in a strap W wide whose core takes `corefrac` of it,

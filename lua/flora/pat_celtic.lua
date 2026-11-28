@@ -119,7 +119,7 @@ local function paint(pt, c, ink)
   local hw = line and w + 1.6 or w * HALO
   if #c.under > 0 then
     pt:stroke(c.under, ink.band, w, 1, { many = true })
-    if core > 0 then pt:stroke(c.under_core, ink.accent, core, 1, { many = true }) end
+    if core > 0 then K.core_stroke(pt, c.under_core, ink, "accent", core, { many = true }) end
   end
   if #c.over > 0 then
     -- The halo is the page's own colour: the paper, or on a dark backdrop
@@ -134,7 +134,7 @@ local function paint(pt, c, ink)
       pt:stroke(c.halo, Paint.palette.paper, hw, 1, { many = true })
     end
     pt:stroke(c.over, ink.band, w, 1, { many = true })
-    if core > 0 then pt:stroke(c.over_core, ink.accent, core, 1, { many = true }) end
+    if core > 0 then K.core_stroke(pt, c.over_core, ink, "accent", core, { many = true }) end
   end
 end
 
