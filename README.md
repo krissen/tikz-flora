@@ -268,6 +268,37 @@ text) or `guilloche` (a guilloche band round it: two strands crossing over
 and under, a dot in each eye, between fine rules); `outer` whether it runs off the paper (`bleed`) or stops in whole
 cells, and a whole hero, inside it (`margin`); `scale` the cell size. A pattern's cells are sized to their field, so that it looks the same against its margin on a slide, an A4 page or an A5 one: the size is the pattern's own on a 53 mm wide margin, and smaller in a narrower one, in proportion, measured on the strip the pattern stands in (the margin beside the text, the narrower of the two under `centered`, and the widest strip round the text for layouts that take the whole page, such as `surround`); a wider margin keeps the pattern's own size. The cells never shrink below half their own size, nor so far that a strap loses its light core (`stars_8_4`, `truchet` and `celtic_knot` stop sooner), and the bands and fine lines thin with them, never below 0.25 pt. `scale` is a factor on that size. A pattern grows as flora does (see `docs/progression.md`): each cell from the page's outer edge inwards, its construction lines first and then its colour.
 
+#### Touches on a pattern field
+
+Four keys lay small touches on a pattern's field, all off unless set. `glint` says where gold lies in the field, in place of the gold the pattern has of its own (an accent that is gold; an accent of another colour stays): `on` lays a few glints at the nodes of the pattern's underlying lattice, spread by the page's seed: the corners that neighbouring tiles share (stars_8_4, asanoha, kikko, penrose_rhombs, greek_crosses, shippo: the corners of the lattice the stars or cells are built on, which are not where their bands cross), the corners that neighbouring outlines share (hexagram_lattice, khatam), or the points where two circles meet (overlapping_circles, seigaiha); `core` makes the stroke down the middle of a band gold, and nothing else; `cells` gilds a few whole cells; `knobs` sets a gold knob at the middle of every cell; `off`, the default, leaves the field as it is. `herogilding=on` paints the hero's lines in gold and combines with any `glint`. `deviant` turns whole cells and paints them in another colour: `on` turns one on the page, a number from 2 to 4 that many, on different edges of the paper in a perimeter band and of the text in a field, a second on an edge only when every edge has one, and never two next to each other; where there is room for fewer than asked the log says so. `stray=on` lets one cell come loose from the field's edge and lie at least about a cell's width from the gap it left, a dotted path leading back to it, clear of the text as the field is; where no place keeps that, none is laid and the log says so.
+
+The places are drawn from the page's seed, so a seed gives the same page, and a page without the keys is painted exactly as it was. `glint=core` is laid down the core of a band wherever the pattern draws one, at least 0.6 pt wide, and nowhere else: at the patterns' own widths that is `stars_8_4`, and `truchet` and `celtic_knot`, whose core is gold already; `asanoha`, `overlapping_circles`, `shippo`, `kikko`, `kolam` and `rosette_lattice` draw a core narrower than that (a larger `scale` or `bandwidth` widens it), and `seigaiha`, `greek_crosses`, `penrose_rhombs`, `khatam` and `hexagram_lattice` draw none (their bands are solid, or the core role paints a disc or a field, which `glint` leaves alone). Such a page is painted as without the key, and the log says so. A pattern with nothing to lay a key by is painted as it is, and the log says why: `celtic_knot` and `sikku_kolam` have no cells for `cells`, `deviant` and `stray`, no middles for `knobs`, and no nodes for `on`; `truchet` (its arcs meet at the middle of a tile's edge) and `rosette_lattice` (its straps cross inside the rosette) have no nodes for `on`. In a band of whole rows each side is a strip of its own: `deviant` draws from the seed which strips carry one, and `stray` one strip only. The sheets below are made by `just pattern-touches` (docs/pattern-touches.md).
+
+What each key and value does in each pattern, from a run of `just pattern-touches OUT inventory` (docs/pattern-touches.md; the A4 page of the mixer's opening colourway, the patterns' own band width): *lays* places something; *bandwidth=3* lays nothing at the pattern's own width, for its core is under 0.6 pt, and lays at bands three times as wide (a larger `scale` widens it too); *no core drawn* draws no band core even then (the bands are solid, or the core role paints a field or a disc, which `glint` leaves alone); *no* means the pattern has nothing to lay the value by, the log says so and the page is painted as without the key; *none laid here* means it is supported but this page had no room. `glint=core` at `celtic_knot` and `truchet` lays gold down cores that are gold already.
+
+| pattern | glint=on | glint=core | glint=cells | glint=knobs | herogilding=on | deviant=on | stray=on |
+|---|---|---|---|---|---|---|---|
+| asanoha | lays | bandwidth=3 | lays | lays | lays | lays | lays |
+| celtic_knot | no | lays | no | no | lays | no | no |
+| greek_crosses | lays | no core drawn | lays | lays | lays | lays | lays |
+| hexagram_lattice | lays | no core drawn | lays | lays | lays | lays | lays |
+| khatam | lays | no core drawn | lays | lays | lays | lays | lays |
+| kikko | lays | bandwidth=3 | lays | lays | lays | lays | lays |
+| overlapping_circles | lays | bandwidth=3 | lays | lays | lays | lays | lays |
+| penrose_rhombs | lays | no core drawn | lays | lays | lays | lays | lays |
+| rosette_lattice | no | bandwidth=3 | lays | lays | lays | lays | lays |
+| seigaiha | lays | no core drawn | lays | lays | lays | lays | lays |
+| shippo | lays | bandwidth=3 | lays | lays | lays | lays | lays |
+| sikku_kolam | no | bandwidth=3 | no | no | lays | no | no |
+| stars_8_4 | lays | lays | lays | lays | lays | lays | lays |
+| truchet | no | lays | lays | lays | lays | lays | lays |
+
+![glint: today, on, core, cells, knobs, herogilding](docs/images/pattern-glint.png)
+
+![deviant: three seeds, off and on](docs/images/pattern-deviant.png)
+
+![stray: three seeds, off and on](docs/images/pattern-stray.png)
+
 #### The perimeter band
 
 `layout=perimeter` lays a pattern as a band round the paper's edge, the same width on all four sides: `perimeterwidth` mm wide (12 by default, 4 to 40). Where a margin is narrower than that, the whole band narrows to what the narrowest side holds, so it stays as wide all round and clear of the text block; with room for under 4 mm no band is drawn. The log says so once per page: a theme sets its margins after the band. The band keeps clear of the whole text block, not of its lines, of every `\florareserve` rectangle, and of a running head above the block under `header`; it runs to the paper's top past `gesture.top_inset` and the header clip that keep flora clear of a running head, so a frame title inside the text block keeps its band above it. The lattice is laid about the paper's centre, so the band meets the paper alike on opposite sides.

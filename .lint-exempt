@@ -15,12 +15,10 @@ lua/flora/orn_relief.lua
 lua/flora/orn_roundel.lua
 lua/flora/orn_scrollwork.lua
 lua/flora/ornament.lua
-lua/flora/pattern.lua
 lua/flora/pdfout.lua
 lua/flora/progression.lua
 lua/flora/raster_relief.lua
 lua/flora/raster.lua
-lua/flora/settings.lua
 lua/flora/sprig.lua
 lua/flora/visitor.lua
 lua/flora/wash.lua
@@ -31,6 +29,5 @@ tests/pattern_matrix.lua
 tests/pattern_panel.lua
 tests/test_header_mark.lua
 tests/test_ornaments.lua
-tests/pattern_matrix_suite.lua
 tests/test_pattern.lua
 tests/test_raster.lua

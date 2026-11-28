@@ -1,0 +1,889 @@
+-- The touches a pattern field may carry, each a setting that is off unless
+-- set (settings.lua): where gold lies in the field, gold on the hero, a
+-- deviant cell and a stray plate. A page without them is painted as it is
+-- without this module.
+--
+--   glint      where gold lies in the field, in place of the pattern's own:
+--                on     a few glints at the pattern's nodes (the corners
+--                       neighbouring tiles share, or where two circles
+--                       meet), spread by seed
+--                core   in the band's core (the accent and the core gold)
+--                cells  a few whole cells gilded, chosen by seed
+--                knobs  a gold knob at the middle of every cell
+--   herogilding   the hero's lines in gold; it combines with any glint
+--   deviant    off, on (one), or 2 to 4 whole cells on the page are turned and
+--              painted in another colour, their places drawn by seed, on
+--              different edges before two share one and never two close
+--   stray      one cell has come loose from the field's edge and lies a
+--              little way outside it, a dotted path leading back to the
+--              gap it left
+--
+-- The places are drawn from the page's seed on a stream of their own
+-- ("pattern touches"), so a page without the keys draws what it always
+-- did. A pattern that cannot give a key what it needs says so in the page's
+-- log and is painted as it is without that key. M.plan chooses the places
+-- once the field is kept; M.painters paints a cell through its plan. The
+-- page keeps one report of what was laid (pt.touches_report), summed over
+-- the strips of a perimeter band.
+
+local Paint = require("flora.paint")
+local Color = require("flora.color")
+local K = require("flora.pat_kit")
+local G = require("flora.geom")
+local sqrt, sin, cos, pi = math.sqrt, math.sin, math.cos, math.pi
+
+local M = {}
+
+-- The values of glint; "on" is the glints at the lattice's nodes.
+M.GLINT = { off = true, on = true, core = true, cells = true, knobs = true }
+M.GLINT_ORDER = { "off", "on", "core", "cells", "knobs" }
+
+-- Patterns whose cells are not tiles a key can gild, turn or move, and why.
+M.NO_CELLS = {
+  celtic_knot = "its strands run across the edges of its cells",
+  sikku_kolam = "its dots and loops are not the cells of a tiling",
+}
+
+-- Patterns whose cells have no middle a knob could sit at, and why.
+M.NO_CENTRES = {
+  celtic_knot = "its cells are pieces of strand, not tiles with a middle",
+  sikku_kolam = "its cells are dots and loops, not tiles with a middle",
+}
+
+-- Patterns with no nodes the field knows (no corners their cells share and
+-- no circles that meet), and why.
+M.NO_CROSSINGS = {
+  celtic_knot = "its strands cross at the middle of its cells' edges, which the field does not know",
+  sikku_kolam = "its loops are drawn through dots, not along cells",
+  truchet = "its arcs meet at the middle of a tile's edges, never cross",
+  rosette_lattice = "its straps cross inside the rosette, not at the cell's corners",
+}
+
+-- The share of the kept cells (or crossings) a few means, at least MIN of
+-- them, and how far apart in cell sizes the places keep.
+M.SHARE = { cells = 0.04, crossings = 0.08 }
+M.MIN = { cells = 2, crossings = 5 }
+M.APART = { cells = 3.2, crossings = 2.6 }
+-- How far a stray plate lies from its gap at the least, in cell widths (the
+-- cell's width taken as twice its farthest corner, or its diameter). Set
+-- after measuring the cells of stars_8_4, kikko, asanoha and
+-- overlapping_circles, whose plates had lain 0.7 to 2.4 widths away, and
+-- the least that reads as moved (tests/pattern_touches_suite.lua holds it).
+M.MIN_MOVE = 1.15
+-- How clear of every cell the page draws a stray plate's outline lies at the
+-- least, in cell widths. Measured on twelve seeds of stars_8_4, kikko,
+-- asanoha and overlapping_circles, the plates had lain 0.00 to 0.82 widths
+-- from the nearest cell, 0.00 on 33 of the 48 (touching or over it).
+M.MIN_CLEAR = 0.2
+
+-- The state for a page, or nil when no key is set. `want` holds the keys'
+-- values (glint, herogilding, deviant, stray); `warn` takes a line for the
+-- page's log. A value that is none of the key's is logged and the key left
+-- off; so is a key the pattern cannot take.
+function M.new(want, p, warn, pt)
+  local S = { pattern = p }
+  local function no(k, v, list)
+    warn(string.format("%s=%s is not one of %s; it is left off", k, tostring(v), list))
+  end
+  local g = want.glint
+  if g ~= nil and g ~= "off" then
+    if not M.GLINT[g] then
+      no("glint", g, table.concat(M.GLINT_ORDER, ", "))
+    else
+      local mode = g == "on" and "crossings" or g
+      local why
+      if mode == "cells" then why = M.NO_CELLS[p.name] and ("no cells to gild (" .. M.NO_CELLS[p.name] .. ")")
+      elseif mode == "knobs" then why = M.NO_CENTRES[p.name] and ("no cell middles the field knows (" .. M.NO_CENTRES[p.name] .. ")")
+      elseif mode == "crossings" then why = M.NO_CROSSINGS[p.name] and ("no nodes the field knows (" .. M.NO_CROSSINGS[p.name] .. ")") end
+      if why then
+        warn(string.format("glint=%s: %s has %s; it is painted as it is", g, p.name, why))
+      else
+        S.gold, S.asked_glint = mode, g
+      end
+    end
+  end
+  for _, k in ipairs({ "herogilding", "stray" }) do
+    local v = want[k]
+    if v ~= nil and v ~= "off" then
+      if v ~= "on" then
+        no(k, v, "on, off")
+      elseif k ~= "herogilding" and M.NO_CELLS[p.name] then
+        warn(string.format("%s=on: %s has no cells to move (%s); it is painted as it is", k, p.name, M.NO_CELLS[p.name]))
+      else
+        S[k] = true
+      end
+    end
+  end
+  -- deviant: on is one, 2 to 4 that many.
+  local dv = want.deviant
+  if dv ~= nil and dv ~= "off" then
+    local n = dv == "on" and 1 or tonumber(dv)
+    if not (n and n >= 1 and n <= 4 and n == math.floor(n)) or dv == "1" then
+      no("deviant", dv, "off, on, 2, 3, 4")
+    elseif M.NO_CELLS[p.name] then
+      warn(string.format("deviant=%s: %s has no cells to turn (%s); it is painted as it is", dv, p.name, M.NO_CELLS[p.name]))
+    else
+      S.deviant, S.asked = n, dv
+    end
+  end
+  if not (S.gold or S.herogilding or S.deviant or S.stray) then return nil end
+  pt.touches_report = pt.touches_report or { places = 0, deviants = {} }
+  S.report = pt.touches_report
+  return S
+end
+
+-- The role colours the keys set on `base` (pattern.lua's role_inks). Two
+-- copies of the colours as they were are kept for what lies outside the
+-- field: S.outer for the text's frame (edge=border, guilloche, a band's
+-- rule), which no key changes, and S.hero for the hero, the one place
+-- herogilding changes (its lines gold).
+function M.colours(S, base)
+  local pal = Paint.palette
+  local outer, hero = {}, {}
+  for k, v in pairs(base) do outer[k], hero[k] = v, v end
+  S.outer, S.hero = outer, hero
+  if S.herogilding then
+    hero.band, hero.band0 = pal.gold, pal.gold
+    hero.line0 = Paint.mix(pal.gold, pal.paper, base.line_mix)
+  end
+  local g = S.gold
+  if not g then return end
+  base.gold = pal.gold
+  if g == "core" then
+    -- Only the stroke down a band's middle (pat_kit.lua's K.core_stroke) is
+    -- gold: the core and accent roles keep what else they paint.
+    base.bandcore = pal.gold
+    return
+  end
+  -- The pattern's own gold, where its accent is gold, is taken out in
+  -- favour of the glints; an accent of another colour stays.
+  if base.accent == pal.gold then base.accent = base.core end
+end
+
+-- A colour with its hue turned 150 degrees round the wheel.
+local function foil(c)
+  if not c then return nil end
+  local L, Ch, h = Color.lch(c)
+  return Color.oklch(L, Ch, h + 150)
+end
+
+local function copy(t)
+  local o = {}
+  for k, v in pairs(t) do o[k] = v end
+  return o
+end
+
+local function dist(ax, ay, bx, by) return sqrt((ax - bx) ^ 2 + (ay - by) ^ 2) end
+
+-- The outline a gilded cell's fill covers, as a shape: the polygon it is
+-- painted over (the tile where the cell has one, else its outline), or its
+-- circle. region() paints exactly this and the field's rule is asked about
+-- exactly this, so what is painted is what was tested.
+local function fill_outline(c)
+  if c.circle then return { circle = c.circle } end
+  local P = c.tile or c.verts
+  if P and #P >= 3 then return { verts = P } end
+end
+
+local function region(c)
+  local o = fill_outline(c)
+  if not o then return nil end
+  if o.circle then return { { "o", o.circle[1], o.circle[2], o.circle[3] } } end
+  return K.path(o.verts)
+end
+
+-- The area of a cell's outline.
+local function area(c)
+  if c.circle then return pi * c.circle[3] ^ 2 end
+  return math.abs(G.area(c.tile or c.verts))
+end
+
+-- The area no smaller than most cells of `list` have: 0.8 of the median.
+local function big_enough(list)
+  local areas = {}
+  for _, k in ipairs(list) do areas[#areas + 1] = area(k.cell) end
+  table.sort(areas)
+  return 0.8 * (areas[math.ceil(#areas / 2)] or 0)
+end
+
+-- `list` shuffled in place by seed (Fisher-Yates), and returned.
+local function shuffle(rng, list)
+  for i = #list, 2, -1 do
+    local j = rng:int(1, i)
+    list[i], list[j] = list[j], list[i]
+  end
+  return list
+end
+
+-- n of items spread by seed: the first drawn that keep `apart` from those
+-- drawn already, as many as there are room for.
+local function spread(rng, items, n, apart, make)
+  local order = {}
+  for i = 1, #items do order[i] = i end
+  shuffle(rng, order)
+  local out = {}
+  local taken = make({}, apart, function(o) return o.x, o.y end)
+  for _, i in ipairs(order) do
+    local it = items[i]
+    local ok = true
+    for _, o in ipairs(taken:within(it.x, it.y, apart)) do
+      if dist(it.x, it.y, o.x, o.y) < apart then ok = false break end
+    end
+    if ok then
+      out[#out + 1] = it
+      taken:add(it)
+      if #out >= n then break end
+    end
+  end
+  return out
+end
+
+local function key2(x, y) return string.format("%d,%d", math.floor(x * 10 + .5), math.floor(y * 10 + .5)) end
+
+-- The nodes of the lattice, from the kept cells: the corners of polygons
+-- (a cell's tile, else its outline) that two cells share, and where two
+-- circles meet. Each is
+-- owned by the first cell that has it: { x, y, owner }.
+local function crossings(kept, make)
+  local seen, out = {}, {}
+  local function add(x, y, k)
+    local key = key2(x, y)
+    if seen[key] then
+      if not seen[key].shared then seen[key].shared = true; out[#out + 1] = seen[key] end
+    else
+      seen[key] = { x = x, y = y, owner = k }
+    end
+  end
+  local circles = {}
+  for _, k in ipairs(kept) do
+    local c = k.cell
+    if c.circle then circles[#circles + 1] = k
+    else
+      for _, v in ipairs(c.tile or c.verts or {}) do add(v[1], v[2], k) end
+    end
+  end
+  -- Circles about centres within two radii meet at two points; the lattice
+  -- points, where every circle passes through its neighbours' centres, are
+  -- found as the meeting of the pairs.
+  local reach = 0
+  for _, k in ipairs(circles) do reach = math.max(reach, k.cell.circle[3]) end
+  local grid = make(circles, math.max(2 * reach, 1e-6), function(k) return k.cell.circle[1], k.cell.circle[2] end)
+  for i = 1, #circles do
+    local a = circles[i].cell.circle
+    -- Only the circles near enough to meet this one, the later ones, in order.
+    local later = {}
+    for _, o in ipairs(grid:within(a[1], a[2], 2 * reach)) do
+      if grid.order[o] > i then later[#later + 1] = o end
+    end
+    table.sort(later, function(x, y) return grid.order[x] < grid.order[y] end)
+    for _, other in ipairs(later) do
+      local j = grid.order[other]
+      local b = circles[j].cell.circle
+      local d = dist(a[1], a[2], b[1], b[2])
+      if d > 1e-6 and d < a[3] + b[3] - 1e-6 and d > math.abs(a[3] - b[3]) + 1e-6 then
+        local l = (a[3] ^ 2 - b[3] ^ 2 + d * d) / (2 * d)
+        local h2 = a[3] ^ 2 - l * l
+        if h2 > 0 then
+          local h = sqrt(h2)
+          local mx, my = a[1] + l * (b[1] - a[1]) / d, a[2] + l * (b[2] - a[2]) / d
+          local ox, oy = -(b[2] - a[2]) / d * h, (b[1] - a[1]) / d * h
+          for _, s in ipairs({ 1, -1 }) do
+            local x, y = mx + s * ox, my + s * oy
+            local key = key2(x, y)
+            if seen[key] then
+              if not seen[key].shared then seen[key].shared = true; out[#out + 1] = seen[key] end
+            else
+              seen[key] = { x = x, y = y, owner = circles[i], shared = true }
+              out[#out + 1] = seen[key]
+            end
+          end
+        end
+      end
+    end
+  end
+  -- Circle meetings are found for pairs only once.
+  local uniq, list = {}, {}
+  for _, c in ipairs(out) do
+    local key = key2(c.x, c.y)
+    if not uniq[key] then uniq[key] = true; list[#list + 1] = c end
+  end
+  return list
+end
+
+-- The typical distance between the centres of neighbouring cells, taken
+-- over a sample of at most 300 of them.
+local function spacing(list, size, make)
+  local step = math.max(1, math.floor(#list / 300))
+  local nn = {}
+  local grid = make(list, 2 * size, function(k) return k.cell.x, k.cell.y end)
+  -- No neighbour lies farther than the field is wide.
+  local x0, y0, x1, y1 = math.huge, math.huge, -math.huge, -math.huge
+  for _, k in ipairs(list) do
+    x0, y0, x1, y1 = math.min(x0, k.cell.x), math.min(y0, k.cell.y), math.max(x1, k.cell.x), math.max(y1, k.cell.y)
+  end
+  local span = (x1 - x0) + (y1 - y0)
+  for i = 1, #list, step do
+    local c, best = list[i].cell, math.huge
+    -- The nearest other cell, found within a radius that doubles until it
+    -- holds one (a disc of radius r holds every cell nearer than r).
+    local r = 2 * size
+    while true do
+      for _, o in ipairs(grid:within(c.x, c.y, r)) do
+        if o ~= list[i] then
+          local d = dist(c.x, c.y, o.cell.x, o.cell.y)
+          if d < best then best = d end
+        end
+      end
+      if best <= r or r > span then break end
+      r = r * 2
+    end
+    -- A field of one cell has no neighbour: no spacing to take.
+    if best < math.huge then nn[#nn + 1] = best end
+  end
+  table.sort(nn)
+  return nn[math.ceil(#nn / 2)] or 0
+end
+
+-- The cells of `list` within 1.5 spacings of cell k's centre.
+local function near(grid, k, med)
+  local out = {}
+  for _, o in ipairs(grid:within(k.cell.x, k.cell.y, 1.5 * med)) do
+    if o ~= k and dist(k.cell.x, k.cell.y, o.cell.x, o.cell.y) < 1.5 * med then out[#out + 1] = o end
+  end
+  table.sort(out, function(a, b) return grid.order[a] < grid.order[b] end)
+  return out
+end
+
+-- Distances between the outlines of two cells, each { verts = polygon } or
+-- { circle = { x, y, r } }: 0 when they meet or one holds the other.
+local function seg_dist(px, py, a, b)
+  local vx, vy = b[1] - a[1], b[2] - a[2]
+  local l2 = vx * vx + vy * vy
+  local t = l2 > 0 and math.max(0, math.min(1, ((px - a[1]) * vx + (py - a[2]) * vy) / l2)) or 0
+  return dist(px, py, a[1] + t * vx, a[2] + t * vy)
+end
+
+local function point_poly(px, py, P)
+  if G.inside(P, px, py) then return 0 end
+  local d, j = math.huge, #P
+  for i = 1, #P do
+    d = math.min(d, seg_dist(px, py, P[j], P[i]))
+    j = i
+  end
+  return d
+end
+
+local function crosses(a, b, c, d)
+  local function o(p, q, r) return (q[1] - p[1]) * (r[2] - p[2]) - (q[2] - p[2]) * (r[1] - p[1]) end
+  return o(a, b, c) * o(a, b, d) < 0 and o(c, d, a) * o(c, d, b) < 0
+end
+
+local function shape_gap(A, B)
+  if A.circle and B.circle then
+    return math.max(0, dist(A.circle[1], A.circle[2], B.circle[1], B.circle[2]) - A.circle[3] - B.circle[3])
+  end
+  if A.circle then return math.max(0, point_poly(A.circle[1], A.circle[2], B.verts) - A.circle[3]) end
+  if B.circle then return shape_gap(B, A) end
+  local d = math.huge
+  for _, v in ipairs(A.verts) do d = math.min(d, point_poly(v[1], v[2], B.verts)) end
+  for _, v in ipairs(B.verts) do d = math.min(d, point_poly(v[1], v[2], A.verts)) end
+  if d == 0 then return 0 end
+  local ja = #A.verts
+  for i = 1, #A.verts do
+    local jb = #B.verts
+    for k = 1, #B.verts do
+      if crosses(A.verts[ja], A.verts[i], B.verts[jb], B.verts[k]) then return 0 end
+      jb = k
+    end
+    ja = i
+  end
+  return d
+end
+
+-- cell c's outline moved by (dx, dy) and turned by `turn` about its new middle.
+local function placed(c, dx, dy, turn)
+  if c.circle then return { circle = { c.circle[1] + dx, c.circle[2] + dy, c.circle[3] } } end
+  local s, co = sin(turn or 0), cos(turn or 0)
+  local P = {}
+  for i, v in ipairs(c.verts) do
+    local u, w = v[1] - c.x, v[2] - c.y
+    P[i] = { c.x + dx + u * co - w * s, c.y + dy + u * s + w * co }
+  end
+  return { verts = P }
+end
+
+
+-- How far a cell's outline reaches from its middle: the farthest corner, or
+-- the radius.
+local function cell_radius(c)
+  if c.circle then return c.circle[3] end
+  local r = 0
+  for _, v in ipairs(c.tile or c.verts) do r = math.max(r, dist(v[1], v[2], c.x, c.y)) end
+  return r
+end
+
+-- The most neighbours (cells within 1.5 spacings) a cell of `list` has,
+-- and each cell's count.
+local function degrees(grid, list, med)
+  local out, top = {}, 0
+  for _, k in ipairs(list) do
+    local n = #near(grid, k, med)
+    out[k] = n
+    if n > top then top = n end
+  end
+  return out, top
+end
+
+local function cell_at(k) return k.cell.x, k.cell.y end
+
+-- Choose the places, once the field is kept. `ctx`: kept, size, width,
+-- text, W, top, hero, place (pattern.lua's rule for what a cell lays, held to
+-- what a touch paints) and measure (its distance), band (a perimeter band's,
+-- with its strip for whole rows), grid (pattern.lua's M.cell_grid, which every
+-- neighbour search goes through), pt, rng, warn. Returns the plan: at[k] for
+-- each kept cell with something of its own, `med`, the spacing of the cells,
+-- and `looked`, how many cells the neighbour searches listed. What is laid
+-- goes to the page's report (S.report), in page coordinates.
+function M.plan(S, ctx)
+  local kept, p = ctx.kept, S.pattern
+  local rng = ctx.rng:fork("pattern touches")
+  local plan = { at = {}, S = S, size = ctx.size }
+  -- Every neighbour search goes through one kind of grid (pattern.lua's
+  -- M.cell_grid), and what the searches list is counted (plan.looked).
+  local counter = { n = 0 }
+  local function make(items, nd, at) return ctx.grid(items, nd, at, counter) end
+  local rep = S.report
+  local pt = ctx.pt
+  local strip = ctx.band and ctx.band.strip
+  local function page_xy(x, y)
+    if pt.frame_fn then return pt.frame_fn(x, y) end
+    return x, y
+  end
+  -- Everything a touch paints is held to the field's own rule, the one the
+  -- cells' footprints are measured by (pattern.lua's M.measure, through
+  -- ctx.place): the text, a reservation, the hero, and under outer=margin the
+  -- page's margin, at the gap the field keeps. The shape is the whole outline
+  -- painted, its strokes reaching `reach` further. A place that fails is not
+  -- chosen and not counted. This module lists no protected surface of its own.
+  local function ring(x, y, r) return { circle = { x, y, r } } end
+  local function cell_shape(c) return c.circle and { circle = c.circle } or { verts = c.verts } end
+  local function reach_of(c) return ctx.width / 2 + (c.pad or 0) end
+  local function gilt_ok(c) return ctx.place({ fill_outline(c) }, reach_of(c)) end
+  local function turned_ok(c)
+    local n = c.circle and 0 or #(c.tile or c.verts)
+    return ctx.place({ placed(c, 0, 0, n > 0 and pi / n or 0) }, reach_of(c))
+  end
+  local function measure(shape, reach)
+    local d = ctx.measure({ shape }, reach)
+    return d
+  end
+  local function at(k)
+    plan.at[k] = plan.at[k] or {}
+    return plan.at[k]
+  end
+  -- What a place was tested as, kept with it so that the painting can be
+  -- held to it (pl.tested: { shape, reach } pairs).
+  local function note(k, shape, reach)
+    local pl = at(k)
+    pl.tested = pl.tested or {}
+    pl.tested[#pl.tested + 1] = { shape, reach }
+  end
+  local whole = {}
+  for _, k in ipairs(kept) do
+    if k.a >= 1 and not k.turn and region(k.cell) then whole[#whole + 1] = k end
+  end
+  -- The cells' spacing, or the nominal size of one where there are fewer
+  -- than two cells, or two far apart (the pair is no field's spacing): no
+  -- measure taken from it is then infinite or out of scale.
+  local med = spacing(kept, ctx.size, make)
+  if med <= 0 or med > 4 * ctx.size then med = ctx.size end
+  plan.med = med
+  rep.spacing = med
+  local kept_grid = make(kept, 1.5 * med, cell_at)
+  rep.deviants = rep.deviants or {}
+  rep.at = rep.at or {}
+  -- The stray plate first, so that a deviant is not the cell that leaves.
+  -- Of the four strips of a band of whole rows one carries it, drawn by
+  -- seed: one cell on the page.
+  local taken = {}
+  if S.stray and strip and strip.side ~= ctx.rng:fork("stray strip"):int(1, 4) then
+    S.stray = false
+  end
+  if S.stray then
+    -- A cell at the field's edge (few neighbours) that is no smaller than
+    -- most: the small square star of stars_8_4 is not the plate to show.
+    local big = big_enough(whole)
+    local edge, around = {}, {}
+    for _, k in ipairs(whole) do
+      if area(k.cell) >= big then
+        local list = near(kept_grid, k, med)
+        if #list > 0 and #list <= 4 then edge[#edge + 1] = k; around[k] = list end
+      end
+    end
+    shuffle(rng, edge)
+    -- The plate lies no nearer what the field keeps clear of than the
+    -- field's own nearest cell does.
+    local field = math.huge
+    for _, k in ipairs(kept) do field = math.min(field, measure(cell_shape(k.cell), reach_of(k.cell))) end
+    local done
+    for _, k in ipairs(edge) do
+      local c = k.cell
+      local mx, my = 0, 0
+      for _, o in ipairs(around[k]) do mx, my = mx + o.cell.x, my + o.cell.y end
+      local ux, uy = c.x - mx / #around[k], c.y - my / #around[k]
+      local l = sqrt(ux * ux + uy * uy)
+      if l > 1e-6 then
+        ux, uy = ux / l, uy / l
+        local reach = cell_radius(c)
+        -- Straight out first, then slid along the edge either way.
+        for _, ang in ipairs({ 0, 0.6, -0.6, 1.2, -1.2 }) do
+          local vx, vy = ux * cos(ang) - uy * sin(ang), ux * sin(ang) + uy * cos(ang)
+          for _, f in ipairs({ 4.0, 3.5, 3.2, 2.8, 2.4, 2.0, 1.7, 1.4 }) do
+            if f * med < M.MIN_MOVE * 2 * reach then goto too_near end
+            local dx, dy = vx * f * med, vy * f * med
+            local nx, ny = c.x + dx, c.y + dy
+            local ok = nx > med and nx < ctx.W - med and ny > med and ny < ctx.top - med
+            local turn, pose
+            if ok then
+              turn = (rng:next() < 0.5 and -1 or 1) * 12 * pi / 180
+              pose = placed(c, dx, dy, turn)
+              ok = ctx.place({ pose }, reach_of(c)) and measure(pose, reach_of(c)) >= field
+            end
+            if ok then
+              for _, o in ipairs(kept_grid:within(nx, ny, 4 * med)) do
+                if o ~= k and dist(nx, ny, o.cell.x, o.cell.y) < 4 * med
+                  and shape_gap(pose, cell_shape(o.cell)) < M.MIN_CLEAR * 2 * reach then
+                  ok = false
+                  break
+                end
+              end
+              if ok then
+                done = { k = k, dx = dx, dy = dy, turn = turn }
+                break
+              end
+            end
+            ::too_near::
+          end
+          if done then break end
+        end
+      end
+      if done then break end
+    end
+    if done then
+      taken[done.k] = true
+      local c = done.k.cell
+      local ax, ay, bx, by = c.x, c.y, c.x + done.dx, c.y + done.dy
+      local len = dist(ax, ay, bx, by)
+      -- The dotted path from the gap to the plate, along a shallow curve.
+      local bend = (rng:next() < 0.5 and -1 or 1) * 0.22 * len
+      local cx, cy = (ax + bx) / 2 - (by - ay) / len * bend, (ay + by) / 2 + (bx - ax) / len * bend
+      local dots = {}
+      local px, py, run, next_at = ax, ay, 0, 0.55 * med
+      for i = 1, 240 do
+        local t = i / 240
+        local x = (1 - t) ^ 2 * ax + 2 * (1 - t) * t * cx + t * t * bx
+        local y = (1 - t) ^ 2 * ay + 2 * (1 - t) * t * cy + t * t * by
+        run = run + dist(px, py, x, y)
+        px, py = x, y
+        if run >= next_at and dist(x, y, bx, by) > 0.55 * med then
+          local dot = ring(x, y, math.max(0.6, 0.055 * med))
+          if ctx.place({ dot }, 0) and measure(dot, 0) >= field - 0.3 * med then dots[#dots + 1] = { x, y } end
+          next_at = next_at + 0.26 * med
+        end
+      end
+      done.dots = dots
+      at(done.k).stray = done
+      note(done.k, placed(c, done.dx, done.dy, done.turn), reach_of(c))
+      for _, d in ipairs(dots) do note(done.k, ring(d[1], d[2], math.max(0.6, 0.055 * med)), 0) end
+      local points = {}
+      local x1, y1 = page_xy(bx, by)
+      points[1] = { x1, y1 }
+      for _, d in ipairs(dots) do
+        local x, y = page_xy(d[1], d[2])
+        points[#points + 1] = { x, y }
+      end
+      local gx, gy = page_xy(ax, ay)
+      -- How near its outline lies to the nearest cell the page draws, and
+      -- the cell's width, for the report.
+      local pose, near_gap = placed(c, done.dx, done.dy, done.turn), math.huge
+      for _, o in ipairs(kept_grid:within(c.x + done.dx, c.y + done.dy, 4 * med)) do
+        if o ~= done.k and dist(o.cell.x, o.cell.y, c.x + done.dx, c.y + done.dy) < 4 * med then
+          near_gap = math.min(near_gap, shape_gap(pose, cell_shape(o.cell)))
+        end
+      end
+      rep.stray = { x = gx, y = gy, to_x = x1, to_y = y1, dots = #dots, points = points, clear = near_gap, width = 2 * cell_radius(c) }
+    else
+      ctx.warn(string.format("stray=on: no cell of %s at the field's edge has room at least a cell's width from its gap, clear of the text as the field is and of every cell drawn; none is moved", p.name))
+    end
+  end
+  -- Deviants: at most one on each side, a whole cell inside the field (not
+  -- a stray cell at its edge: it has most of the neighbours a cell of the
+  -- field has) and clear of the paper's edge. A side is a side of the
+  -- text, of a perimeter band's inner rectangle, or the strip of a band of
+  -- whole rows.
+  if S.deviant then
+    local deg, top = degrees(make(whole, 1.5 * med, cell_at), whole, med)
+    -- No smaller than most: the small square star of stars_8_4 is no cell
+    -- to turn.
+    local big = big_enough(whole)
+    local by_side = {}
+    local function side_of(c)
+      if strip then
+        -- The whole cell on the paper: its middle further from the paper's
+        -- edge than its farthest corner.
+        local r = cell_radius(c)
+        if c.x > 2.5 * strip.w and c.x < ctx.W - 2.5 * strip.w and c.y >= r and c.y < strip.w then return "strip" end
+        return nil
+      end
+      local m = med
+      if not (c.x > m and c.x < ctx.W - m and c.y > m and c.y < ctx.top - m) then return nil end
+      local I = ctx.band and ctx.band.I
+      if I then
+        local out = { l = I[1] - c.x, r = c.x - I[3], b = I[2] - c.y, t = c.y - I[4] }
+        -- The farthest out, the edges taken in a fixed order for a tie.
+        local best, v = nil, 0
+        for _, e in ipairs({ "l", "r", "b", "t" }) do
+          if out[e] > v then best, v = e, out[e] end
+        end
+        return best
+      end
+      local t = ctx.text
+      if c.x < t.x0 then return "l" elseif c.x > t.x1 then return "r"
+      elseif c.y > t.y1 then return "t" elseif c.y < t.y0 then return "b" end
+    end
+    for _, k in ipairs(whole) do
+      if deg[k] >= 0.6 * top and area(k.cell) >= big and not taken[k] and turned_ok(k.cell) then
+        local s = side_of(k.cell)
+        if s then
+          by_side[s] = by_side[s] or {}
+          table.insert(by_side[s], k)
+        end
+      end
+    end
+    local function shuffled(list, r)
+      local out = {}
+      for i, v in ipairs(list) do out[i] = v end
+      return shuffle(r, out)
+    end
+    local function turn_cell(k, s)
+      local c = k.cell
+      local n = c.circle and 0 or #(c.tile or c.verts)
+      at(k).deviant = { theta = n > 0 and pi / n or 0 }
+      note(k, placed(c, 0, 0, at(k).deviant.theta), reach_of(c))
+      local x, y = page_xy(c.x, c.y)
+      rep.deviants[#rep.deviants + 1] = { x = x, y = y, side = s }
+    end
+    local N = S.deviant
+    if strip then
+      -- Of the four strips of a band of whole rows N carry one, drawn by
+      -- seed (the same on every strip's call).
+      local mine = false
+      for i, side in ipairs(shuffled({ 1, 2, 3, 4 }, ctx.rng:fork("deviant strips"))) do
+        if i <= N and side == strip.side then mine = true end
+      end
+      local list = by_side.strip
+      if mine and list and #list > 0 then turn_cell(list[rng:int(1, #list)], "strip") end
+      if strip.side == 4 and #rep.deviants < N then
+        ctx.warn(string.format("deviant=%s: room for %d turned cells in this band", S.asked, #rep.deviants))
+      end
+    else
+      -- One on each edge in turn, the edges in the order the seed draws,
+      -- then a second on an edge that has room, never within four spacings
+      -- of one turned.
+      local sides = {}
+      for _, s in ipairs(shuffled({ "l", "r", "t", "b" }, rng)) do
+        if by_side[s] then sides[#sides + 1] = s end
+      end
+      local picked = {}
+      local function free(k)
+        for _, o in ipairs(picked) do
+          if dist(k.cell.x, k.cell.y, o.cell.x, o.cell.y) < 4 * med then return false end
+        end
+        return true
+      end
+      local progress = true
+      while #picked < N and progress do
+        progress = false
+        for _, s in ipairs(sides) do
+          if #picked < N then
+            for _, k in ipairs(shuffled(by_side[s], rng)) do
+              if free(k) then
+                picked[#picked + 1] = k
+                turn_cell(k, s)
+                progress = true
+                break
+              end
+            end
+          end
+        end
+      end
+      if #picked < N then
+        ctx.warn(string.format("deviant=%s: room for %d turned cells inside the field, beside the text", S.asked, #picked))
+      end
+    end
+  end
+  if S.herogilding and not ctx.hero then ctx.warn("herogilding=on: the page has no hero to paint in gold") end
+  -- Gold.
+  local g = S.gold
+  local laid = 0
+  local core_logged = false
+  if g == "cells" then
+    local items = {}
+    for _, k in ipairs(whole) do
+      if not plan.at[k] and gilt_ok(k.cell) then items[#items + 1] = { x = k.cell.x, y = k.cell.y, k = k } end
+    end
+    local n = math.max(M.MIN.cells, math.floor(M.SHARE.cells * #whole + .5))
+    for _, it in ipairs(spread(rng:fork("cells"), items, n, M.APART.cells * med, make)) do
+      at(it.k).gilt = true
+      note(it.k, fill_outline(it.k.cell), reach_of(it.k.cell))
+      note(it.k, cell_shape(it.k.cell), reach_of(it.k.cell))
+      laid = laid + 1
+      rep.at[#rep.at + 1] = { page_xy(it.x, it.y) }
+    end
+  elseif g == "knobs" then
+    for _, k in ipairs(kept) do
+      -- Where the knob is painted: on the cell, which a stray plate has
+      -- carried away from its gap.
+      local st = plan.at[k] and plan.at[k].stray
+      local kx, ky = k.cell.x + (st and st.dx or 0), k.cell.y + (st and st.dy or 0)
+      if ctx.place({ ring(kx, ky, 0.16 * med) }, 0.15) then
+        at(k).knob = true
+        note(k, ring(kx, ky, 0.16 * med), 0.15)
+        laid = laid + 1
+        rep.at[#rep.at + 1] = { page_xy(kx, ky) }
+      end
+    end
+  elseif g == "crossings" then
+    local all = {}
+    for _, c in ipairs(crossings(whole, make)) do
+      if not plan.at[c.owner] and ctx.place({ ring(c.x, c.y, 0.42 * med) }, 0.15) then all[#all + 1] = c end
+    end
+    local n = math.max(M.MIN.crossings, math.floor(M.SHARE.crossings * #all + .5))
+    for _, c in ipairs(spread(rng:fork("crossings"), all, n, M.APART.crossings * med, make)) do
+      local pl = at(c.owner)
+      pl.glints = pl.glints or {}
+      pl.glints[#pl.glints + 1] = { c.x, c.y }
+      note(c.owner, ring(c.x, c.y, 0.42 * med), 0.15)
+      laid = laid + 1
+      rep.at[#rep.at + 1] = { page_xy(c.x, c.y) }
+    end
+  elseif g == "core" then
+    -- The gold goes down the band's core where the pattern draws one
+    -- (K.core_stroke); counted, and a line if none, once the page is
+    -- painted (M.finish).
+    core_logged = true
+  end
+  if g and not core_logged and laid == 0 then
+    ctx.warn(string.format("glint=%s: %s has nothing in this field to lay it by; the field has no gold", S.asked_glint or g, p.name))
+  end
+  rep.places = (rep.places or 0) + laid
+  rep.gold = g
+  plan.looked = counter.n
+  return plan
+end
+
+-- Once the page is painted: how many band cores were laid in gold
+-- (glint=core), and a line when the pattern draws none (its bands have no
+-- core, as seigaiha's, or none that is wide enough): it is then painted as
+-- without the key, for only a band's core is changed.
+function M.finish(S, pt, warn)
+  if S.gold ~= "core" then return end
+  local n = pt.band_cores or 0
+  S.report.places = n
+  if n == 0 then
+    warn(string.format("glint=core: %s draws no band core here (its bands have none, or the core is under %.1f pt wide, or the bands are lines), so the gold shows nowhere and it is painted as without the key; a larger scale or bandwidth widens a narrow core", S.pattern.name, K.CORE_MIN))
+  end
+end
+
+local function disc(x, y, r) return { { "o", x, y, r } } end
+
+-- A four-pointed glint r long about (x, y).
+local function glint(x, y, r)
+  local w = 0.3 * r
+  return K.path({ { x + r, y }, { x + w, y + w }, { x, y + r }, { x - w, y + w }, { x - r, y }, { x - w, y - w }, { x, y - r }, { x + w, y - w } })
+end
+
+-- A turn by theta about (ox, oy), then a move by (dx, dy).
+local function turn(theta, ox, oy, dx, dy)
+  local s, co = sin(theta), cos(theta)
+  return function(x, y)
+    local u, v = x - ox, y - oy
+    return ox + dx + u * co - v * s, oy + dy + u * s + v * co
+  end
+end
+
+-- How cell `c` is painted through its plan `pl`, for `ink`: { construct,
+-- paint, enter, leave }. enter and leave set and clear the projection that
+-- turns or moves the cell, round everything painted for it (its growth
+-- included); the dotted path is painted without it.
+function M.painters(plan, pl, c, ink, pt)
+  local ink2 = ink
+  -- The cell's fills, whichever role its painter takes them from: the two
+  -- fields, and the accent and the core, which a pattern may lay as fields
+  -- too (greek_crosses' third and fourth tone, hexagram_lattice's third, the
+  -- discs of seigaiha and rosette_lattice). Only this cell's copy of the inks
+  -- is changed.
+  if pl.deviant then
+    ink2 = copy(ink)
+    ink2.fill = { foil(ink.fill[1]) or ink.fill[1], foil(ink.fill[2]) or ink.fill[2] }
+    ink2.accent, ink2.core = foil(ink.accent) or ink.accent, foil(ink.core) or ink.core
+    ink2.cores = { core = ink.core, accent = ink.accent }
+    ink2.band = foil(ink.band) or ink.band
+  elseif pl.gilt then
+    ink2 = copy(ink)
+    ink2.fill = { ink.gold, ink.gold }
+    ink2.accent, ink2.core = ink.gold, ink.gold
+    ink2.cores = { core = ink.core, accent = ink.accent }
+  end
+  local project
+  if pl.deviant then project = turn(pl.deviant.theta, c.x, c.y, 0, 0) end
+  if pl.stray then project = turn(pl.stray.turn, c.x, c.y, pl.stray.dx, pl.stray.dy) end
+  local prev
+  local h = {}
+  function h.enter()
+    if not project then return end
+    prev = pt.projection
+    pt:project(function(x, y)
+      x, y = project(x, y)
+      if prev then return prev(x, y) end
+      return x, y
+    end)
+  end
+  function h.leave()
+    if project then pt:project(prev) end
+  end
+  local med = plan.med
+  function h.construct() c.construct(pt, c, ink2) end
+  function h.paint()
+    if pl.gilt then
+      local path = region(c)
+      if path then pt:fill(path, ink.gold, 1) end
+    end
+    c.paint(pt, c, ink2)
+    if pl.stray then
+      local r, circles = math.max(0.6, 0.055 * med), {}
+      for _, d in ipairs(pl.stray.dots) do circles[#circles + 1] = disc(d[1], d[2], r) end
+      if #circles > 0 then
+        pt:project(prev)
+        pt:fill(circles, ink.band, 1, { many = true })
+        h.enter()
+      end
+    end
+  end
+  -- The knob and the glints lie over every cell, painted after them all.
+  if pl.knob or pl.glints then
+    function h.late()
+      if pl.knob then
+        pt:fill(disc(c.x, c.y, 0.16 * med), ink.gold, 1)
+        pt:stroke(disc(c.x, c.y, 0.16 * med), ink.band, 0.3, 1)
+      end
+      for _, q in ipairs(pl.glints or {}) do
+        pt:fill(glint(q[1], q[2], 0.42 * med), ink.gold, 1)
+        pt:stroke(glint(q[1], q[2], 0.42 * med), ink.band, 0.3, 1)
+      end
+    end
+  end
+  return h
+end
+
+return M

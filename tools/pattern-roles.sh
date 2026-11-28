@@ -32,6 +32,7 @@ FONT=${PATTERN_AUDIT_FONT:-/System/Library/Fonts/Supplemental/Arial.ttf}
 DARK="#0a1014"
 DD=150
 mkdir -p "$OUT/render" "$OUT/sheets" "$OUT/tmp" "$OUT/tiles" "$OUT/band"
+tools/pattern-bake.sh "$OUT"
 
 if [ -z "${PATTERN_ROLES_SHEETS_ONLY:-}" ]; then
   rm -f "$OUT/render/roles.tsv"

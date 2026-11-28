@@ -56,6 +56,11 @@ M.about = {
   { "starfill", "auto, whole, split", "How a star pattern's star is coloured (khatam): auto (the default) and whole lay the whole star in the first field; split lays the star's two squares in the two fields, its square on its point in the first and the other's four corners in the second." },
   { "gapfill", "auto, field, paper", "What fills the space between a star pattern's stars (khatam's crosses, hexagram_lattice's rhombs): auto (the default) and field the second field, paper the paper. Under starfill=split khatam's crosses are always the paper." },
   { "alternate", "auto, off, rows, three", "Whether a star pattern's stars take turns in the fields (hexagram_lattice): auto (the default) and off lay every star in the first field; rows alternate the first and second field row by row; three deal the first field, the second and the accent so that no two touching stars share one." },
+  { "glint", "off, on, core, cells, knobs",
+    "Where gold lies in a pattern's field (off, the default, leaves it as it is): on lays a few glints at the nodes of the pattern's underlying lattice, spread by the page's seed (the corners neighbouring tiles share, or where two circles meet: not where its bands cross); core makes the stroke down the middle of a band gold, and nothing else (a pattern whose bands have no core, or one under 0.6 pt wide, as at most patterns' own width, is painted as without the key, and the log says so); cells gilds a few whole cells; knobs sets a gold knob at the middle of every cell. Every value but core takes out the gold the pattern has of its own (an accent that is gold) in the glints' place; an accent of another colour stays. A pattern with nothing to lay it by (see the guide) is painted as it is, and the log says so." },
+  { "herogilding", "on, off", "Paints the hero's lines in gold (off, the default). It combines with glint." },
+  { "deviant", "off, on, 2, 3, 4", "Turns whole cells and paints them in another colour, their places drawn by the page's seed (off, the default): on turns one on the page, a number from 2 to 4 that many, on different edges of the paper in a perimeter band and of the text in a field, before two share one, and never two next to each other. Where there is room for fewer than asked the log says so." },
+  { "stray", "on, off", "Lets one cell come loose from the field's edge and lie at least about a cell's width from the gap it left, a dotted path leading back to it, clear of the text as the field is (off, the default). Where no place keeps that, none is laid and the log says so." },
   { "lighten", "0 to 1", "Lightens a pattern's fields toward the paper: 0 (the default) keeps their inks' lightness, 1 makes them nearly the paper." },
   { "bandwidth", "0.25 to 4", "The width of a pattern's bands and lines, as a factor of its own." },
   { Band.WIDTH, Band.WIDTH_MIN .. " to " .. Band.WIDTH_MAX, "The width in mm of a perimeter band (layout=" .. Band.LAYOUT .. "), the same on all four sides: " .. Band.WIDTH_DEFAULT .. " by default. Where a margin is narrower, the whole band narrows to what the narrowest side holds, the same all round and clear of the text block (none under 4 mm), and the log says so." },
@@ -292,6 +297,23 @@ end)
 M.define("alternate", function(v)
   for _, m in ipairs({ "auto", "off", "rows", "three" }) do if v == m then return v end end
   return nil, "alternate must be auto, off, rows or three"
+end)
+
+M.define("glint", function(v)
+  if require("flora.pattern_touches").GLINT[v] then return v end
+  return nil, "glint must be off, on, core, cells or knobs"
+end)
+
+for _, k in ipairs({ "herogilding", "stray" }) do
+  M.define(k, function(v)
+    if v == "on" or v == "off" then return v end
+    return nil, k .. " must be on or off"
+  end)
+end
+
+M.define("deviant", function(v)
+  if v == "on" or v == "off" or v == "2" or v == "3" or v == "4" then return v end
+  return nil, "deviant must be off, on, 2, 3 or 4"
 end)
 
 M.define("lighten", function(v)
@@ -543,10 +565,10 @@ function M.parse(s)
     local k, v = kv[1], kv[2]
     local parse = keys[k]
     if not parse then
-      local known = {}
-      for name in pairs(keys) do known[#known + 1] = name end
-      table.sort(known)
-      error(string.format("unknown key \"%s\" (known keys: %s)", k, table.concat(known, ", ")))
+      local names = {}
+      for name in pairs(keys) do names[#names + 1] = name end
+      table.sort(names)
+      error(string.format("unknown key \"%s\" (known keys: %s)", k, table.concat(names, ", ")))
     end
     if v == nil then error(string.format("key \"%s\" needs a value", k)) end
     local val, msg = parse(v)
@@ -607,6 +629,7 @@ M.SPEC = {
   finish = "pattern_finish", bands = "pattern_bands", bandwidth = "pattern_bandwidth", ground = "pattern_ground",
   ends = "pattern_ends", panels = "pattern_panels", lighten = "pattern_lighten",
   starfill = "pattern_starfill", gapfill = "pattern_gapfill", alternate = "pattern_alternate",
+  glint = "pattern_glint", herogilding = "pattern_herogilding", deviant = "pattern_deviant", stray = "pattern_stray",
   [Band.WIDTH] = "perimeter_width", [Band.FLORA] = "perimeter_flora", [Band.FLORA_DENSITY] = "perimeter_density",
 }
 -- The pattern keys besides `pattern` itself, by key -> default. A mixer's
@@ -618,7 +641,8 @@ M.SPEC = {
 -- palette, set role by role as palette is, so it is not one of them.
 M.PATTERN = { edge = "dissolve", hero = "none", outer = "bleed", scale = 1,
   saturation = 0.5, finish = "filled", bands = "auto", bandwidth = 1, ground = "auto",
-  ends = "auto", panels = "auto", lighten = 0, starfill = "auto", gapfill = "auto", alternate = "auto" }
+  ends = "auto", panels = "auto", lighten = 0, starfill = "auto", gapfill = "auto", alternate = "auto",
+  glint = "off", herogilding = "off", deviant = "off", stray = "off" }
 M.OWN = { layout = true, header = true, seed = true, cache = true, density = true, visitors = true, colourway = true }
 
 -- What a "fresh" restyle (tools/preview.lua, the site's mixer) drops of a
@@ -628,9 +652,9 @@ M.FRESH_DROPS = { mix = true, palette = true, patternpalette = true, spin = true
 
 -- The M.SPEC keys a fresh restyle keeps, for M.from_spec.
 function M.fresh_keys()
-  local keys = {}
-  for k in pairs(M.SPEC) do if not M.FRESH_DROPS[k] then keys[k] = true end end
-  return keys
+  local kept = {}
+  for k in pairs(M.SPEC) do if not M.FRESH_DROPS[k] then kept[k] = true end end
+  return kept
 end
 
 -- The mixer's preview of a page (site/src/lib/render.worker.js): its
@@ -656,11 +680,11 @@ function M.to_spec(set, spec)
 end
 
 -- The settings a spec was made from (the inverse of M.to_spec), for
--- `keys` (default: all of M.SPEC).
-function M.from_spec(spec, keys)
+-- `only` (default: all of M.SPEC).
+function M.from_spec(spec, only)
   local set = {}
   for k, f in pairs(M.SPEC) do
-    if not keys or keys[k] then set[k] = spec[f] end
+    if not only or only[k] then set[k] = spec[f] end
   end
   return set
 end

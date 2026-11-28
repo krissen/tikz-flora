@@ -44,9 +44,9 @@ jobs:
         tests:
           - pattern_matrix_1 pattern_reach_3
           - compose pattern_matrix_4
-          - pattern_protect pattern_reach_1
-          - header_mark pattern_matrix_3
-          - layout pattern_matrix_2 pattern_values
+          - pattern_protect pattern_touches pattern_reach_1
+          - header_mark pattern_matrix_3 pattern_touches_matrix_1
+          - layout pattern_matrix_2 pattern_values pattern_touches_matrix_2
           - pattern_perimeter_2 raster support
           - backdrop clock garden pattern_perimeter_3
           - frame_matrix pattern_perimeter_1 titles visitor

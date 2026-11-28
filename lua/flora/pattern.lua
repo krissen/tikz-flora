@@ -34,6 +34,7 @@ local Mix = require("flora.mix")
 local Patterns = require("flora.patterns")
 local Progression = require("flora.progression")
 local Band = require("flora.band")
+local Touches = require("flora.pattern_touches")
 
 local M = {}
 
@@ -643,6 +644,9 @@ function M.role_inks(rng, p, spec)
   -- bands unlit (band0, line0).
   base.band0 = base.band
   base.line0 = Paint.mix(base.band, pal.paper, R.line.mix)
+  -- How far the construction lines are mixed toward the paper (the gilded
+  -- hero's lines follow it, pattern_touches.lua).
+  base.line_mix = R.line.mix
   base.line = base.line0
   -- A band's lightness is set against the surface it lies on: a dark
   -- ground lights the bands of a line pattern, which lie on it, but not a
@@ -665,7 +669,7 @@ function M.cell_inks(base, a, hero, to)
   local function f(c) return c and (a >= 1 and c or Paint.mix(to, c, a)) end
   return {
     band = f(hero and base.band0 or base.band), core = f(base.core), accent = f(base.accent),
-    line = f(hero and base.line0 or base.line),
+    line = f(hero and base.line0 or base.line), gold = f(base.gold), bandcore = f(base.bandcore),
     fill = { f(base.fill1), f(base.fill2) },
     ground = f(base.ground), dark = f(base.dark), paper = f(pal.paper),
     lines = base.lines,
@@ -701,6 +705,39 @@ M.band_ink = band_ink
 -- A cell's position as a key, for finding it again in a second drawing.
 function M.cell_key(c) return string.format("%.1f,%.1f", c.x, c.y) end
 
+-- A grid of buckets nd wide over `items`, each placed by at(item) -> x, y: the
+-- one building block of the field's neighbour searches (M.field_edges here,
+-- pattern_touches.lua's). g.buckets[g.key(x, y)] lists a bucket's items in
+-- the order given; g:within(x, y, r) lists the items of the buckets a disc of
+-- radius r reaches, a superset of the items within r, in no order, and
+-- g.order[item] is the item's place in the list (to put them in order
+-- again); g:add(item) puts one more in. `counter`, if given, counts in
+-- counter.n each item a search lists, which is what a search costs.
+function M.cell_grid(items, nd, at, counter)
+  local g = { nd = nd, buckets = {}, order = {}, n = 0 }
+  function g.key(x, y) return math.floor(x / nd) .. "," .. math.floor(y / nd) end
+  function g:add(item)
+    local x, y = at(item)
+    local k = g.key(x, y)
+    g.buckets[k] = g.buckets[k] or {}
+    table.insert(g.buckets[k], item)
+    g.n = g.n + 1
+    g.order[item] = g.n
+  end
+  function g:within(x, y, r)
+    local out = {}
+    for ix = math.floor((x - r) / nd), math.floor((x + r) / nd) do
+      for iy = math.floor((y - r) / nd), math.floor((y + r) / nd) do
+        for _, it in ipairs(g.buckets[ix .. "," .. iy] or {}) do out[#out + 1] = it end
+      end
+    end
+    if counter then counter.n = counter.n + #out end
+    return out
+  end
+  for _, it in ipairs(items) do g:add(it) end
+  return g
+end
+
 -- The grounded cells' neighbours: for each cell (by its record), the share
 -- of its neighbours on the page that are grounded too (1 inside the field,
 -- less at its edge) and its depth, how many steps it lies from the edge
@@ -728,13 +765,7 @@ function M.field_edges(cells, grounded, onpage)
     return ds[math.max(1, math.floor(#ds / 2))] or 1
   end
   local nd = 1.6 * nearest_scale()
-  local grid = {}
-  local function gk(x, y) return math.floor(x / nd) .. "," .. math.floor(y / nd) end
-  for _, c in ipairs(cells) do
-    local key = gk(c.x, c.y)
-    grid[key] = grid[key] or {}
-    table.insert(grid[key], c)
-  end
+  local grid = M.cell_grid(cells, nd, function(c) return c.x, c.y end).buckets
   local info = { nd = nd, share = {}, depth = {}, isolated = 0, edge = 0 }
   local neighbours = {}
   for _, k in ipairs(grounded) do
@@ -926,7 +957,7 @@ function M.edge_pieces(mode, f, info)
     end }
   end
   if mode == "discs" then
-    return { drops = true, piece = function(k, path, colour)
+    return { drops = true, piece = function(k, _, colour)
       local c = k.cell
       return { { "o", c.x, c.y, 0.62 * info.nd } }, colour
     end }
@@ -1563,7 +1594,7 @@ function M.paint_rows(spec, pt, p, band)
       p.name, plan.n, plan.f, plan.floor, 100 * share))
   end
   pt.pattern = { name = p.name, size = size, factor = plan.f, rows = plan.n, cover = share, cells = cells, kept = kept,
-    reach = q.reach, gap = q.gap, warnings = pt.pattern_warnings, unfit = unfit, inks = q.inks,
+    reach = q.reach, gap = q.gap, warnings = pt.pattern_warnings, unfit = unfit, inks = q.inks, touches = pt.touches_report,
     inner = "rows", w = w, band = { w = w, inner = "rows", I = band.I } }
   return true
 end
@@ -1637,7 +1668,7 @@ function M.paint(spec, pt)
   -- clip and no cell is measured against them.
   local cut = band and band.inner == "rule"
 
-  -- Prototype options (spec.pattern_opts, ORDER #9 of the geometry work;
+  -- Trial options (spec.pattern_opts, ORDER #9 of the geometry work;
   -- not settings): how the ground and the fields end where the pattern
   -- ends (ground_edge), and whether the cells fall away as the pattern's
   -- own units (units) or the field closes its strands at its edge
@@ -1665,6 +1696,17 @@ function M.paint(spec, pt)
   local panels = key(spec, "panels")
   if panels == "auto" then panels = p.panels or "off" end
   if opts.symmetric == nil then opts.symmetric = panels == "on" end
+  -- The touches (pattern_touches.lua), off unless their keys are set. What
+  -- lies outside the field (the hero, the border's rule and frame) keeps
+  -- the colours it had.
+  local touches = Touches.new({ glint = key(spec, "glint"), herogilding = key(spec, "herogilding"),
+    deviant = key(spec, "deviant"), stray = key(spec, "stray") }, p, function(msg) M.warn(pt, msg) end, pt)
+  local outer_base = base
+  if touches then
+    Touches.colours(touches, base)
+    outer_base = touches.outer
+  end
+  local hero_base = touches and touches.hero or outer_base
   local ground_edges = { auto = "panel", panel = "panel", motif = "shape", round = "discs", cells = "cells" }
   if opts.ground_edge == nil then opts.ground_edge = ground_edges[M.ground_mode(spec)] or "cells" end
   -- In a band of whole cells the ground follows the cells under
@@ -1766,6 +1808,12 @@ function M.paint(spec, pt)
   local onpage = {}
   local page = { 0, 0, W, top }
   local field = { keep = cut and {} or keep_rects, hero = hero, gap = gap, outer = outer, page = page }
+  -- What a touch paints is held to the same rule as a cell (M.measure, M.lays),
+  -- but the rectangles are always kept: a touch that lay in a band's cut
+  -- would be half cut by the clip.
+  local touch_field = { keep = keep_rects, hero = hero, gap = gap, outer = outer, page = page }
+  local function place(shapes, reach) return M.lays("touch", shapes, reach, touch_field) end
+  local function measure_touch(shapes, reach) return M.measure(shapes, reach, touch_field) end
   local function measure(shapes, reach) return M.measure(shapes, reach, field) end
   local function fits(form, shapes, reach) return M.lays(form, shapes, reach, field) end
   -- Whether each cell is placed, and the share it keeps (0 drops it).
@@ -1828,8 +1876,8 @@ function M.paint(spec, pt)
     -- keeps clear of the text and the page has any density; it does not
     -- thin out toward the text.
     if c.fixed then
-      local ok = dens > 0 and d >= gap
-      return true, ok and 1 or 0, false, ok, 1
+      local clear = dens > 0 and d >= gap
+      return true, clear and 1 or 0, false, clear, 1
     end
     -- A band's cell is kept whole, falls away past the inner edge under
     -- dissolve, or pales toward it under fade.
@@ -2010,9 +2058,9 @@ function M.paint(spec, pt)
       if #failed == 0 then break end
       local r2 = (0.75 * size) ^ 2
       local walled = 0
-      for key, o in pairs(keep) do
+      for ck, o in pairs(keep) do
         for _, c in ipairs(failed) do
-          if (o.x - c.x) ^ 2 + (o.y - c.y) ^ 2 < r2 then keep[key] = nil; walled = walled + 1; break end
+          if (o.x - c.x) ^ 2 + (o.y - c.y) ^ 2 < r2 then keep[ck] = nil; walled = walled + 1; break end
         end
       end
       if walled == 0 then break end
@@ -2020,6 +2068,10 @@ function M.paint(spec, pt)
     kept, offered, bare = {}, #list, {}
     for _, v in ipairs(list) do kept[#kept + 1] = { cell = v.c, a = v.a, turn = v.turn, jitter = stagger:next() } end
   end
+
+  local plan = touches and Touches.plan(touches, { kept = kept, size = size, width = width, text = text, W = W, top = top,
+    hero = hero, rng = rng, warn = function(msg) M.warn(pt, msg) end, grid = M.cell_grid,
+    place = place, measure = measure_touch, band = band, pt = pt })
 
   -- Growth starts at the page's outer edge, away from the text. A cell
   -- whose centre lies off the page (outer=bleed) starts with the edge,
@@ -2096,7 +2148,7 @@ function M.paint(spec, pt)
   end
   local holes = 0
   local ge = opts.ground_edge or "cells"
-  -- A1 (a prototype's dark): the ground only on a dark backdrop.
+  -- A1 (a trial of the dark): the ground only on a dark backdrop.
   if ge == "dark" and not pt.backdrop then base.ground = nil end
   -- The field's edge is measured only where something follows it.
   local need = base.ground or opts.measure
@@ -2188,9 +2240,21 @@ function M.paint(spec, pt)
       end
     end
   end
+  local late = {}
   for _, k in ipairs(kept) do
     local c, ink = k.cell, band_ink(M.cell_inks(base, k.a, nil, under_of(k)), p, spec, k_scale, ff)
     local birth, painted = k.birth, k.painted
+    -- A cell with a plan of its own (pattern_touches.lua) is painted through
+    -- it: turned or moved, gilded, or with a knob or glints.
+    local pl = plan and plan.at[k]
+    local draw_lines, draw_cell = function() c.construct(pt, c, ink) end, function() c.paint(pt, c, ink) end
+    local h
+    if pl then
+      h = Touches.painters(plan, pl, c, ink, pt)
+      draw_lines, draw_cell = h.construct, h.paint
+      h.enter()
+      if h.late then late[#late + 1] = { k = k, h = h } end
+    end
     -- The same precondition for the cell itself, its outline and what it
     -- lays (M.footprint), as judge placed it.
     if not fits("cell", M.footprint(c, base), width / 2 + (c.pad or 0)) then
@@ -2211,17 +2275,29 @@ function M.paint(spec, pt)
         end
       end
       if c.sweep then
-        swept((grow - birth) / LINES, function() lit(function() c.construct(pt, c, ink) end) end)
-        swept((grow - painted) / BAND, function() lit(function() c.paint(pt, c, ink) end) end)
+        swept((grow - birth) / LINES, function() lit(draw_lines) end)
+        swept((grow - painted) / BAND, function() lit(draw_cell) end)
       else
-        if grow >= birth then lit(function() c.construct(pt, c, ink) end) end
-        if grow >= painted + 0.04 then lit(function() c.paint(pt, c, ink) end) end
+        if grow >= birth then lit(draw_lines) end
+        if grow >= painted + 0.04 then lit(draw_cell) end
       end
     else
       Progression.part(pt, "pattern_line", { c.x, c.y }, birth, LINES,
-        function() lit(function() c.construct(pt, c, ink) end) end, nil, { no_area = true, sweep = c.sweep })
+        function() lit(draw_lines) end, nil, { no_area = true, sweep = c.sweep })
       Progression.part(pt, "pattern", { c.x, c.y }, painted, BAND,
-        function() lit(function() c.paint(pt, c, ink) end) end, nil, c.sweep and { sweep = c.sweep } or nil)
+        function() lit(draw_cell) end, nil, c.sweep and { sweep = c.sweep } or nil)
+    end
+    if h then h.leave() end
+  end
+  -- What a touch lays over every cell (a knob, glints), as its cell is
+  -- painted.
+  for _, l in ipairs(late) do
+    local c = l.k.cell
+    local draw = function() lit(function() l.h.enter(); l.h.late(); l.h.leave() end) end
+    if grow then
+      if grow >= l.k.painted + 0.04 then draw() end
+    else
+      Progression.part(pt, "pattern", { c.x, c.y }, l.k.painted, BAND, draw)
     end
   end
   -- edge=border's rule along the inner edge, as edge=border's frame,
@@ -2229,7 +2305,7 @@ function M.paint(spec, pt)
   -- and every reservation), not under the inner rectangle's own.
   if clips > 0 then pt:clip_end(); clips = clips - 1 end
   if band and cut and (not grow or grow >= 0.1) then
-    local I, ink = band.I, M.cell_inks(base, 1, true)
+    local I, ink = band.I, M.cell_inks(outer_base, 1, true)
     local rule = { { "m", I[1], I[2] }, { "l", I[3], I[2] }, { "l", I[3], I[4] }, { "l", I[1], I[4] }, { "z" } }
     Progression.part(pt, "pattern_border", { I[1], I[2] }, 0, 0.2, function()
       local fw = band_ink({}, p, spec, k_scale, ff).width
@@ -2239,16 +2315,16 @@ function M.paint(spec, pt)
   end
   for _ = 1, clips do pt:clip_end() end
   if hero and fits("hero", { { circle = hero } }, 0) then
-    M.paint_hero(pt, hero, band_ink(M.cell_inks(base, 1, true), p, spec, k_key), grow)
+    M.paint_hero(pt, hero, band_ink(M.cell_inks(hero_base, 1, true), p, spec, k_key), grow)
   end
   if edge == "guilloche" and not band and (not grow or grow >= 0.1) then
-    local ink = band_ink(M.cell_inks(base, 1, true), p, spec, k_key)
+    local ink = band_ink(M.cell_inks(outer_base, 1, true), p, spec, k_key)
     Progression.part(pt, "pattern_border", { text.x0, text.y0 }, 0, 0.2, function()
       require("flora.pattern_hero").paint_band(pt, text, gap / 2, 4, ink)
     end)
   end
   if edge == "border" and not band and (not grow or grow >= 0.1) then
-    local ink = M.cell_inks(base, 1, true)
+    local ink = M.cell_inks(outer_base, 1, true)
     local o = gap / 2
     local frame = { { "m", text.x0 - o, text.y0 - o }, { "l", text.x1 + o, text.y0 - o },
       { "l", text.x1 + o, text.y1 + o }, { "l", text.x0 - o, text.y1 + o }, { "z" } }
@@ -2282,6 +2358,11 @@ function M.paint(spec, pt)
     -- at the edge.
     isolated = edgeinfo.isolated, edge_cells = edgeinfo.edge }
   -- For measuring (pattern_opts.measure): the kept cells' own edge.
+  pt.pattern.edge_inks, pt.pattern.hero_inks = outer_base, hero_base
+  if touches then
+    Touches.finish(touches, pt, function(msg) M.warn(pt, msg) end)
+    pt.pattern.touches = pt.touches_report
+  end
   if opts.measure then
     local ki = M.field_edges(cells, kept, onpage)
     pt.pattern.isolated, pt.pattern.edge_cells = ki.isolated, ki.edge
