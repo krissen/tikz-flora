@@ -806,6 +806,203 @@ function M.linear()
   return pages, fs
 end
 
+-- Every place the plan reports shows its ink on top, measured on the painting
+-- in the order it was painted: the fills of the whole page are logged, and at
+-- a place the last fill that covers it is the one seen.
+--   gilded cell, knob, glint   gold
+--   turned cell                a colour other than the page's without the key
+--   stray plate                the plate's own (or, of a pattern with no fill,
+--                              nothing else over it)
+-- Over the catalog and the choices that change who paints what (alternate,
+-- starfill and gapfill, finish, a colourway).
+M.VISIBLE_OPTIONS = {
+  { "default", {} },
+  { "lines", { finish = "lines" } },
+  { "three", { alternate = "three" }, { hexagram_lattice = true } },
+  { "rows", { alternate = "rows" }, { hexagram_lattice = true } },
+  { "split", { starfill = "split" }, { khatam = true } },
+  { "paper", { gapfill = "paper" }, { khatam = true, hexagram_lattice = true } },
+  { "lacquer", { finish = "lacquer" }, { asanoha = true, sikku_kolam = true } },
+  { "tsuki-mi", { patternpalette = require("flora.inks").pattern_palette("tsuki-mi") } },
+}
+M.VISIBLE_KEYS = { { "glint", "cells" }, { "glint", "knobs" }, { "glint", "on" }, { "deviant", "on" }, { "stray", "on" } }
+
+local function polys_of(self, cmds)
+  local paths = cmds
+  if not (type(cmds[1]) == "table" and type(cmds[1][1]) == "table") then paths = { cmds } end
+  local out = {}
+  for _, path in ipairs(paths) do
+    local P = {}
+    local function add(x, y)
+      if self.projection then x, y = self.projection(x, y) end
+      if self.frame_fn then x, y = self.frame_fn(x, y) end
+      P[#P + 1] = { x, y }
+    end
+    for _, c in ipairs(path) do
+      if c[1] == "o" then
+        for k = 0, 23 do add(c[2] + c[4] * math.cos(k * math.pi / 12), c[3] + c[4] * math.sin(k * math.pi / 12)) end
+      elseif c[1] == "c" then add(c[2], c[3]); add(c[4], c[5]); add(c[6], c[7])
+      elseif c[1] == "m" or c[1] == "l" then add(c[2], c[3]) end
+    end
+    out[#out + 1] = P
+  end
+  return out
+end
+
+-- The page painted with its fills and its reported places logged.
+local function paint_log(name, set, backdrop, extra)
+  local Touches = require("flora.pattern_touches")
+  local ops, places, owner, strokes = {}, {}, nil, {}
+  local painters = Touches.painters
+  rawset(Touches, "painters", function(plan, pl, c, ink, pt)
+    local h = painters(plan, pl, c, ink, pt)
+    local function page_xy(x, y)
+      if pt.frame_fn then return pt.frame_fn(x, y) end
+      return x, y
+    end
+    local mx, my = c.x + (pl.stray and pl.stray.dx or 0), c.y + (pl.stray and pl.stray.dy or 0)
+    if pl.gilt then local x, y = page_xy(c.x, c.y); places[#places + 1] = { kind = "gilt", x = x, y = y, c = c, frame = pt.frame_fn } end
+    if pl.knob then local x, y = page_xy(mx, my); places[#places + 1] = { kind = "knob", x = x, y = y, c = c } end
+    for _, q in ipairs(pl.glints or {}) do local x, y = page_xy(q[1], q[2]); places[#places + 1] = { kind = "glint", x = x, y = y, c = c } end
+    if pl.deviant then local x, y = page_xy(c.x, c.y); places[#places + 1] = { kind = "turned", x = x, y = y, c = c } end
+    if pl.stray then local x, y = page_xy(mx, my); places[#places + 1] = { kind = "moved", x = x, y = y, c = c } end
+    for _, f in ipairs({ "construct", "paint", "late" }) do
+      local g = h[f]
+      if g then
+        h[f] = function(...)
+          local was = owner
+          owner = c
+          local r = g(...)
+          owner = was
+          return r
+        end
+      end
+    end
+    return h
+  end)
+  local fill, stroke = Paint.fill, Paint.stroke
+  rawset(Paint, "fill", function(self, cmds, rgb, ...)
+    ops[#ops + 1] = { polys = polys_of(self, cmds), rgb = rgb, owner = owner }
+    return fill(self, cmds, rgb, ...)
+  end)
+  -- Strokes are logged apart, for the ink of a cell that has no fill.
+  rawset(Paint, "stroke", function(self, cmds, rgb, ...)
+    if owner then strokes[#strokes + 1] = { rgb = rgb, owner = owner } end
+    return stroke(self, cmds, rgb, ...)
+  end)
+  local ok, pt = pcall(function() return page(name, "field", backdrop, set, extra) end)
+  rawset(Paint, "fill", fill)
+  rawset(Paint, "stroke", stroke)
+  rawset(Touches, "painters", painters)
+  if not ok then error(pt, 0) end
+  return pt, ops, places, strokes
+end
+
+-- The last fill covering (x, y), or nil.
+local function top_at(ops, x, y)
+  for i = #ops, 1, -1 do
+    for _, P in ipairs(ops[i].polys) do
+      if #P >= 3 and point_in(x, y, P) then return ops[i] end
+    end
+  end
+end
+
+-- The places of one key and value on one pattern and choice: how many are
+-- reported, how many show their ink on top.
+function M.visible_of(name, set, backdrop, key, value, seed)
+  local on_set = { [key] = value }
+  for k, v in pairs(set) do on_set[k] = v end
+  local extra = seed and { seed = seed } or nil
+  local pt, ops, places, strokes = paint_log(name, on_set, backdrop, extra)
+  local base_ops, base_strokes
+  local n, shown, hidden = 0, 0, {}
+  -- The colours a cell's strokes were painted in, by the cell's place.
+  local function stroke_colours(list, c)
+    local seen = {}
+    for _, s in ipairs(list) do
+      if s.owner.x == c.x and s.owner.y == c.y then seen[string.format("%.3f,%.3f,%.3f", s.rgb[1], s.rgb[2], s.rgb[3])] = true end
+    end
+    return seen
+  end
+  for _, p in ipairs(places) do
+    n = n + 1
+    local top = top_at(ops, p.x, p.y)
+    -- Whether the cell has a fill of its own over this place (a pattern of
+    -- strokes alone has none, and a dotted path's dots lie elsewhere).
+    local owns_fill = false
+    for _, o in ipairs(ops) do
+      if o.owner == p.c then
+        for _, P in ipairs(o.polys) do
+          if #P >= 3 and point_in(p.x, p.y, P) then owns_fill = true end
+        end
+      end
+    end
+    local ok
+    if p.kind == "gilt" then
+      -- Gold is seen on a gilded cell where nothing painted later covers it:
+      -- at its middle, or a way in from its corners (fans that overlap, as
+      -- seigaiha's, cover each other's middle).
+      ok = top ~= nil and same_colour(top.rgb, Paint.palette.gold)
+      for _, v in ipairs(not ok and (p.c.tile or p.c.verts) or {}) do
+        local x, y = p.c.x + 0.6 * (v[1] - p.c.x), p.c.y + 0.6 * (v[2] - p.c.y)
+        if p.frame then x, y = p.frame(x, y) end
+        local at = top_at(ops, x, y)
+        if at and same_colour(at.rgb, Paint.palette.gold) and at.owner == p.c then ok = true break end
+      end
+    elseif p.kind == "knob" or p.kind == "glint" then
+      ok = top ~= nil and same_colour(top.rgb, Paint.palette.gold)
+    elseif p.kind == "turned" then
+      if not base_ops then
+        local _, bo, _, bs = paint_log(name, set, backdrop, extra)
+        base_ops, base_strokes = bo, bs
+      end
+      if owns_fill then
+        local was = top_at(base_ops, p.x, p.y)
+        ok = top ~= nil and not (was and same_colour(top.rgb, was.rgb))
+      else
+        local now, was = stroke_colours(strokes, p.c), stroke_colours(base_strokes, p.c)
+        ok = false
+        for k in pairs(now) do if not was[k] then ok = true end end
+      end
+    else
+      ok = not owns_fill or (top ~= nil and top.owner == p.c)
+    end
+    if ok then shown = shown + 1 else hidden[#hidden + 1] = p.kind end
+  end
+  return n, shown, hidden, pt
+end
+
+function M.visible(backdrop, only, options, keys, seeds)
+  local fs, pages = {}, 0
+  for _, name in ipairs(only or M.PATTERNS) do
+    for _, opt in ipairs(options or M.VISIBLE_OPTIONS) do
+      if not opt[3] or opt[3][name] then
+        for _, kv in ipairs(keys or M.VISIBLE_KEYS) do
+          for _, seed in ipairs(seeds or { 7 }) do
+            local n, shown, hidden = M.visible_of(name, opt[2], backdrop, kv[1], kv[2], seed)
+            pages = pages + 1
+            if shown < n then
+              fs[#fs + 1] = string.format("%s (%s) seed %d %s=%s: %d of %d places show no ink of theirs (%s)", name, opt[1], seed, kv[1], kv[2], n - shown, n, hidden[1])
+            end
+          end
+        end
+      end
+    end
+  end
+  return pages, fs
+end
+
+-- The catalog's cells, on two seeds, the choices that change who paints what.
+function M.visible_matrix(backdrop)
+  local names = {}
+  for _, p in ipairs(require("flora.patterns").list) do names[#names + 1] = p.name end
+  local options = {}
+  for _, o in ipairs(M.VISIBLE_OPTIONS) do
+    if o[1] == "default" or o[1] == "lines" or o[1] == "three" or o[1] == "lacquer" then options[#options + 1] = o end
+  end
+  return M.visible(backdrop, names, options, { { "glint", "cells" }, { "deviant", "on" }, { "stray", "on" } }, { 1, 2 })
+end
+
 -- The same seed gives the same page, every key on.
 function M.seed(backdrop, only)
   local fs, pages = {}, 0
@@ -834,7 +1031,10 @@ end
 function M.run(backdrop, mutations)
   local t0 = os.clock()
   local total = 0
-  for _, check in ipairs({ "off", "gold", "deviant", "stray", "seed", "target", "ink", "finite", "leaks", "linear" }) do
+  local checks = { "off", "gold", "deviant", "stray", "seed", "target", "ink", "finite", "leaks", "linear" }
+  -- The painted order of the whole catalog is measured once, on paper.
+  if mutations then checks[#checks + 1] = "visible_matrix" end
+  for _, check in ipairs(checks) do
     local pages, fs = M[check](backdrop)
     total = total + pages
     H.check(pages > 0, check .. ": no pages")
@@ -891,6 +1091,10 @@ function M.run(backdrop, mutations)
     end]], [[    for _, bucket in pairs(g.buckets) do
       for _, it in ipairs(bucket) do out[#out + 1] = it end
     end]], "linear", nil, nil, nil, "pattern" },
+    { "a gilded cell fills with gold whoever paints it", [[    ink2.accent, ink2.core = ink.gold, ink.gold
+]], "", "visible_matrix" },
+    { "a turned cell recolours whoever paints it", [[    ink2.accent, ink2.core = foil(ink.accent) or ink.accent, foil(ink.core) or ink.core
+]], "", "visible_matrix" },
     { "the frame keeps its colours", [[hero.band, hero.band0 = pal.gold, pal.gold]], [[hero.band, hero.band0, outer.band = pal.gold, pal.gold, pal.gold]], "target", { "stars_8_4" } },
     { "a spacing that is finite", { [[if best < math.huge then nn[#nn + 1] = best end]], [[if med <= 0 or med > 4 * ctx.size then med = ctx.size end]] }, { [[nn[#nn + 1] = best]], "" }, "finite", { { "stars_8_4", 8 }, { "kikko", 8 } } },
     { "the same seed", [[local rng = ctx.rng:fork("pattern touches")]], [[local rng = ctx.rng:fork("pattern touches" .. tostring({}))]], "seed", { "stars_8_4" } },

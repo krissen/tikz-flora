@@ -818,13 +818,22 @@ end
 -- included); the dotted path is painted without it.
 function M.painters(plan, pl, c, ink, pt)
   local ink2 = ink
+  -- The cell's fills, whichever role its painter takes them from: the two
+  -- fields, and the accent and the core, which a pattern may lay as fields
+  -- too (greek_crosses' third and fourth tone, hexagram_lattice's third, the
+  -- discs of seigaiha and rosette_lattice). Only this cell's copy of the inks
+  -- is changed.
   if pl.deviant then
     ink2 = copy(ink)
     ink2.fill = { foil(ink.fill[1]) or ink.fill[1], foil(ink.fill[2]) or ink.fill[2] }
+    ink2.accent, ink2.core = foil(ink.accent) or ink.accent, foil(ink.core) or ink.core
+    ink2.cores = { core = ink.core, accent = ink.accent }
     ink2.band = foil(ink.band) or ink.band
   elseif pl.gilt then
     ink2 = copy(ink)
     ink2.fill = { ink.gold, ink.gold }
+    ink2.accent, ink2.core = ink.gold, ink.gold
+    ink2.cores = { core = ink.core, accent = ink.accent }
   end
   local project
   if pl.deviant then project = turn(pl.deviant.theta, c.x, c.y, 0, 0) end

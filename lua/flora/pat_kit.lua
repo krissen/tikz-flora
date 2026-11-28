@@ -125,7 +125,9 @@ end
 -- (a field of one of them, a disc) takes ink.bandcore.
 function K.core_stroke(pt, path, ink, role, w, opts)
   local colour = ink.bandcore
-  if colour then pt.band_cores = (pt.band_cores or 0) + 1 else colour = ink[role] end
+  -- ink.cores holds the roles' colours as they were for a cell whose fills
+  -- were recoloured (pattern_touches.lua), so that its cores are not.
+  if colour then pt.band_cores = (pt.band_cores or 0) + 1 else colour = ink.cores and ink.cores[role] or ink[role] end
   pt:stroke(path, colour, w, 1, opts)
 end
 
