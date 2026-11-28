@@ -63,6 +63,14 @@ for _, key in ipairs({ "deviant", "stray" }) do
   end
 end
 
+-- survey: stray=on over twelve seeds of four patterns on the slide, no
+-- pictures (tools/pattern-touches.sh survey): how many plates are laid.
+for seed = 1, 12 do
+  variants[#variants + 1] = { name = "survey-" .. seed, set = "survey", setup = COLOURWAY .. ", stray=on", seed = seed,
+    patterns = { stars_8_4 = true, kikko = true, asanoha = true, overlapping_circles = true },
+    slide = true, slide_only = true, backdrops = { "light" } }
+end
+
 -- perimeter: the keys in a 12 mm band round the paper, a corner and a side
 -- in close-up (the hero is not drawn there).
 local PERIMETER = { off = "", glint = ", glint=on", knobs = ", glint=knobs", cells = ", glint=cells", deviant = ", deviant=on", deviant3 = ", deviant=3", stray = ", stray=on" }

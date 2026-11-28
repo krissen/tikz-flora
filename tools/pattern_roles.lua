@@ -19,6 +19,7 @@
 -- A variant of the touch sets (pattern_touches.lua's keys) may also give:
 --   seed     the page's seed, in place of 11
 --   keep_text  its layout is kept without the text moved (layout=perimeter)
+--   slide_only  only the 16:9 slide is rendered (with `slide`), not the A4 page
 --   heroes   hero names, each drawn over every pattern of the variant on
 --            page 3 as hero-NAME-PATTERN
 --   probe    render the gold as pure magenta again, as probe/NAME.pdf, for
@@ -199,7 +200,9 @@ local function touches_row(v, bd, name, spec, pt, p)
   local function mm(x) return x and string.format("%.1f", x * MM) or "" end
   ptsv:write(table.concat({ v.name, bd, name, tostring(v.seed or SEED), tostring(r.places or ""), mm(r.spacing),
     mm(spec.width), mm(spec.height), mm(fx), mm(fy), tostring(r.deviants and #r.deviants or 0), r.stray and "1" or "0",
-    table.concat(p.roles, ","), table.concat(pp and pp.warnings or {}, " | ") }, "\t") .. "\n")
+    table.concat(p.roles, ","), table.concat(pp and pp.warnings or {}, " | "),
+    r.stray and string.format("%.2f", r.stray.clear / r.stray.width) or "",
+    r.stray and string.format("%.2f", math.sqrt((r.stray.to_x - r.stray.x) ^ 2 + (r.stray.to_y - r.stray.y) ^ 2) / r.stray.width) or "" }, "\t") .. "\n")
 end
 
 local function wanted_variant(v)
@@ -215,13 +218,15 @@ for _, v in ipairs(V.variants) do
       mkdir(dir)
       for _, p in ipairs(Patterns.list) do
         if v.patterns and not v.patterns[p.name] then goto skip end
-        local spec = page_spec("4", v.layout or "left", "pattern=" .. p.name .. ", " .. v.setup, bd, v.opts, v.seed)
-        if v.layout and not v.keep_text then place_text(spec, v.layout); write_text(spec, dir .. "/" .. p.name .. ".text") end
-        spec.grow = v.grow
-        local pt = render(spec, dir .. "/" .. p.name .. ".pdf")
-        measure(v.name, bd, p, spec)
-        touches_row(v, bd, p.name, spec, pt, p)
-        if v.probe then render_probe(spec, dir, p.name) end
+        if not v.slide_only then
+          local spec = page_spec("4", v.layout or "left", "pattern=" .. p.name .. ", " .. v.setup, bd, v.opts, v.seed)
+          if v.layout and not v.keep_text then place_text(spec, v.layout); write_text(spec, dir .. "/" .. p.name .. ".text") end
+          spec.grow = v.grow
+          local pt = render(spec, dir .. "/" .. p.name .. ".pdf")
+          measure(v.name, bd, p, spec)
+          touches_row(v, bd, p.name, spec, pt, p)
+          if v.probe then render_probe(spec, dir, p.name) end
+        end
         if v.slide then
           local sspec = page_spec("slide", v.layout or "right", "pattern=" .. p.name .. ", " .. v.setup, bd, v.opts, v.seed)
           if v.layout and not v.keep_text then place_text(sspec, v.layout); write_text(sspec, dir .. "/slide-" .. p.name .. ".text") end

@@ -16,6 +16,8 @@
 #   perimeter  the keys in a 12 mm band round the paper, per pattern: a
 #              corner and a side in close-up, off and each key on
 #   inventory  inventory.tsv: what each pattern takes, one pattern a row
+#   survey     survey.tsv: stray=on over twelve seeds of four patterns on the
+#              slide, no pictures: the plates laid, and how far they lie
 #
 # Writes OUT/sheets/<set>__<pattern>.png. Under each tile: the gold's share
 # of the field's ink (pixels at 50 dpi whose alpha is over a half, the gold
@@ -35,7 +37,7 @@ DD=150
 SD=300
 R="$OUT/render/$SET"
 T="$OUT/tmp"
-case "$SET" in gold | deviant | stray | perimeter | inventory) ;; *) echo "unknown set $SET" >&2; exit 2 ;; esac
+case "$SET" in gold | deviant | stray | perimeter | inventory | survey) ;; *) echo "unknown set $SET" >&2; exit 2 ;; esac
 mkdir -p "$R" "$OUT/sheets" "$T"
 tools/pattern-bake.sh "$OUT"
 
@@ -43,7 +45,7 @@ if [ -z "${PATTERN_TOUCHES_SHEETS_ONLY:-}" ]; then
   rm -rf "${R:?}"
   mkdir -p "$R"
   : > "$R/roles.tsv"
-  printf 'variant\tbackdrop\tpattern\tseed\tplaces\tspacing_mm\twidth_mm\theight_mm\tfocus_x_mm\tfocus_y_mm\tdeviants\tloose\troles\tlog\n' > "$R/touches.tsv"
+  printf 'variant\tbackdrop\tpattern\tseed\tplaces\tspacing_mm\twidth_mm\theight_mm\tfocus_x_mm\tfocus_y_mm\tdeviants\tstray\troles\tlog\tstray_clear_widths\tstray_move_widths\n' > "$R/touches.tsv"
   texlua tools/pattern_roles.lua "$OUT/bake" "$R" tools/pattern_variants.lua "set:$SET"
 fi
 
@@ -256,7 +258,7 @@ sheet_perimeter() {
 # lays, from the inventory variants (one pattern a row).
 sheet_inventory() {
   f="$OUT/sheets/inventory.tsv"
-  printf 'pattern\troles\tink_pct_of_page\tgold_pct_today\tgold_pct_core\tplaces_core\tplaces_cells\tplaces_knobs\tplaces_on\tdeviants\tloose\tlog\n' > "$f"
+  printf 'pattern\troles\tink_pct_of_page\tgold_pct_today\tgold_pct_core\tplaces_core\tplaces_cells\tplaces_knobs\tplaces_on\tdeviants\tstray\tlog\n' > "$f"
   for pat in $(patterns_of inventory-off); do
     pp="$R/inventory-off/light/probe/$pat.pdf"
     measure "$pp" > "$T/ink.txt"
@@ -272,7 +274,34 @@ sheet_inventory() {
   echo "table: $f"
 }
 
+# The stray plate over twelve seeds, no pictures: per pattern, the seeds that
+# lay one and those that do not (with the log's line), and the least and the
+# mean of how far the plate lies from its gap and from the nearest cell
+# drawn, in cell widths.
+sheet_survey() {
+  f="$OUT/sheets/survey.tsv"
+  printf 'pattern\tseeds\tlaid\twithout\tmove_min\tmove_mean\tclear_min\tclear_mean\tlog\n' > "$f"
+  for pat in stars_8_4 kikko asanoha overlapping_circles; do
+    awk -F'\t' -v pat="slide-$pat" '
+      $3 == pat {
+        n++
+        if ($12 + 0 > 0) {
+          laid++; m = $16 + 0; c = $15 + 0
+          ms += m; cs += c
+          if (laid == 1 || m < mmin) mmin = m
+          if (laid == 1 || c < cmin) cmin = c
+        } else { without = without (without == "" ? "" : ",") $4; if (lg == "") lg = $14 }
+      }
+      END {
+        printf "%s\t%d\t%d\t%s\t%.2f\t%.2f\t%.2f\t%.2f\t%s\n", substr(pat, 7), n, laid, without,
+          mmin, laid ? ms / laid : 0, cmin, laid ? cs / laid : 0, substr(lg, 1, 90)
+      }' "$R/touches.tsv" >> "$f"
+  done
+  echo "table: $f"
+}
+
 case "$SET" in
+  survey) sheet_survey ;;
   inventory) sheet_inventory ;;
   gold) sheet_gold ;;
   deviant) sheet_one deviant 40 ;;
