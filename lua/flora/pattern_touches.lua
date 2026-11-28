@@ -637,8 +637,11 @@ function M.plan(S, ctx)
       local I = ctx.band and ctx.band.I
       if I then
         local out = { l = I[1] - c.x, r = c.x - I[3], b = I[2] - c.y, t = c.y - I[4] }
+        -- The farthest out, the edges taken in a fixed order for a tie.
         local best, v = nil, 0
-        for k, d in pairs(out) do if d > v then best, v = k, d end end
+        for _, e in ipairs({ "l", "r", "b", "t" }) do
+          if out[e] > v then best, v = e, out[e] end
+        end
         return best
       end
       local t = ctx.text
@@ -736,11 +739,15 @@ function M.plan(S, ctx)
     end
   elseif g == "knobs" then
     for _, k in ipairs(kept) do
-      if ctx.place({ ring(k.cell.x, k.cell.y, 0.16 * med) }, 0.15) then
+      -- Where the knob is painted: on the cell, which a stray plate has
+      -- carried away from its gap.
+      local st = plan.at[k] and plan.at[k].stray
+      local kx, ky = k.cell.x + (st and st.dx or 0), k.cell.y + (st and st.dy or 0)
+      if ctx.place({ ring(kx, ky, 0.16 * med) }, 0.15) then
         at(k).knob = true
-        note(k, ring(k.cell.x, k.cell.y, 0.16 * med), 0.15)
+        note(k, ring(kx, ky, 0.16 * med), 0.15)
         laid = laid + 1
-        rep.at[#rep.at + 1] = { page_xy(k.cell.x, k.cell.y) }
+        rep.at[#rep.at + 1] = { page_xy(kx, ky) }
       end
     end
   elseif g == "crossings" then

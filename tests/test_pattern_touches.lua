@@ -143,6 +143,47 @@ do
   end
 end
 
+-- A knob on a stray plate is reported where it is painted, on the plate, not
+-- at the gap the plate left; and a band's deviants do not depend on the run
+-- (an exact tie of two edges was once broken by the order pairs() gave).
+do
+  local sp = { width = 453, height = 256, text = { x0 = 34, y0 = 30, x1 = 256, y1 = 225 }, layout = "right", seed = 11 }
+  local pt = page("stars_8_4", { glint = "knobs", stray = "on" }, sp)
+  local rep = pt.pattern.touches
+  H.check(rep.stray ~= nil, "no stray plate to hold the knob to")
+  if rep.stray then
+    local function at_point(x, y)
+      for _, q in ipairs(rep.at) do
+        if math.abs(q[1] - x) < 1e-6 and math.abs(q[2] - y) < 1e-6 then return true end
+      end
+      return false
+    end
+    H.check(at_point(rep.stray.to_x, rep.stray.to_y), "the plate's knob is not reported on the plate")
+    H.check(not at_point(rep.stray.x, rep.stray.y), "a knob is reported at the gap the plate left")
+  end
+  -- A cell exactly as far out of a band's inner rectangle across one edge as
+  -- across another lies on a side chosen by a fixed order of the edges (l, r,
+  -- b, t), not by whatever order a table gives.
+  local Pattern = require("flora.pattern")
+  local Rng = require("flora.rng")
+  local I = { 100, 100, 260, 380 }
+  local ties = { { 80, 80, "l" }, { 280, 80, "r" }, { 80, 400, "l" }, { 280, 400, "r" }, { 180, 80, "b" }, { 180, 400, "t" } }
+  for _, tie in ipairs(ties) do
+    local x, y = tie[1], tie[2]
+    -- Equal excess across the two edges the cell lies out of, for the corners.
+    local cell = { x = x, y = y, verts = { { x - 3, y - 3 }, { x + 3, y - 3 }, { x + 3, y + 3 }, { x - 3, y + 3 } } }
+    local tpt = {}
+    local S = assert(Touches.new({ deviant = "on" }, Patterns.by_name.kikko, function() end, tpt))
+    local ctx = { kept = { { cell = cell, a = 1 } }, size = 6, width = 2, text = { x0 = I[1], y0 = I[2], x1 = I[3], y1 = I[4] },
+      W = 360, top = 480, rng = Rng.new(7), warn = function() end, grid = Pattern.cell_grid, band = { I = I },
+      place = function() return true end, measure = function() return 100, true end, pt = tpt }
+    Touches.plan(S, ctx)
+    local d = S.report.deviants[1]
+    H.check(d ~= nil, string.format("a cell at %d, %d outside a band's inner rectangle takes no deviant", x, y))
+    if d then H.check(d.side == tie[3], string.format("a cell at %d, %d lies on side %s, not %s", x, y, tostring(d.side), tie[3])) end
+  end
+end
+
 -- The last frame of a growth is the page, with the keys on.
 for _, set in ipairs({ { glint = "knobs" }, { glint = "on" }, { deviant = "on" }, { stray = "on" } }) do
   Paint.reset_resources()
