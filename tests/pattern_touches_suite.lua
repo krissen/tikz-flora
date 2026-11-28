@@ -370,6 +370,108 @@ function M.target(backdrop, only)
   return pages, fs
 end
 
+-- What the touches paint keeps the field's distance from the text and from a
+-- reserved rectangle, measured on the painting: every path painted for a
+-- touched cell (its cell, a knob, a glint, a dotted path), its points and
+-- half its stroke, no nearer than the page's gap. `reserve` puts a
+-- rectangle in the field, or in the band.
+M.RESERVES = { field = { { 30, 90, 70, 130 } }, perimeter = { { 6, 200, 30, 260 } } }
+
+-- The page's touched ink as { kind, margin } pairs, `margin` how far
+-- beyond the gap its nearest point lies (negative inside it).
+local function touched_ink(name, layout, backdrop, set, extra, rects)
+  local Touches = require("flora.pattern_touches")
+  local flag, found = nil, {}
+  local painters = Touches.painters
+  rawset(Touches, "painters", function(plan, pl, c, ink, pt)
+    local h = painters(plan, pl, c, ink, pt)
+    -- What the cell is painted as, and what it paints beyond its own: a
+    -- knob and glints in `late`, a gilded cell's underfill, a stray's dots.
+    local kind = pl.stray and "moved" or pl.deviant and "turned" or "cell"
+    for _, f in ipairs({ "construct", "paint", "late" }) do
+      local g = h[f]
+      if g then
+        h[f] = function(...)
+          local was = flag
+          flag = { kind = f == "late" and (pl.glints and "glint" or "knob") or kind, gilt = pl.gilt, stray = pl.stray }
+          local r = g(...)
+          flag = was
+          return r
+        end
+      end
+    end
+    return h
+  end)
+  local fill, stroke = Paint.fill, Paint.stroke
+  local function record(self, cmds, width, rgb)
+    if not flag then return end
+    local pj = self:_pj()
+    local paths = cmds
+    if not (type(cmds[1]) == "table" and type(cmds[1][1]) == "table") then paths = { cmds } end
+    local best = math.huge
+    for _, path in ipairs(paths) do
+      for _, c in ipairs(path) do
+        local pts, r = {}, 0
+        if c[1] == "o" then pts[1], r = { c[2], c[3] }, c[4]
+        elseif c[1] == "c" then pts = { { c[2], c[3] }, { c[4], c[5] }, { c[6], c[7] } }
+        elseif c[1] == "m" or c[1] == "l" then pts[1] = { c[2], c[3] } end
+        for _, q in ipairs(pts) do
+          local x, y = q[1], q[2]
+          if pj then x, y = pj(x, y) end
+          for _, rect in ipairs(rects) do best = math.min(best, rect_dist(x, y, rect) - r - width / 2) end
+        end
+      end
+    end
+    local kind = flag.kind
+    if flag.gilt and rgb == Paint.palette.gold and kind == "cell" then kind = "gilt" end
+    if flag.stray and paths[1] and paths[1][1] and paths[1][1][1] == "o" and #paths > 1 then kind = "dots" end
+    found[#found + 1] = { kind = kind, d = best }
+  end
+  rawset(Paint, "fill", function(self, cmds, rgb, ...) record(self, cmds, 0, rgb); return fill(self, cmds, rgb, ...) end)
+  rawset(Paint, "stroke", function(self, cmds, rgb, width, ...) record(self, cmds, width or 0, rgb); return stroke(self, cmds, rgb, width, ...) end)
+  local ok, pt = pcall(function() return page(name, layout, backdrop, set, extra) end)
+  rawset(Paint, "fill", fill)
+  rawset(Paint, "stroke", stroke)
+  rawset(Touches, "painters", painters)
+  if not ok then error(pt, 0) end
+  return pt, found
+end
+
+function M.ink(backdrop, only, seeds, values, report, combos)
+  local fs, pages = {}, 0
+  -- A field; a band of whole cells (no clip along what it keeps clear of);
+  -- and a band cut along it by clip (edge=border), whose ink is measured
+  -- before the clip cuts it.
+  combos = combos or {
+    { "field", nil, false }, { "field", nil, true }, { "perimeter", "cell", true }, { "perimeter", "border", true },
+  }
+  for _, name in ipairs(only or M.PATTERNS) do
+    for _, combo in ipairs(combos) do
+      local layout, edge, reserved = combo[1], combo[2], combo[3]
+      for _, seed in ipairs(seeds or { 7 }) do
+        local L = M.LAYOUTS[layout]
+        local rects = { { L.text.x0, L.text.y0, L.text.x1, L.text.y1 } }
+        local extra = { seed = seed, pattern_edge = edge }
+        if reserved then
+          rects[2] = M.RESERVES[layout][1]
+          extra.reserve = M.RESERVES[layout]
+        end
+        for _, kv in ipairs(values or { { "glint", "on" }, { "glint", "knobs" }, { "glint", "cells" }, { "deviant", "4" }, { "stray", "on" } }) do
+          local pt, found = touched_ink(name, layout, backdrop, { [kv[1]] = kv[2] }, extra, rects)
+          pages = pages + 1
+          local gap = pt.pattern.gap or 6
+          for _, f in ipairs(found) do
+            local tag = string.format("%s %s%s %s seed %d%s %s=%s %s", name, layout, edge and ("/" .. edge) or "", backdrop, seed, reserved and " reserve" or "", kv[1], kv[2], f.kind)
+            if report then report[f.kind] = math.min(report[f.kind] or math.huge, f.d - gap) end
+            if f.kind ~= "cell" and f.d < gap - 0.3 then fs[#fs + 1] = string.format("%s: ink %.2f pt from what the field keeps clear of, the gap %.1f", tag, f.d, gap) end
+          end
+        end
+      end
+    end
+  end
+  return pages, fs
+end
+
 -- The same seed gives the same page, every key on.
 function M.seed(backdrop, only)
   local fs, pages = {}, 0
@@ -390,7 +492,7 @@ end
 function M.run(backdrop, mutations)
   local t0 = os.clock()
   local total = 0
-  for _, check in ipairs({ "off", "gold", "deviant", "stray", "seed", "target" }) do
+  for _, check in ipairs({ "off", "gold", "deviant", "stray", "seed", "target", "ink" }) do
     local pages, fs = M[check](backdrop)
     total = total + pages
     H.check(pages > 0, check .. ": no pages")
@@ -418,12 +520,16 @@ function M.run(backdrop, mutations)
         if true then return true end]], "deviant", { "stars_8_4", "kikko" }, { 1, 2, 3, 4, 5, 6, 7, 8 }, { "4" } },
     { "a plate clear of the cells", [[< M.MIN_CLEAR * 2 * reach then]], [[< -1 then]], "stray", { "kikko", "stars_8_4" }, { 7, 8, 9, 10, 11, 12 } },
     { "a plate a cell's width away", [[if f * med < M.MIN_MOVE * 2 * reach then goto too_near end]], [[f = 1.0]], "stray", { "stars_8_4" } },
-    { "whole cells in the field", [[if deg[k] >= 0.6 * top and area(k.cell) >= big and not taken[k] then]], [[if not taken[k] then]], "deviant", { "stars_8_4" }, { 1, 2, 3, 4, 5, 6, 7, 8, 9, 10 } },
+    { "whole cells in the field", [[if deg[k] >= 0.6 * top and area(k.cell) >= big and not taken[k] and cell_clear(k.cell) then]], [[if not taken[k] then]], "deviant", { "stars_8_4" }, { 1, 2, 3, 4, 5, 6, 7, 8, 9, 10 } },
     { "the plate's distance from the text", [[and text_dist(nx, ny) >= field
+              and clear(nx, ny, reach, ctx.width / 2 + (c.pad or 0))
             if ok then
               ok = ctx.fits(]], [[
             if ok then
               ok = true or ctx.fits(]], "stray", { "stars_8_4", "kikko" }, { 1, 2, 3, 4, 5, 6, 7, 8 } },
+    { "a glint keeps the field's distance", [[not plan.at[c.owner] and clear(c.x, c.y, 0.42 * med, 0.15) then]], [[not plan.at[c.owner] then]], "ink", { "stars_8_4", "kikko" }, { 7 }, { { "glint", "on" } } },
+    { "the plate clear of text and reservations", [[
+              and clear(nx, ny, reach, ctx.width / 2 + (c.pad or 0))]], "", "ink", { "overlapping_circles", "kikko" }, { 7, 8, 9 }, { { "stray", "on" } } },
     { "the frame keeps its colours", [[hero.band, hero.band0 = pal.gold, pal.gold]], [[hero.band, hero.band0, outer.band = pal.gold, pal.gold, pal.gold]], "target", { "stars_8_4" } },
     { "the same seed", [[local rng = ctx.rng:fork("pattern touches")]], [[local rng = ctx.rng:fork("pattern touches" .. tostring({}))]], "seed", { "stars_8_4" } },
   }) do

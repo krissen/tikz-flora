@@ -2044,7 +2044,7 @@ function M.paint(spec, pt)
   end
   local plan = touches and Touches.plan(touches, { kept = kept, size = size, width = width, text = text, W = W, top = top,
     hero = hero, fits = fits, rng = rng, warn = function(msg) M.warn(pt, msg) end,
-    keep = keep_rects, band = band, pt = pt, core = core_info })
+    keep = keep_rects, gap = gap, band = band, pt = pt, core = core_info })
 
   -- Growth starts at the page's outer edge, away from the text. A cell
   -- whose centre lies off the page (outer=bleed) starts with the edge,

@@ -379,6 +379,15 @@ local function rect_dist(x, y, r)
   return sqrt(dx * dx + dy * dy)
 end
 
+-- How far a cell's outline reaches from its middle: the farthest corner, or
+-- the radius.
+local function cell_radius(c)
+  if c.circle then return c.circle[3] end
+  local r = 0
+  for _, v in ipairs(c.tile or c.verts) do r = math.max(r, dist(v[1], v[2], c.x, c.y)) end
+  return r
+end
+
 -- The most neighbours (cells within 1.5 spacings) a cell of `list` has,
 -- and each cell's count.
 local function degrees(list, med)
@@ -415,6 +424,19 @@ function M.plan(S, ctx)
     for _, r in ipairs(keep) do d = math.min(d, rect_dist(x, y, r)) end
     return d
   end
+  -- The one check of everything a touch paints beyond a cell's own approved
+  -- footprint: a disc of radius r about (x, y), its strokes reaching `reach`
+  -- further, lies at least the field's gap from every rectangle the field
+  -- keeps clear of (the text, a reservation), whether the field cuts there by
+  -- clip or keeps off. A place that fails it is not chosen and not counted.
+  local gap = ctx.gap or 0
+  local function clear(x, y, r, reach)
+    for _, rc in ipairs(keep) do
+      if rect_dist(x, y, rc) - r - reach < gap - 1e-6 then return false end
+    end
+    return true
+  end
+  local function cell_clear(c) return clear(c.x, c.y, cell_radius(c), ctx.width / 2 + (c.pad or 0)) end
   local function at(k)
     plan.at[k] = plan.at[k] or {}
     return plan.at[k]
@@ -466,12 +488,7 @@ function M.plan(S, ctx)
       local l = sqrt(ux * ux + uy * uy)
       if l > 1e-6 then
         ux, uy = ux / l, uy / l
-        local reach = 0
-        if c.circle then
-          reach = c.circle[3]
-        else
-          for _, v in ipairs(c.tile or c.verts) do reach = math.max(reach, dist(v[1], v[2], c.x, c.y)) end
-        end
+        local reach = cell_radius(c)
         -- Straight out first, then slid along the edge either way.
         for _, ang in ipairs({ 0, 0.6, -0.6, 1.2, -1.2 }) do
           local vx, vy = ux * cos(ang) - uy * sin(ang), ux * sin(ang) + uy * cos(ang)
@@ -480,6 +497,7 @@ function M.plan(S, ctx)
             local dx, dy = vx * f * med, vy * f * med
             local nx, ny = c.x + dx, c.y + dy
             local ok = nx > med and nx < ctx.W - med and ny > med and ny < ctx.top - med and text_dist(nx, ny) >= field
+              and clear(nx, ny, reach, ctx.width / 2 + (c.pad or 0))
             if ok then
               ok = ctx.fits("cell", { shape_at(c, dx, dy, 0) }, ctx.width / 2 + (c.pad or 0) + 0.2 * med)
             end
@@ -522,7 +540,10 @@ function M.plan(S, ctx)
         run = run + dist(px, py, x, y)
         px, py = x, y
         if run >= next_at and dist(x, y, bx, by) > 0.55 * med then
-          if ctx.fits("cell", { { circle = { x, y, 0.3 } } }, 0) and text_dist(x, y) >= field - 0.3 * med then dots[#dots + 1] = { x, y } end
+          if ctx.fits("cell", { { circle = { x, y, 0.3 } } }, 0) and text_dist(x, y) >= field - 0.3 * med
+            and clear(x, y, math.max(0.6, 0.055 * med), 0) then
+            dots[#dots + 1] = { x, y }
+          end
           next_at = next_at + 0.26 * med
         end
       end
@@ -571,10 +592,7 @@ function M.plan(S, ctx)
       if strip then
         -- The whole cell on the paper: its middle further from the paper's
         -- edge than its farthest corner.
-        local r = 0
-        if c.circle then r = c.circle[3] else
-          for _, v in ipairs(c.tile or c.verts) do r = math.max(r, dist(v[1], v[2], c.x, c.y)) end
-        end
+        local r = cell_radius(c)
         if c.x > 2.5 * strip.w and c.x < ctx.W - 2.5 * strip.w and c.y >= r and c.y < strip.w then return "strip" end
         return nil
       end
@@ -592,7 +610,7 @@ function M.plan(S, ctx)
       elseif c.y > t.y1 then return "t" elseif c.y < t.y0 then return "b" end
     end
     for _, k in ipairs(whole) do
-      if deg[k] >= 0.6 * top and area(k.cell) >= big and not taken[k] then
+      if deg[k] >= 0.6 * top and area(k.cell) >= big and not taken[k] and cell_clear(k.cell) then
         local s = side_of(k.cell)
         if s then
           by_side[s] = by_side[s] or {}
@@ -671,7 +689,7 @@ function M.plan(S, ctx)
   if g == "cells" then
     local items = {}
     for _, k in ipairs(whole) do
-      if not plan.at[k] then items[#items + 1] = { x = k.cell.x, y = k.cell.y, k = k } end
+      if not plan.at[k] and cell_clear(k.cell) then items[#items + 1] = { x = k.cell.x, y = k.cell.y, k = k } end
     end
     local n = math.max(M.MIN.cells, math.floor(M.SHARE.cells * #whole + .5))
     for _, it in ipairs(spread(rng:fork("cells"), items, n, M.APART.cells * med)) do
@@ -681,14 +699,16 @@ function M.plan(S, ctx)
     end
   elseif g == "knobs" then
     for _, k in ipairs(kept) do
-      at(k).knob = true
-      laid = laid + 1
-      rep.at[#rep.at + 1] = { page_xy(k.cell.x, k.cell.y) }
+      if clear(k.cell.x, k.cell.y, 0.16 * med, 0.15) then
+        at(k).knob = true
+        laid = laid + 1
+        rep.at[#rep.at + 1] = { page_xy(k.cell.x, k.cell.y) }
+      end
     end
   elseif g == "crossings" then
     local all = {}
     for _, c in ipairs(crossings(whole)) do
-      if not plan.at[c.owner] then all[#all + 1] = c end
+      if not plan.at[c.owner] and clear(c.x, c.y, 0.42 * med, 0.15) then all[#all + 1] = c end
     end
     local n = math.max(M.MIN.crossings, math.floor(M.SHARE.crossings * #all + .5))
     for _, c in ipairs(spread(rng:fork("crossings"), all, n, M.APART.crossings * med)) do
