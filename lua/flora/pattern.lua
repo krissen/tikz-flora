@@ -644,6 +644,9 @@ function M.role_inks(rng, p, spec)
   -- bands unlit (band0, line0).
   base.band0 = base.band
   base.line0 = Paint.mix(base.band, pal.paper, R.line.mix)
+  -- How far the construction lines are mixed toward the paper (the gilded
+  -- hero's lines follow it, pattern_touches.lua).
+  base.line_mix = R.line.mix
   base.line = base.line0
   -- A band's lightness is set against the surface it lies on: a dark
   -- ground lights the bands of a line pattern, which lie on it, but not a

@@ -9,8 +9,9 @@
 --                cells  a few whole cells gilded, chosen by seed
 --                knobs  a gold knob at the middle of every cell
 --   herogilding   the hero's lines in gold; it combines with any glint
---   deviant    at most one whole cell on each side is turned and painted
---              in another colour, its place drawn by seed
+--   deviant    off, on (one), or 2 to 4 whole cells on the page are turned and
+--              painted in another colour, their places drawn by seed, on
+--              different edges before two share one and never two close
 --   stray      one cell has come loose from the field's edge and lies a
 --              little way outside it, a dotted path leading back to the
 --              gap it left
@@ -26,6 +27,7 @@
 local Paint = require("flora.paint")
 local Color = require("flora.color")
 local K = require("flora.pat_kit")
+local G = require("flora.geom")
 local sqrt, sin, cos, pi = math.sqrt, math.sin, math.cos, math.pi
 
 local M = {}
@@ -140,7 +142,7 @@ function M.colours(S, base)
   S.outer, S.hero = outer, hero
   if S.herogilding then
     hero.band, hero.band0 = pal.gold, pal.gold
-    hero.line0 = Paint.mix(pal.gold, pal.paper, 0.45)
+    hero.line0 = Paint.mix(pal.gold, pal.paper, base.line_mix)
   end
   local g = S.gold
   if not g then return end
@@ -156,7 +158,7 @@ function M.colours(S, base)
   if base.accent == pal.gold then base.accent = base.core end
 end
 
--- A colour with its hue turned a third of the way round the wheel.
+-- A colour with its hue turned 150 degrees round the wheel.
 local function foil(c)
   if not c then return nil end
   local L, Ch, h = Color.lch(c)
@@ -171,7 +173,6 @@ end
 
 local function dist(ax, ay, bx, by) return sqrt((ax - bx) ^ 2 + (ay - by) ^ 2) end
 
--- The cell's outline as path commands, or nil.
 -- The outline a gilded cell's fill covers, as a shape: the polygon it is
 -- painted over (the tile where the cell has one, else its outline), or its
 -- circle. region() paints exactly this and the field's rule is asked about
@@ -192,12 +193,24 @@ end
 -- The area of a cell's outline.
 local function area(c)
   if c.circle then return pi * c.circle[3] ^ 2 end
-  local P, a = c.tile or c.verts, 0
-  for i = 1, #P do
-    local u, v = P[i], P[i % #P + 1]
-    a = a + u[1] * v[2] - v[1] * u[2]
+  return math.abs(G.area(c.tile or c.verts))
+end
+
+-- The area no smaller than most cells of `list` have: 0.8 of the median.
+local function big_enough(list)
+  local areas = {}
+  for _, k in ipairs(list) do areas[#areas + 1] = area(k.cell) end
+  table.sort(areas)
+  return 0.8 * (areas[math.ceil(#areas / 2)] or 0)
+end
+
+-- `list` shuffled in place by seed (Fisher-Yates), and returned.
+local function shuffle(rng, list)
+  for i = #list, 2, -1 do
+    local j = rng:int(1, i)
+    list[i], list[j] = list[j], list[i]
   end
-  return math.abs(a) / 2
+  return list
 end
 
 -- n of items spread by seed: the first drawn that keep `apart` from those
@@ -205,10 +218,7 @@ end
 local function spread(rng, items, n, apart, make)
   local order = {}
   for i = 1, #items do order[i] = i end
-  for i = #order, 2, -1 do
-    local j = rng:int(1, i)
-    order[i], order[j] = order[j], order[i]
-  end
+  shuffle(rng, order)
   local out = {}
   local taken = make({}, apart, function(o) return o.x, o.y end)
   for _, i in ipairs(order) do
@@ -350,18 +360,8 @@ local function seg_dist(px, py, a, b)
   return dist(px, py, a[1] + t * vx, a[2] + t * vy)
 end
 
-local function inside(px, py, P)
-  local c, j = false, #P
-  for i = 1, #P do
-    local a, b = P[i], P[j]
-    if (a[2] > py) ~= (b[2] > py) and px < (b[1] - a[1]) * (py - a[2]) / (b[2] - a[2]) + a[1] then c = not c end
-    j = i
-  end
-  return c
-end
-
 local function point_poly(px, py, P)
-  if inside(px, py, P) then return 0 end
+  if G.inside(P, px, py) then return 0 end
   local d, j = math.huge, #P
   for i = 1, #P do
     d = math.min(d, seg_dist(px, py, P[j], P[i]))
@@ -436,10 +436,11 @@ local function cell_at(k) return k.cell.x, k.cell.y end
 -- Choose the places, once the field is kept. `ctx`: kept, size, width,
 -- text, W, top, hero, place (pattern.lua's rule for what a cell lays, held to
 -- what a touch paints) and measure (its distance), band (a perimeter band's,
--- with its strip for whole rows), core (whether a band's core is drawn), pt,
--- rng, warn. Returns the plan: at[k] for each kept cell with something of its
--- own, and `med`, the spacing of the cells. What is laid goes to the
--- page's report (S.report), in page coordinates.
+-- with its strip for whole rows), grid (pattern.lua's M.cell_grid, which every
+-- neighbour search goes through), pt, rng, warn. Returns the plan: at[k] for
+-- each kept cell with something of its own, `med`, the spacing of the cells,
+-- and `looked`, how many cells the neighbour searches listed. What is laid
+-- goes to the page's report (S.report), in page coordinates.
 function M.plan(S, ctx)
   local kept, p = ctx.kept, S.pattern
   local rng = ctx.rng:fork("pattern touches")
@@ -508,10 +509,7 @@ function M.plan(S, ctx)
   if S.stray then
     -- A cell at the field's edge (few neighbours) that is no smaller than
     -- most: the small square star of stars_8_4 is not the plate to show.
-    local areas = {}
-    for _, k in ipairs(whole) do areas[#areas + 1] = area(k.cell) end
-    table.sort(areas)
-    local big = 0.8 * (areas[math.ceil(#areas / 2)] or 0)
+    local big = big_enough(whole)
     local edge, around = {}, {}
     for _, k in ipairs(whole) do
       if area(k.cell) >= big then
@@ -519,10 +517,7 @@ function M.plan(S, ctx)
         if #list > 0 and #list <= 4 then edge[#edge + 1] = k; around[k] = list end
       end
     end
-    for i = #edge, 2, -1 do
-      local j = rng:int(1, i)
-      edge[i], edge[j] = edge[j], edge[i]
-    end
+    shuffle(rng, edge)
     -- The plate lies no nearer what the field keeps clear of than the
     -- field's own nearest cell does.
     local field = math.huge
@@ -554,7 +549,7 @@ function M.plan(S, ctx)
             if ok then
               for _, o in ipairs(kept_grid:within(nx, ny, 4 * med)) do
                 if o ~= k and dist(nx, ny, o.cell.x, o.cell.y) < 4 * med
-                  and shape_gap(pose, o.cell.circle and { circle = o.cell.circle } or { verts = o.cell.verts }) < M.MIN_CLEAR * 2 * reach then
+                  and shape_gap(pose, cell_shape(o.cell)) < M.MIN_CLEAR * 2 * reach then
                   ok = false
                   break
                 end
@@ -608,16 +603,12 @@ function M.plan(S, ctx)
       -- How near its outline lies to the nearest cell the page draws, and
       -- the cell's width, for the report.
       local pose, near_gap = placed(c, done.dx, done.dy, done.turn), math.huge
-      for _, o in ipairs(kept) do
-        if o ~= done.k and dist(o.cell.x, o.cell.y, pose.circle and pose.circle[1] or c.x + done.dx, pose.circle and pose.circle[2] or c.y + done.dy) < 4 * med then
-          near_gap = math.min(near_gap, shape_gap(pose, o.cell.circle and { circle = o.cell.circle } or { verts = o.cell.verts }))
+      for _, o in ipairs(kept_grid:within(c.x + done.dx, c.y + done.dy, 4 * med)) do
+        if o ~= done.k and dist(o.cell.x, o.cell.y, c.x + done.dx, c.y + done.dy) < 4 * med then
+          near_gap = math.min(near_gap, shape_gap(pose, cell_shape(o.cell)))
         end
       end
-      local radius = 0
-      if c.circle then radius = c.circle[3] else
-        for _, v in ipairs(c.tile or c.verts) do radius = math.max(radius, dist(v[1], v[2], c.x, c.y)) end
-      end
-      rep.stray = { x = gx, y = gy, to_x = x1, to_y = y1, dots = #dots, points = points, clear = near_gap, width = 2 * radius }
+      rep.stray = { x = gx, y = gy, to_x = x1, to_y = y1, dots = #dots, points = points, clear = near_gap, width = 2 * cell_radius(c) }
     else
       ctx.warn(string.format("stray=on: no cell of %s at the field's edge has room at least a cell's width from its gap, clear of the text as the field is and of every cell drawn; none is moved", p.name))
     end
@@ -631,10 +622,7 @@ function M.plan(S, ctx)
     local deg, top = degrees(make(whole, 1.5 * med, cell_at), whole, med)
     -- No smaller than most: the small square star of stars_8_4 is no cell
     -- to turn.
-    local areas = {}
-    for _, k in ipairs(whole) do areas[#areas + 1] = area(k.cell) end
-    table.sort(areas)
-    local big = 0.8 * (areas[math.ceil(#areas / 2)] or 0)
+    local big = big_enough(whole)
     local by_side = {}
     local function side_of(c)
       if strip then
@@ -667,12 +655,9 @@ function M.plan(S, ctx)
       end
     end
     local function shuffled(list, r)
-      local out = { table.unpack(list) }
-      for i = #out, 2, -1 do
-        local j = r:int(1, i)
-        out[i], out[j] = out[j], out[i]
-      end
-      return out
+      local out = {}
+      for i, v in ipairs(list) do out[i] = v end
+      return shuffle(r, out)
     end
     local function turn_cell(k, s)
       local c = k.cell
