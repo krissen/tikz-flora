@@ -1676,6 +1676,7 @@ function M.paint(spec, pt)
     Touches.colours(touches, base)
     outer_base = touches.outer
   end
+  local hero_base = touches and touches.hero or outer_base
   local ground_edges = { auto = "panel", panel = "panel", motif = "shape", round = "discs", cells = "cells" }
   if opts.ground_edge == nil then opts.ground_edge = ground_edges[M.ground_mode(spec)] or "cells" end
   -- In a band of whole cells the ground follows the cells under
@@ -2287,7 +2288,7 @@ function M.paint(spec, pt)
   end
   for _ = 1, clips do pt:clip_end() end
   if hero and fits("hero", { { circle = hero } }, 0) then
-    M.paint_hero(pt, hero, band_ink(M.cell_inks(outer_base, 1, true), p, spec, k_key), grow)
+    M.paint_hero(pt, hero, band_ink(M.cell_inks(hero_base, 1, true), p, spec, k_key), grow)
   end
   if edge == "guilloche" and not band and (not grow or grow >= 0.1) then
     local ink = band_ink(M.cell_inks(outer_base, 1, true), p, spec, k_key)
@@ -2330,6 +2331,7 @@ function M.paint(spec, pt)
     -- at the edge.
     isolated = edgeinfo.isolated, edge_cells = edgeinfo.edge }
   -- For measuring (pattern_opts.measure): the kept cells' own edge.
+  pt.pattern.edge_inks, pt.pattern.hero_inks = outer_base, hero_base
   if touches then pt.pattern.touches = pt.touches_report end
   if opts.measure then
     local ki = M.field_edges(cells, kept, onpage)

@@ -306,6 +306,70 @@ function M.stray(backdrop, only, seeds)
   return pages, fs
 end
 
+-- A key changes only its own target: the colours the hero and the text's
+-- frame (edge=border, guilloche, a band's rule) are painted in are the page's
+-- own whatever the key, bar the hero's for herogilding; and herogilding on a
+-- page with no hero is the page without it, byte for byte (under lacquer the
+-- band is gold already, so the hero's does not change). Checked on the
+-- inks the page reports (edge_inks, hero_inks) over each edge, a hero or
+-- none, and each finish.
+M.KEY_VALUES = {
+  { "glint", "on" }, { "glint", "core" }, { "glint", "cells" }, { "glint", "knobs" },
+  { "herogilding", "on" }, { "deviant", "on" }, { "stray", "on" },
+}
+local INK_ROLES = { "band", "core", "accent", "line", "band0", "line0" }
+local function same_colour(a, b)
+  if a == nil or b == nil then return a == b end
+  return a[1] == b[1] and a[2] == b[2] and a[3] == b[3]
+end
+local function same_inks(a, b)
+  for _, k in ipairs(INK_ROLES) do
+    if not same_colour(a[k], b[k]) then return false, k end
+  end
+  return true
+end
+
+function M.target(backdrop, only)
+  local fs, pages = {}, 0
+  local sweeps = {}
+  for _, name in ipairs(only or { "stars_8_4", "asanoha" }) do
+    for _, edge in ipairs({ "dissolve", "border", "guilloche" }) do
+      for _, hero in ipairs({ "none", "rosette" }) do sweeps[#sweeps + 1] = { name, edge, hero, "filled" } end
+    end
+    for _, finish in ipairs(name == "asanoha" and { "lines", "lacquer" } or { "lines" }) do
+      sweeps[#sweeps + 1] = { name, "border", "rosette", finish }
+    end
+  end
+  local extra = { layout = "right", text = { x0 = 34, y0 = 30, x1 = 256, y1 = 225 }, width = 453, height = 256, seed = 3 }
+  for _, sw in ipairs(sweeps) do
+    local name, edge, hero, finish = sw[1], sw[2], sw[3], sw[4]
+    local function render(set)
+      local e = { pattern_edge = edge, pattern_hero = hero, pattern_finish = finish }
+      for k, v in pairs(extra) do e[k] = v end
+      Paint.reset_resources()
+      return Compose.page(spec(name, "field", backdrop, set, e))
+    end
+    local off = render(nil)
+    pages = pages + 1
+    for _, kv in ipairs(M.KEY_VALUES) do
+      local tag = string.format("%s edge=%s hero=%s finish=%s %s=%s", name, edge, hero, finish, kv[1], kv[2])
+      local on = render({ [kv[1]] = kv[2] })
+      pages = pages + 1
+      local ok, role = same_inks(off.pattern.edge_inks, on.pattern.edge_inks)
+      if not ok then fs[#fs + 1] = tag .. ": the frame's " .. role .. " changed" end
+      if kv[1] ~= "herogilding" then
+        ok, role = same_inks(off.pattern.hero_inks, on.pattern.hero_inks)
+        if not ok then fs[#fs + 1] = tag .. ": the hero's " .. role .. " changed" end
+      elseif hero == "none" and on:body() ~= off:body() then
+        fs[#fs + 1] = tag .. ": a page with no hero changed"
+      elseif hero ~= "none" and finish ~= "lacquer" and on:body() == off:body() then
+        fs[#fs + 1] = tag .. ": the hero was not gilded"
+      end
+    end
+  end
+  return pages, fs
+end
+
 -- The same seed gives the same page, every key on.
 function M.seed(backdrop, only)
   local fs, pages = {}, 0
@@ -326,7 +390,7 @@ end
 function M.run(backdrop, mutations)
   local t0 = os.clock()
   local total = 0
-  for _, check in ipairs({ "off", "gold", "deviant", "stray", "seed" }) do
+  for _, check in ipairs({ "off", "gold", "deviant", "stray", "seed", "target" }) do
     local pages, fs = M[check](backdrop)
     total = total + pages
     H.check(pages > 0, check .. ": no pages")
@@ -360,6 +424,7 @@ function M.run(backdrop, mutations)
               ok = ctx.fits(]], [[
             if ok then
               ok = true or ctx.fits(]], "stray", { "stars_8_4", "kikko" }, { 1, 2, 3, 4, 5, 6, 7, 8 } },
+    { "the frame keeps its colours", [[hero.band, hero.band0 = pal.gold, pal.gold]], [[hero.band, hero.band0, outer.band = pal.gold, pal.gold, pal.gold]], "target", { "stars_8_4" } },
     { "the same seed", [[local rng = ctx.rng:fork("pattern touches")]], [[local rng = ctx.rng:fork("pattern touches" .. tostring({}))]], "seed", { "stars_8_4" } },
   }) do
     local i, j = src:find(m[2], 1, true)
@@ -377,7 +442,8 @@ function M.run(backdrop, mutations)
   end
 end
 
-return function(backdrop, mutations)
+-- Called with a backdrop, runs the checks; M holds them one by one.
+return setmetatable({ M = M }, { __call = function(_, backdrop, mutations)
   M.run(backdrop, mutations)
   H.done("pattern touches " .. backdrop)
-end
+end })

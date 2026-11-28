@@ -128,18 +128,19 @@ function M.new(want, p, warn, pt)
   return S
 end
 
--- The role colours the keys set on `base` (pattern.lua's role_inks). Keeps
--- a copy for what lies outside the field (the hero, the border's rule and
--- frame): S.outer, the colours as they were, the hero's lines gold for
--- herogilding.
+-- The role colours the keys set on `base` (pattern.lua's role_inks). Two
+-- copies of the colours as they were are kept for what lies outside the
+-- field: S.outer for the text's frame (edge=border, guilloche, a band's
+-- rule), which no key changes, and S.hero for the hero, the one place
+-- herogilding changes (its lines gold).
 function M.colours(S, base)
   local pal = Paint.palette
-  local outer = {}
-  for k, v in pairs(base) do outer[k] = v end
-  S.outer = outer
+  local outer, hero = {}, {}
+  for k, v in pairs(base) do outer[k], hero[k] = v, v end
+  S.outer, S.hero = outer, hero
   if S.herogilding then
-    outer.band, outer.band0 = pal.gold, pal.gold
-    outer.line0 = Paint.mix(pal.gold, pal.paper, 0.45)
+    hero.band, hero.band0 = pal.gold, pal.gold
+    hero.line0 = Paint.mix(pal.gold, pal.paper, 0.45)
   end
   local g = S.gold
   if not g then return end
