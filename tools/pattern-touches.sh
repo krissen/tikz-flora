@@ -15,7 +15,9 @@
 #   stray      one cell come loose with a dotted path back, as deviant
 #   perimeter  the keys in a 12 mm band round the paper, per pattern: a
 #              corner and a side in close-up, off and each key on
-#   inventory  inventory.tsv: what each pattern takes, one pattern a row
+#   inventory  inventory.tsv: what each pattern takes, one pattern a row, and
+#              support.md, the table of README's touches section (what each
+#              key and value does in each pattern)
 #   survey     survey.tsv: stray=on over twelve seeds of four patterns on the
 #              slide, no pictures: the plates laid, and how far they lie
 #
@@ -272,6 +274,7 @@ sheet_inventory() {
       "$(tsv inventory-on light "$pat" 5)" "$(tsv inventory-deviant light "$pat" 11)" "$(tsv inventory-stray light "$pat" 12)" "$log" >> "$f"
   done
   echo "table: $f"
+  sheet_support
 }
 
 # The stray plate over twelve seeds, no pictures: per pattern, the seeds that
@@ -298,6 +301,48 @@ sheet_survey() {
       }' "$R/touches.tsv" >> "$f"
   done
   echo "table: $f"
+}
+
+# The table of what each key and value does in each pattern, as markdown,
+# from the same renders (README, "Touches on a pattern field"): lays,
+# lays only with bands three times as wide (glint=core), none laid on this
+# page (no room), or no (the pattern has nothing to lay it by; the log says
+# so and the page is painted as without the key).
+sheet_support() {
+  md="$OUT/sheets/support.md"
+  {
+    echo "| pattern | glint=on | glint=core | glint=cells | glint=knobs | herogilding=on | deviant=on | stray=on |"
+    echo "|---|---|---|---|---|---|---|---|"
+    for pat in $(patterns_of inventory-off); do
+      row="| $pat |"
+      for k in on core cells knobs; do
+        n=$(tsv "inventory-$k" light "$pat" 5)
+        lg=$(tsv "inventory-$k" light "$pat" 14)
+        if [ "${n:-0}" -gt 0 ] 2>/dev/null; then cell="lays"
+        elif [ "$k" = core ] && [ "$(tsv inventory-core3 light "$pat" 5)" -gt 0 ] 2>/dev/null; then cell="bandwidth=3"
+        elif [ "$k" = core ]; then cell="no core drawn"
+        elif printf '%s' "$lg" | grep -q "has no"; then cell="no"
+        else cell="none laid here"
+        fi
+        row="$row $cell |"
+      done
+      hl=$(tsv inventory-hero light "hero-rosette-$pat" 14)
+      if printf '%s' "$hl" | grep -q "no hero"; then cell="no hero here"; else cell="lays"; fi
+      row="$row $cell |"
+      dn=$(tsv inventory-deviant light "$pat" 11)
+      if [ "${dn:-0}" -gt 0 ] 2>/dev/null; then cell="lays"
+      elif printf '%s' "$(tsv inventory-deviant light "$pat" 14)" | grep -q "has no"; then cell="no"
+      else cell="none laid here"; fi
+      row="$row $cell |"
+      sn=$(tsv inventory-stray light "$pat" 12)
+      if [ "${sn:-0}" -gt 0 ] 2>/dev/null; then cell="lays"
+      elif printf '%s' "$(tsv inventory-stray light "$pat" 14)" | grep -q "has no"; then cell="no"
+      else cell="none laid here"; fi
+      row="$row $cell |"
+      echo "$row"
+    done
+  } > "$md"
+  echo "table: $md"
 }
 
 case "$SET" in

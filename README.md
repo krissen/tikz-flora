@@ -274,6 +274,25 @@ Four keys lay small touches on a pattern's field, all off unless set. `glint` sa
 
 The places are drawn from the page's seed, so a seed gives the same page, and a page without the keys is painted exactly as it was. `glint=core` is laid down the core of a band wherever the pattern draws one, at least 0.6 pt wide, and nowhere else: at the patterns' own widths that is `stars_8_4`, and `truchet` and `celtic_knot`, whose core is gold already; `asanoha`, `overlapping_circles`, `shippo`, `kikko`, `kolam` and `rosette_lattice` draw a core narrower than that (a larger `scale` or `bandwidth` widens it), and `seigaiha`, `greek_crosses`, `penrose_rhombs`, `khatam` and `hexagram_lattice` draw none (their bands are solid, or the core role paints a disc or a field, which `glint` leaves alone). Such a page is painted as without the key, and the log says so. A pattern with nothing to lay a key by is painted as it is, and the log says why: `celtic_knot` and `sikku_kolam` have no cells for `cells`, `deviant` and `stray`, no middles for `knobs`, and no crossings for `on`; `truchet` (its arcs meet at the middle of a tile's edge) and `rosette_lattice` (its straps cross inside the rosette) have no crossings for `on`. In a band of whole rows each side is a strip of its own: `deviant` draws from the seed which strips carry one, and `stray` one strip only. The sheets below are made by `just pattern-touches` (docs/pattern-touches.md).
 
+What each key and value does in each pattern, from a run of `just pattern-touches OUT inventory` (docs/pattern-touches.md; the A4 page of the mixer's opening colourway, the patterns' own band width): *lays* places something; *bandwidth=3* lays nothing at the pattern's own width, for its core is under 0.6 pt, and lays at bands three times as wide (a larger `scale` widens it too); *no core drawn* draws no band core even then (the bands are solid, or the core role paints a field or a disc, which `glint` leaves alone); *no* means the pattern has nothing to lay the value by, the log says so and the page is painted as without the key; *none laid here* means it is supported but this page had no room. `glint=core` at `celtic_knot` and `truchet` lays gold down cores that are gold already.
+
+| pattern | glint=on | glint=core | glint=cells | glint=knobs | herogilding=on | deviant=on | stray=on |
+|---|---|---|---|---|---|---|---|
+| asanoha | lays | bandwidth=3 | lays | lays | lays | lays | lays |
+| celtic_knot | no | lays | no | no | lays | no | no |
+| greek_crosses | lays | no core drawn | lays | lays | lays | lays | lays |
+| hexagram_lattice | lays | no core drawn | lays | lays | lays | lays | lays |
+| khatam | lays | no core drawn | lays | lays | lays | lays | lays |
+| kikko | lays | bandwidth=3 | lays | lays | lays | lays | lays |
+| overlapping_circles | lays | bandwidth=3 | lays | lays | lays | lays | lays |
+| penrose_rhombs | lays | no core drawn | lays | lays | lays | lays | lays |
+| rosette_lattice | no | bandwidth=3 | lays | lays | lays | lays | lays |
+| seigaiha | lays | no core drawn | lays | lays | lays | lays | lays |
+| shippo | lays | bandwidth=3 | lays | lays | lays | lays | lays |
+| sikku_kolam | no | bandwidth=3 | no | no | lays | no | no |
+| stars_8_4 | lays | lays | lays | lays | lays | lays | lays |
+| truchet | no | lays | lays | lays | lays | lays | lays |
+
 ![glint: today, on, core, cells, knobs, herogilding](docs/images/pattern-glint.png)
 
 ![deviant: three seeds, off and on](docs/images/pattern-deviant.png)

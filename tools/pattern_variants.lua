@@ -43,11 +43,16 @@ variants[#variants + 1] = { name = "gold-hero", set = "gold", setup = COLOURWAY 
 local Patterns = require("flora.patterns")
 local ALL = {}
 for _, p in ipairs(Patterns.list) do ALL[p.name] = true end
-for _, k in ipairs({ "off", "on", "core", "cells", "knobs", "deviant", "stray" }) do
+-- core3 is glint=core with bands three times as wide, hero herogilding on
+-- the page with a hero: what the table says of each pattern's core and hero.
+for _, k in ipairs({ "off", "on", "core", "core3", "cells", "knobs", "deviant", "stray", "hero" }) do
   local extra = ""
-  if k == "deviant" or k == "stray" then extra = ", " .. k .. "=on" else extra = GLINTS[k] end
+  if k == "deviant" or k == "stray" then extra = ", " .. k .. "=on"
+  elseif k == "core3" then extra = ", glint=core, bandwidth=3"
+  elseif k == "hero" then extra = ", herogilding=on"
+  else extra = GLINTS[k] end
   variants[#variants + 1] = { name = "inventory-" .. k, set = "inventory", setup = COLOURWAY .. extra, patterns = ALL,
-    backdrops = { "light" }, probe = true }
+    backdrops = { "light" }, probe = true, heroes = k == "hero" and { "rosette" } or nil }
 end
 
 -- deviant (off, on, 3) and stray (off, on): three seeds, on the 16:9 slide.
