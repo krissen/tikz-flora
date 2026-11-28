@@ -4,7 +4,9 @@
 -- without this module.
 --
 --   glint      where gold lies in the field, in place of the pattern's own:
---                on     a few glints where bands cross, spread by seed
+--                on     a few glints at the pattern's nodes (the corners
+--                       neighbouring tiles share, or where two circles
+--                       meet), spread by seed
 --                core   in the band's core (the accent and the core gold)
 --                cells  a few whole cells gilded, chosen by seed
 --                knobs  a gold knob at the middle of every cell
@@ -32,7 +34,7 @@ local sqrt, sin, cos, pi = math.sqrt, math.sin, math.cos, math.pi
 
 local M = {}
 
--- The values of glint; "on" is the glints at crossings.
+-- The values of glint; "on" is the glints at the lattice's nodes.
 M.GLINT = { off = true, on = true, core = true, cells = true, knobs = true }
 M.GLINT_ORDER = { "off", "on", "core", "cells", "knobs" }
 
@@ -48,8 +50,8 @@ M.NO_CENTRES = {
   sikku_kolam = "its cells are dots and loops, not tiles with a middle",
 }
 
--- Patterns whose bands do not cross at the corners of their cells or at
--- the meeting of their circles, and why.
+-- Patterns with no nodes the field knows (no corners their cells share and
+-- no circles that meet), and why.
 M.NO_CROSSINGS = {
   celtic_knot = "its strands cross at the middle of its cells' edges, which the field does not know",
   sikku_kolam = "its loops are drawn through dots, not along cells",
@@ -92,7 +94,7 @@ function M.new(want, p, warn, pt)
       local why
       if mode == "cells" then why = M.NO_CELLS[p.name] and ("no cells to gild (" .. M.NO_CELLS[p.name] .. ")")
       elseif mode == "knobs" then why = M.NO_CENTRES[p.name] and ("no cell middles the field knows (" .. M.NO_CENTRES[p.name] .. ")")
-      elseif mode == "crossings" then why = M.NO_CROSSINGS[p.name] and ("no crossings the field knows (" .. M.NO_CROSSINGS[p.name] .. ")") end
+      elseif mode == "crossings" then why = M.NO_CROSSINGS[p.name] and ("no nodes the field knows (" .. M.NO_CROSSINGS[p.name] .. ")") end
       if why then
         warn(string.format("glint=%s: %s has %s; it is painted as it is", g, p.name, why))
       else
@@ -238,8 +240,9 @@ end
 
 local function key2(x, y) return string.format("%d,%d", math.floor(x * 10 + .5), math.floor(y * 10 + .5)) end
 
--- The points where bands cross, from the kept cells: the corners of
--- polygons that two cells share, and where two circles meet. Each is
+-- The nodes of the lattice, from the kept cells: the corners of polygons
+-- (a cell's tile, else its outline) that two cells share, and where two
+-- circles meet. Each is
 -- owned by the first cell that has it: { x, y, owner }.
 local function crossings(kept, make)
   local seen, out = {}, {}
